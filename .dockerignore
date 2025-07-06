@@ -1,0 +1,36 @@
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtualenvs
+env/
+venv/
+.venv/
+
+# IDE & tooling
+.vscode/
+.idea/
+*.sw?
+*.swo
+
+# Tests / docs / coverage
+tests/
+.coverage
+coverage.xml
+htmlcov/
+
+# Logs & runtime
+logs/
+*.log
+
+# Git
+.git/
+
+# Build output
+dist/
+build/
+
+# Keep main build files
+!Dockerfile
+!docker-compose.yml
