@@ -18,6 +18,3 @@ class Config(BaseSettings):
 
     class ConfigSettings:
         env_file = ".env"
-
-c = Config()
-print(c.POSTGRES_URL)

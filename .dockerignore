@@ -5,7 +5,7 @@ __pycache__/
 
 # Virtualenvs
 env/
-venv/
+../venv/
 .venv/
 
 # IDE & tooling
@@ -32,5 +32,5 @@ dist/
 build/
 
 # Keep main build files
-!Dockerfile
+!../Dockerfile
 !docker-compose.yml

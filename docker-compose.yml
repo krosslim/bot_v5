@@ -3,8 +3,6 @@ version: "3.9"
 services:
   bot:
     build: .
-    image: mycorp/telegram-bot:latest
-    container_name: telegram_bot
     env_file: .env
     depends_on:
       postgres:
@@ -25,7 +23,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -40,7 +37,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
       interval: 10s
       retries: 5
     restart: unless-stopped
