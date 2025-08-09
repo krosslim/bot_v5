@@ -22,9 +22,11 @@ COPY --from=base /usr/local/bin /usr/local/bin
 
 COPY . .
 
+RUN chmod +x ./docker-entrypoint.sh
+
 RUN adduser --disabled-password --gecos "" botuser \
  && chown -R botuser:botuser /app
 USER botuser
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["python", "main.py"]

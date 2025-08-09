@@ -1,59 +1,46 @@
 import asyncio
 import logging
-import sys
 
 from aiogram import Dispatcher, Bot
-
-from aiogram.client.default import DefaultBotProperties
-
-from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.methods import DeleteWebhook
-from aiogram.enums import ParseMode
 from dishka.integrations.aiogram import setup_dishka
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from config import Config
-
-
-def setup_logging(level: int = logging.INFO) -> None:
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s | %(levelname)s | %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        stream=sys.stdout
-    )
-
-
-logger = logging.getLogger(__name__)
-
-cfg = Config()
-bot = Bot(token=cfg.TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-storage = RedisStorage.from_url(cfg.REDIS_URL)
-dp = Dispatcher(storage=storage)
+from config import Config, setup_logging
+from src.handlers import bot_combined_router
+from src.infrastructure.dishka import container
+from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
+from src.utils.commands import get_commands_list
 
 
 async def main() -> None:
     setup_logging()
-    logger.info("Запуск бота…")
+    logger = logging.getLogger(__name__)
+
+    bot: Bot = await container.get(Bot)
+    dp: Dispatcher = await container.get(Dispatcher)
+    settings: Config = await container.get(Config)
+
+    setup_dishka(container=container, router=dp, auto_inject=True)
+
+    await bot(DeleteWebhook(drop_pending_updates=True))
+
+    setup_outer_middlewares(dp)
+    setup_inner_middlewares(dp, settings.TG_CHAT_ID)
+
+    dp.include_router(bot_combined_router)
+    await bot.set_my_commands(get_commands_list())
+
+    scheduler: AsyncIOScheduler = await container.get(AsyncIOScheduler)
+    scheduler.start()
+
     try:
-        await bot(DeleteWebhook(drop_pending_updates=True))
-
-        # DI-контейнер:
-        from src.infrastructure import di_container
-        setup_dishka(di_container, dp, auto_inject=True)
-
-        # handlers:
-        from src.handlers import combined
-        dp.include_router(combined)
-
+        logger.info("Запуск бота…")
         await dp.start_polling(bot)
 
     finally:
         logger.info("Закрытие соединений…")
-
-        await dp.storage.close()
-        await bot.session.close()
-        await di_container.close()
-
+        await container.close()
         logger.info("Бот остановлен.")
 
 if __name__ == "__main__":

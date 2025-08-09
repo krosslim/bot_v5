@@ -1,9 +1,11 @@
-from src.handlers.start_handler import router as start_router
+from src.handlers.user import user_combined_router
+from src.handlers.common import common_combined_router
 from aiogram import Router
 
+bot_combined_router = Router()
 
-combined = Router()
+bot_combined_router.include_routers(
+    user_combined_router,
 
-router_list = combined.include_router(
-    start_router
+    common_combined_router
 )
