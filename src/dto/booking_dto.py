@@ -1,15 +1,18 @@
-from datetime import date
+from datetime import date, datetime
+from enum import auto
 from typing import List
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
+from strenum import StrEnum
 
 
 class UserBookingDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
+    user_id: int
     full_name: str
-    status_id: int
-
+    status: str
+    created_at: datetime
 
 class DateBookingsDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
@@ -17,36 +20,34 @@ class DateBookingsDTO(BaseModel):
     cal_date: date
     users: List[UserBookingDTO]
 
-
-class UserOwnBookingsDTO(BaseModel):
-    model_config = ConfigDict(from_attributes=True, frozen=True)
-
-    cal_date: date
-    status_id: int
-    status_name: str = Field(alias="description")
-
-
-class UserWaitlistDTO(BaseModel):
-    model_config = ConfigDict(from_attributes=True, frozen=True)
-
-    cal_date: date
-    position: int
-
-
-class WeekAttendanceDTO(BaseModel):
+class CancelBookingFifoDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    week_start: date
-    week_end: date
-    bookings: List[UserOwnBookingsDTO]
-    waitlist: List[UserWaitlistDTO]
+    canceled_user_id: int | None
+    promoted_user_id: int | None
 
+class BookingStatus(StrEnum):
+    # Основные статусы
+    BOOKED = auto()
+    CANCELED = auto()
+    WAITLISTED = auto()
 
-class CancelBookingDTO(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    # Подстатусы для BOOKED
+    CONFIRMED = auto()
+    RESERVED = auto()
 
-    cal_date: date
-    waiter_user_id: int = None
+    # Подстатусы для CANCELED
+    CANCELED_ILL = auto()
+    CANCELED_FAMILY = auto()
+    CANCELED_CHANGED_MIND = auto()
+    CANCELED_OTHER = auto()
+    CANCELED_NO_SPOTS_WAITLIST = auto()
+    CANCELED_NOT_CONFIRMED = auto()
+    CANCELED_ADMIN = auto()
+
+    # Подстатусы для WAITLISTED
+    WAITLISTED_MANUAL = auto()
+    WAITLISTED_NO_SPOTS_AUTO = auto()
 
 
 

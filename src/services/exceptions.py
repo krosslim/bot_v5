@@ -1,20 +1,48 @@
-class BookingServiceExceptions(Exception):
+class UserWarning(Exception):
+    """Бизнес предупреждения без необходимости отката транзакции"""
     pass
 
-class FreePlaceIsNotFound(BookingServiceExceptions):
+class UserError(Exception):
+    """Бизнес ошибки, требующие отката транзакции"""
     pass
 
-class BookingIsAlreadyExist(BookingServiceExceptions):
+class UserNotFound(UserWarning):
+    """Пользователь не найден"""
     pass
 
-class CancelIsAlreadyExist(BookingServiceExceptions):
+
+class BookingError(Exception):
     pass
 
-class FreePlaceIsAvailable(BookingServiceExceptions):
+class NoCapacityInfo(BookingError):
+    """Нет информации о лимитах на день"""
     pass
 
-class UserIsAlreadyInWaitingList(BookingServiceExceptions):
+class FreePlaceIsNotFound(BookingError):
+    """Свободных мест за указанный день нет"""
     pass
 
-class UserIsAlreadyPromoted(BookingServiceExceptions):
+class BookingIsAlreadyExist(BookingError):
+    """Бронь не требуется, так как уже существует"""
     pass
+
+class CancelIsAlreadyExist(BookingError):
+    """Повторная бронь"""
+    pass
+
+class FreePlaceIsAvailable(BookingError):
+    """В процессе постановки в очередь появилось место"""
+    pass
+
+class UserIsAlreadyInWaitingList(BookingError):
+    """Пользователь уже в очередь, повторно ставить в очередь не нужно"""
+    pass
+
+class UserIsAlreadyLeaveQueue(BookingError):
+    """Пользователь уже покинул очередь"""
+    pass
+
+
+
+
+

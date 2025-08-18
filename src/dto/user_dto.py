@@ -10,13 +10,10 @@ class UserDTO(BaseModel):
     user_id: int
     full_name: str
     is_active: bool
+    auto_confirm: bool
+    auto_join_queue: bool
+    is_admin: bool
     created_at: datetime
-
-
-class UserCheckDTO(BaseModel):
-    is_new: bool = False
-    is_completed: bool = False
-    user: UserDTO | None = None
 
 
 class UserBookingSessionDTO(BaseModel):

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, date
 from typing import List, Optional
 
@@ -24,287 +22,146 @@ from sqlalchemy.orm import (
 from sqlalchemy.sql import expression
 
 
-# ---------------------------------------------------------------------------#
-#  Base class
-# ---------------------------------------------------------------------------#
-class Base(DeclarativeBase):  # type: ignore[override]
+class Base(DeclarativeBase):
     pass
 
 
 # ---------------------------------------------------------------------------#
-#  Lookup table for statuses / sources
-# ---------------------------------------------------------------------------#
-class BookingStateDict(Base):
-    __tablename__ = "booking_state_dict"
-
-    state_id: Mapped[int] = mapped_column(
-        SmallInteger, primary_key=True, autoincrement=True
-    )
-    code: Mapped[str] = mapped_column(Text, nullable=False)
-    kind: Mapped[str] = mapped_column(Text, nullable=False)  # "status" | "source"
-    description: Mapped[Optional[str]] = mapped_column(Text)
-
-
-# ---------------------------------------------------------------------------#
-#  Core master-data tables
+#  User & User Settings & User Booking Weekdays
 # ---------------------------------------------------------------------------#
 class User(Base):
     __tablename__ = "users"
 
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=expression.true()
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.true())
+    auto_confirm: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
+    auto_join_queue: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships
-    settings: Mapped["UserSettings"] = relationship(
-        back_populates="user", uselist=False, cascade="all,delete-orphan"
-    )
-    recurring_weekdays: Mapped[List["UserRecurringWeekday"]] = relationship(
-        back_populates="user", cascade="all,delete-orphan"
-    )
-    vacations: Mapped[List["UserVacation"]] = relationship(
-        back_populates="user", cascade="all,delete-orphan"
-    )
-    bookings: Mapped[List["Booking"]] = relationship(
-        back_populates="user", cascade="all,delete-orphan"
-    )
-    waitlist_entries: Mapped[List["WaitList"]] = relationship(
-        back_populates="user", cascade="all,delete-orphan"
-    )
-    prompt_statuses: Mapped[List["UserPromptStatus"]] = relationship(
-        back_populates="user", cascade="all,delete-orphan"
-    )
+    booking_weekdays: Mapped[List["UserBookingWeekday"]] = relationship(back_populates="user")
+    bookings: Mapped[List["Booking"]] = relationship(back_populates="user")
+    updated_booking_events: Mapped[List["BookingEvent"]] = relationship(back_populates="updated_by_user")
 
 
-class UserSettings(Base):
-    __tablename__ = "user_settings"
-
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.user_id"), primary_key=True
-    )
-    auto_confirm: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=expression.false()
-    )
-    default_remind: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=expression.true()
-    )
-    is_admin: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=expression.false()
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-
-    user: Mapped[User] = relationship(back_populates="settings", uselist=False)
-
-
-class UserRecurringWeekday(Base):
-    """
-    Composite primary key  (user_id, weekday)
-    weekday: 1 (Monday) … 7 (Sunday)
-    """
-
-    __tablename__ = "user_recurring_weekdays"
+class UserBookingWeekday(Base):
+    __tablename__ = "user_book_weekdays"
     __table_args__ = (UniqueConstraint("user_id", "weekday"),)
 
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.user_id"), primary_key=True
-    )
-    weekday: Mapped[int] = mapped_column(
-        SmallInteger, primary_key=True
-    )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=expression.true()
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=False)
+    weekday: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
-    user: Mapped[User] = relationship(back_populates="recurring_weekdays")
+    # relationships
+    user: Mapped["User"] = relationship(back_populates="booking_weekdays")
 
 
+# ---------------------------------------------------------------------------#
+#  Calendar Dates & Office Capacity Weekdays
+# ---------------------------------------------------------------------------#
 class CalendarDate(Base):
     __tablename__ = "calendar_dates"
 
     cal_date: Mapped[date] = mapped_column(Date, primary_key=True)
     is_weekend: Mapped[bool] = mapped_column(Boolean, nullable=False)
     is_holiday: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    visit_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships
     bookings: Mapped[List["Booking"]] = relationship(back_populates="calendar_date")
-    waitlist_entries: Mapped[List["WaitList"]] = relationship(
-        back_populates="calendar_date"
-    )
 
 
 class OfficeCapacityWeekday(Base):
-    """
-    Capacity per weekday (1-7).  One row per weekday.
-    """
-
     __tablename__ = "office_capacity_weekdays"
 
     weekday: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
-    short_name: Mapped[str] = mapped_column(Text, nullable=True)
-    name: Mapped[str] = mapped_column(Text, nullable=True)
+    short_name: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-
-
-class UserVacation(Base):
-    __tablename__ = "user_vacations"
-
-    vacation_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.user_id"), nullable=False
-    )
-    date_from: Mapped[date] = mapped_column(Date, nullable=False)
-    date_to: Mapped[date] = mapped_column(Date, nullable=False)
-    type: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-
-    user: Mapped[User] = relationship(back_populates="vacations")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
 
 # ---------------------------------------------------------------------------#
-#  Bookings & Wait-list
+#  Bookings & Booking Events & Booking Status Dictionary
 # ---------------------------------------------------------------------------#
 class Booking(Base):
     __tablename__ = "bookings"
+    __table_args__ = (UniqueConstraint("user_id", "cal_date"),)
 
-    booking_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.user_id"), nullable=False
-    )
-    cal_date: Mapped[date] = mapped_column(
-        Date, ForeignKey("calendar_dates.cal_date"), nullable=False
-    )
-    status_id: Mapped[int] = mapped_column(
-        SmallInteger, ForeignKey("booking_state_dict.state_id"), nullable=False
-    )
-    source_id: Mapped[int] = mapped_column(
-        SmallInteger, ForeignKey("booking_state_dict.state_id"), nullable=False
-    )
-    confirmed_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True)
-    )
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True)
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
+    booking_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=False)
+    cal_date: Mapped[date] = mapped_column(Date, ForeignKey("calendar_dates.cal_date"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
+    sub_status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships
-    user: Mapped[User] = relationship(back_populates="bookings")
-    calendar_date: Mapped[CalendarDate] = relationship(back_populates="bookings")
-    status: Mapped[BookingStateDict] = relationship(
-        foreign_keys=[status_id], uselist=False
+    user: Mapped["User"] = relationship(back_populates="bookings")
+    calendar_date: Mapped["CalendarDate"] = relationship(back_populates="bookings")
+
+    status_dict: Mapped["BookingStatusDict"] = relationship(
+        foreign_keys=[status], back_populates="bookings_as_status"
     )
-    source: Mapped[BookingStateDict] = relationship(
-        foreign_keys=[source_id], uselist=False
-    )
-    promoted_waitlist_entry: Mapped[Optional["WaitList"]] = relationship(
-        back_populates="promoted_booking", uselist=False
+    sub_status_dict: Mapped["BookingStatusDict"] = relationship(
+        foreign_keys=[sub_status], back_populates="bookings_as_sub_status"
     )
 
+    events: Mapped[List["BookingEvent"]] = relationship(back_populates="booking")
 
-class WaitList(Base):
-    __tablename__ = "waitlist"
 
-    waitlist_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.user_id"), nullable=False
-    )
-    cal_date: Mapped[date] = mapped_column(
-        Date, ForeignKey("calendar_dates.cal_date"), nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-    promoted_booking_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("bookings.booking_id")
-    )
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True)
-    )
+class BookingStatusDict(Base):
+    __tablename__ = "booking_status_dict"
+
+    slug: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    parent_slug: Mapped[Optional[str]] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.true())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships
-    user: Mapped[User] = relationship(back_populates="waitlist_entries")
-    calendar_date: Mapped[CalendarDate] = relationship(back_populates="waitlist_entries")
-    promoted_booking: Mapped[Optional[Booking]] = relationship(
-        back_populates="promoted_waitlist_entry", uselist=False
+    parent: Mapped[Optional["BookingStatusDict"]] = relationship(
+        remote_side=[slug], back_populates="children"
+    )
+    children: Mapped[List["BookingStatusDict"]] = relationship(back_populates="parent")
+
+    bookings_as_status: Mapped[List["Booking"]] = relationship(
+        foreign_keys="Booking.status", back_populates="status_dict"
+    )
+    bookings_as_sub_status: Mapped[List["Booking"]] = relationship(
+        foreign_keys="Booking.sub_status", back_populates="sub_status_dict"
+    )
+
+    events_as_status: Mapped[List["BookingEvent"]] = relationship(
+        foreign_keys="BookingEvent.status", back_populates="status_dict"
+    )
+    events_as_sub_status: Mapped[List["BookingEvent"]] = relationship(
+        foreign_keys="BookingEvent.sub_status", back_populates="sub_status_dict"
     )
 
 
-# ---------------------------------------------------------------------------#
-#  Prompt / notification logs
-# ---------------------------------------------------------------------------#
-class FridayPromptsLog(Base):
-    __tablename__ = "friday_prompts_log"
+class BookingEvent(Base):
+    __tablename__ = "booking_events"
 
-    prompt_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
-    )
-    sent_on: Mapped[date] = mapped_column(Date, nullable=False)
-    sent_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-    week_start: Mapped[date] = mapped_column(Date, nullable=False)
-    week_end: Mapped[date] = mapped_column(Date, nullable=False)
-    recipients_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    event_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    booking_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("bookings.booking_id"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
+    sub_status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=False)
 
-    prompt_statuses: Mapped[List["UserPromptStatus"]] = relationship(
-        back_populates="prompt", cascade="all,delete-orphan"
+    # relationships
+    booking: Mapped["Booking"] = relationship(back_populates="events")
+    status_dict: Mapped["BookingStatusDict"] = relationship(
+        foreign_keys=[status], back_populates="events_as_status"
     )
-
-
-class UserPromptStatus(Base):
-    __tablename__ = "user_prompt_status"
-    __table_args__ = (UniqueConstraint("prompt_id", "user_id"),)
-
-    prompt_status_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+    sub_status_dict: Mapped["BookingStatusDict"] = relationship(
+        foreign_keys=[sub_status], back_populates="events_as_sub_status"
     )
-    prompt_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("friday_prompts_log.prompt_id"), nullable=False
-    )
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.user_id"), nullable=False
-    )
-    responded_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True)
-    )
-    auto_pattern_applied: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=expression.false()
-    )
-    skipped: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=expression.false()
-    )
-
-    prompt: Mapped[FridayPromptsLog] = relationship(back_populates="prompt_statuses")
-    user: Mapped[User] = relationship(back_populates="prompt_statuses")
+    updated_by_user: Mapped["User"] = relationship(back_populates="updated_booking_events")
 
 
 # ---------------------------------------------------------------------------#
@@ -314,7 +171,5 @@ class SystemConfig(Base):
     __tablename__ = "system_config"
 
     key: Mapped[str] = mapped_column(Text, primary_key=True)
-    value: Mapped[Optional[str]] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
+    value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from src.ui.keyboard.actions import MenuCB, MenuStep, BookingCB, BookingStep
+from src.ui.keyboard.actions import MenuCB, MenuStep, BookingCB, BookingStep, SettingsStep, SettingsCB
 
 
 def get_menu_kb() -> InlineKeyboardMarkup:
@@ -18,7 +18,7 @@ def get_menu_kb() -> InlineKeyboardMarkup:
         ),
         InlineKeyboardButton(
             text="⚙️ Настройки",
-            callback_data=MenuCB(step=MenuStep.SETTINGS).pack()
+            callback_data=SettingsCB(step=SettingsStep.INIT_SETTINGS).pack()
         ),
         width=1
     ).as_markup()

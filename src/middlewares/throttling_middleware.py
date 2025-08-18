@@ -1,8 +1,10 @@
+import re
+from typing import Any, Awaitable, Callable, Dict
+
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, TelegramObject
-from typing import Any, Awaitable, Callable, Dict
+
 from src.services.tech_service import TechService
-from src.ui.keyboard.actions import BookingCB, MenuCB
 from src.utils.data import ContainerMiddlewareData
 
 
@@ -16,13 +18,10 @@ class ThrottlingMiddleware(BaseMiddleware):
     ) -> Any:
         user_id = event.from_user.id
 
+        idk = re.search(r"[^:]*$", event.data).group()
+
         container = data["dishka_container"]
         tech_service = await container.get(TechService)
-
-        try:
-            idk = BookingCB.unpack(event.data).idk
-        except ValueError:
-            idk = MenuCB.unpack(event.data).idk
 
         set_key = await tech_service.set_throttling_key(
                 user_id=user_id, idk=idk,ttl=3

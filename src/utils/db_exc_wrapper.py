@@ -1,11 +1,10 @@
 import inspect
 import logging
-import random
 from functools import wraps
 from typing import Any, Callable, Coroutine, TypeVar
 
-from sqlalchemy.exc import SQLAlchemyError, DBAPIError, ProgrammingError
 from asyncpg.exceptions import PostgresError
+from sqlalchemy.exc import SQLAlchemyError, DBAPIError, ProgrammingError
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +34,6 @@ def handle_db_errors(
                 SQLAlchemyError, DBAPIError, PostgresError, ProgrammingError,
                 ConnectionError, TimeoutError
         ) as exc:
-
-            session = getattr(args[0], "session", None)
-            if session and session.in_transaction():
-                await session.rollback()
 
             logger.exception(
                 "DB error in %s",

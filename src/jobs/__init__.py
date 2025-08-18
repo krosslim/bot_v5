@@ -20,7 +20,7 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
         misfire_grace_time=60,
         coalesce=True
     )
-    logger.info("job: cleanup_booking_session_job | Interval 3 minutes")
+    logger.info("register job: cleanup_booking_session_job | Interval 3 minutes")
 
 
 

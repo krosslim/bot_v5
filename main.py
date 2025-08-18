@@ -3,13 +3,15 @@ import logging
 
 from aiogram import Dispatcher, Bot
 from aiogram.methods import DeleteWebhook
-from dishka.integrations.aiogram import setup_dishka
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from dishka.integrations.aiogram import setup_dishka
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import Config, setup_logging
 from src.handlers import bot_combined_router
 from src.infrastructure.dishka import container
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
+from src.utils.app_configuration.register import init_system_tasks
 from src.utils.commands import get_commands_list
 
 
@@ -33,6 +35,10 @@ async def main() -> None:
 
     scheduler: AsyncIOScheduler = await container.get(AsyncIOScheduler)
     scheduler.start()
+
+    async with container() as req:
+        session: AsyncSession = await req.get(AsyncSession)
+        await init_system_tasks(session)
 
     try:
         logger.info("Запуск бота…")

@@ -1,214 +1,244 @@
 from collections import defaultdict
 from datetime import date
-from typing import Optional, List, Dict
-from sqlalchemy import select, func, false, update, literal, exists, insert
+from typing import Optional, List, Dict, Union
+
+from sqlalchemy import select, update, and_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
-from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO, UserOwnBookingsDTO,
-                                 UserWaitlistDTO, CancelBookingDTO)
+
+from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
+                                 CancelBookingFifoDTO, BookingStatus)
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
 from src.dto.user_dto import UserDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
-                                         CalendarDate, BookingStateDict, WaitList,
-                                         UserSettings)
+                                         CalendarDate, BookingEvent)
 from src.utils.db_exc_wrapper import with_db_errors
+
 
 @with_db_errors
 class Repository:
     def __init__(self, session: AsyncSession):
         self.session = session
-# ───────────────────────────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------#
 #  USERS
-# ───────────────────────────────────────────────────────────────────────────────
-    async def create_user(self, tg_id: int, full_name: str) -> None:
-        new_user = User(user_id=tg_id, full_name=full_name)
+# ---------------------------------------------------------------------------#
+    async def create_user(self, user_id: int, full_name: str) -> None:
+        new_user = User(user_id=user_id, full_name=full_name)
         self.session.add(new_user)
 
-    async def get_user_by_tg_id(self, tg_id: int) -> Optional[UserDTO]:
+    async def get_user_by_id(self, user_id: int) -> Optional[UserDTO]:
         result = await self.session.execute(
-            select(User).where(User.user_id == tg_id)
+            select(User).where(User.user_id == user_id)
         )
         user = result.scalar_one_or_none()
         if user is None:
             return None
         return UserDTO.model_validate(user)
 
+    async def user_auto_confirm(self, user_id: int) -> bool:
+        result = await self.session.execute(
+            select(User.auto_confirm).where(User.user_id == user_id)
+        )
+        return result.scalar_one()
 
-# ───────────────────────────────────────────────────────────────────────────────
-#  USERS SETTINGS
-# ───────────────────────────────────────────────────────────────────────────────
-    async def get_auto_confirm_setting(self, user_id: int) -> bool:
+    async def update_full_name(self, user_id: int, full_name: str) -> None:
+        stmt = (update(User).where(User.user_id == user_id).values(full_name=full_name))
+        await self.session.execute(stmt)
+
+    async def update_auto_confirm(self, user_id: int, auto_confirm: bool) -> None:
+        stmt = (update(User).where(User.user_id == user_id).values(auto_confirm=auto_confirm))
+        await self.session.execute(stmt)
+
+# ---------------------------------------------------------------------------#
+#  BOOKINGS
+# ---------------------------------------------------------------------------#
+    async def bookings_by_range(
+            self, start: date, end: date, status: Union[str, List[str]]
+    ) -> List[DateBookingsDTO]:
+
+        status_list = [status] if isinstance(status, str) else status
 
         stmt = (
             select(
-                func.coalesce(UserSettings.auto_confirm, false())
+                Booking.cal_date, Booking.user_id, User.full_name, Booking.status, Booking.created_at
             )
-            .where(UserSettings.user_id == user_id)
+            .join(User, Booking.user_id == User.user_id)
+            .where(Booking.cal_date.between(start, end), Booking.status.in_(status_list))
+            .order_by(Booking.cal_date, Booking.created_at)
         )
-
-        val = (await self.session.execute(stmt)).scalar_one_or_none()
-
-        return bool(val)
-
-
-# ───────────────────────────────────────────────────────────────────────────────
-#  BOOKINGS
-# ───────────────────────────────────────────────────────────────────────────────
-    async def get_active_bookings_by_range(self, cal_date_start: date,
-                                   cal_date_end: date) -> List[DateBookingsDTO]:
-        stmt = (
-        select(
-            Booking.cal_date,
-            User.full_name,
-            Booking.status_id,
-        )
-        .join(User, Booking.user_id == User.user_id)
-        .where(
-            Booking.cal_date.between(cal_date_start, cal_date_end),
-            Booking.status_id.in_((1, 2)), # Только активные
-        )
-        .order_by(Booking.cal_date, User.full_name)
-    )
-
         rows = await self.session.execute(stmt)
         data = rows.all()
 
         grouped: Dict[date, List[UserBookingDTO]] = defaultdict(list)
-        for cal_date_, full_name, status_id in data:
-            grouped[cal_date_].append(UserBookingDTO(full_name=full_name,
-                                                     status_id=status_id))
+        for cal_date, user_id, full_name, status, created_at in data:
+            grouped[cal_date].append(
+                UserBookingDTO(
+                    user_id=user_id, full_name=full_name, status=status, created_at=created_at
+                )
+            )
+        return [DateBookingsDTO(cal_date=cd, users=grouped[cd]) for cd in sorted(grouped)]
 
-        return [
-        DateBookingsDTO(cal_date=cd, users=grouped[cd])
-        for cd in sorted(grouped)
-    ]
+    # -------------------- ОБЩЕЕ (запись истории бронирования) --------------------
+    async def insert_event(
+            self, booking_id: int, status: str, sub_status: str, user_id: int
+    ) -> None:
 
-    async def get_user_bookings_by_range(self,
-                                         user_id: int,
-                                         week_start: date,
-                                         week_end: date
-                                         ) -> List[UserOwnBookingsDTO]:
+        event = BookingEvent(booking_id=booking_id,
+                           status=status,
+                           sub_status=sub_status,
+                           updated_by=user_id)
+        self.session.add(event)
+
+    # -------------------- ОБЩЕЕ (занять слот: бронь / лист ожидания) --------------------
+    async def take_capacity_slot(
+            self, user_id: int, cal_date: date, capacity: int, waitlist: bool
+    ) -> bool:
+        conditions = [
+            CalendarDate.cal_date == cal_date,
+            CalendarDate.visit_count < capacity,
+        ]
+
+        if waitlist:
+            not_exists_booked = ~select(Booking.booking_id).where(
+                Booking.user_id == user_id,
+                Booking.cal_date == cal_date,
+                Booking.status == BookingStatus.BOOKED,
+            ).exists()
+            conditions.append(not_exists_booked)
 
         stmt = (
-            select(
-                Booking.cal_date,
-                Booking.status_id,
-                BookingStateDict.description
-            ).join(BookingStateDict, Booking.status_id == BookingStateDict.state_id)
-        ).where(
-            Booking.cal_date.between(week_start, week_end),
-            Booking.status_id.in_((1, 2)),  # Только активные
-            Booking.user_id == user_id,
-        ).order_by(Booking.cal_date)
-
-        result = await self.session.execute(stmt)
-        return [UserOwnBookingsDTO(**m) for m in result.mappings()]
-
-
-    async def create_booking(self, user_id: int, cal_date: date, auto_confirm: bool) -> None:
-
-        new_booking = Booking(
-            user_id=user_id,
-            cal_date=cal_date,
-            status_id=1 if not auto_confirm else 2,
-            source_id=4,
-            confirmed_at=None if not auto_confirm else func.now()
+            update(CalendarDate)
+            .where(and_(*conditions))
+            .values(visit_count=CalendarDate.visit_count + 1)
         )
-        self.session.add(new_booking)
+
+        res = await self.session.execute(stmt)
+        return (res.rowcount or 0) == 1
 
 
-    async def cancel_booking(self, user_id: int, cal_date: date) -> CancelBookingDTO:
+    # -------------------- ЗАБРОНИРОВАТЬ МЕСТО --------------------
+    async def upsert_booked(
+            self, user_id: int, cal_date: date, status: str, sub_status: str
+    ) -> Optional[int]:
+        stmt = (
+            pg_insert(Booking)
+            .values(user_id=user_id, cal_date=cal_date, status=status,sub_status=sub_status)
+            .on_conflict_do_update(
+                index_elements=[Booking.user_id, Booking.cal_date],
+                set_=dict(status=status, sub_status=sub_status),
+                where=Booking.status != status
+            )
+            .returning(Booking.booking_id)
+        )
+        res = await self.session.execute(stmt)
+        row = res.first()
+        return int(row[0]) if row else None
 
-        # 1 - Обновляем статус брони на отменено
+
+    # -------------------- ОТМЕНА БРОНИРОВАНИЯ --------------------
+    async def cancel_booking(self, cancel_user_id: int, cal_date: date) -> CancelBookingFifoDTO:
+        # отмена
+        cancel_stmt = (
+            update(Booking)
+            .where(
+                Booking.user_id == cancel_user_id,
+                Booking.cal_date == cal_date,
+                Booking.status == BookingStatus.BOOKED
+            )
+            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND)
+            .returning(Booking.booking_id)
+        )
+        cancel_res = await self.session.execute(cancel_stmt)
+        cancel_row = cancel_res.first()
+        if not cancel_row:
+            return CancelBookingFifoDTO(canceled_user_id=None, promoted_user_id=None)
+
+        canceled_id = int(cancel_row[0])
+        await self.insert_event(
+            canceled_id, BookingStatus.CANCELED, BookingStatus.CANCELED_CHANGED_MIND, cancel_user_id
+        )
+
+        # поиск замены
+        head_sub_q = (
+            select(Booking.booking_id)
+            .where(Booking.cal_date == cal_date, Booking.status == BookingStatus.WAITLISTED)
+            .order_by(Booking.created_at, Booking.booking_id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+            .scalar_subquery()
+        )
+
+        promote_stmt = (
+            update(Booking)
+            .where(Booking.booking_id == head_sub_q, Booking.status == BookingStatus.WAITLISTED)
+            .values(status=BookingStatus.BOOKED, sub_status=BookingStatus.RESERVED)
+            .returning(Booking.booking_id, Booking.user_id)
+        )
+        res_promote = await self.session.execute(promote_stmt)
+        promoted_row = res_promote.first()
+
+        if promoted_row:
+            promoted_id = int(promoted_row[0])
+            promoted_user_id = int(promoted_row[1])
+            await self.insert_event(
+                promoted_id, BookingStatus.BOOKED, BookingStatus.RESERVED, promoted_user_id
+            )
+            return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=promoted_user_id)
+
+        dec_stmt = (
+            update(CalendarDate)
+            .where(CalendarDate.cal_date == cal_date, CalendarDate.visit_count > 0)
+            .values(visit_count=CalendarDate.visit_count - 1)
+        )
+        await self.session.execute(dec_stmt)
+        return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=None)
+
+
+    # -------------------- ВСТАТЬ В ОЧЕРЕДЬ --------------------
+    async def upsert_waitlisted(self, user_id: int, cal_date: date) -> Optional[int]:
+        stmt = (
+            pg_insert(Booking)
+            .values(
+                user_id=user_id,
+                cal_date=cal_date,
+                status=BookingStatus.WAITLISTED,
+                sub_status=BookingStatus.WAITLISTED_MANUAL
+            )
+            .on_conflict_do_update(
+                index_elements=[Booking.user_id, Booking.cal_date],
+                set_=dict(status=BookingStatus.WAITLISTED, sub_status=BookingStatus.WAITLISTED_MANUAL),
+                where=Booking.status.notin_((BookingStatus.BOOKED, BookingStatus.WAITLISTED)),
+            )
+            .returning(Booking.booking_id)
+        )
+        res = await self.session.execute(stmt)
+        row = res.first()
+        return int(row[0]) if row else None
+
+    # -------------------- ВЫЙТИ ИЗ ОЧЕРЕДИ --------------------
+    async def leave_waitlist(self, user_id: int, cal_date: date) -> Optional[int]:
         stmt = (
             update(Booking)
-            .where(Booking.user_id == user_id,
-                   Booking.cal_date == cal_date)
-            .values(status_id = 3,
-                    cancelled_at=func.now())
-        )
-        await self.session.execute(stmt)
-
-        # 2 - Убедиться, что есть места
-        free_count = await self.get_free_places_count(cal_date)
-        if free_count == 0:
-            return CancelBookingDTO(cal_date=cal_date)
-
-        # 3 - Получить чела из waitlist
-        waiter = (
-            await self.session.execute(
-                select(WaitList)
-                .where(
-                    WaitList.cal_date == cal_date,
-                    WaitList.cancelled_at.is_(None),
-                )
-                .order_by(WaitList.created_at)
-                .limit(1)
-                .with_for_update(skip_locked=True)
-            )
-        ).scalar_one_or_none()
-
-        if waiter is None:
-            return CancelBookingDTO(cal_date=cal_date)
-
-        # 4 - Нужно ли для него делать авто подтверждение брони
-        auto_confirm = await self.get_auto_confirm_setting(waiter.user_id)
-
-        try:
-            book_to_waiter = await self.session.execute(
-                insert(Booking)
-                .values(
-                    user_id=waiter.user_id,
-                    cal_date=cal_date,
-                    status_id=1 if not auto_confirm else 2,
-                    source_id=6,
-                    confirmed_at=None if not auto_confirm else func.now()
-                )
-                .returning(Booking.booking_id)
-            )
-            new_booking_id: int = book_to_waiter.scalar_one()
-        except IntegrityError:
-            await self.session.rollback()
-            return CancelBookingDTO(cal_date=cal_date)
-
-        # 5 - помечаем в waitlist, что все четко
-        waiter.promoted_booking_id = new_booking_id
-        waiter.cancelled_at =func.now()
-        return CancelBookingDTO(cal_date=cal_date,
-                                waiter_user_id=waiter.user_id)
-
-
-    async def get_free_places_count(self, cal_date: date) -> int:
-
-        weekday = cal_date.isoweekday()
-
-        capacity_subq = (
-            select(OfficeCapacityWeekday.capacity)
-            .where(OfficeCapacityWeekday.weekday == weekday)
-            .scalar_subquery()
-        )
-
-        capacity_expr = func.coalesce(capacity_subq, 0)
-
-        booked_subq = (
-            select(func.count(literal(1)))
             .where(
+                Booking.user_id == user_id,
                 Booking.cal_date == cal_date,
-                Booking.status_id.in_((1, 2)),
+                Booking.status == BookingStatus.WAITLISTED,
             )
-            .scalar_subquery()
+            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND)
+            .returning(Booking.booking_id)
         )
+        res = await self.session.execute(stmt)
+        row = res.first()
+        if not row:
+            return None
+        return int(row[0])
 
-        stmt = select((capacity_expr - booked_subq).label("free_seats"))
 
-        result = await self.session.execute(stmt)
-        return int(result.scalar_one())
-
-
-# ───────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------#
 #  OFFICE CAPACITY
-# ───────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------#
     async def get_office_capacity(self) -> List[OfficeCapacityDTO]:
         stmt = (
             select(
@@ -221,10 +251,24 @@ class Repository:
         result = await self.session.execute(stmt)
         return [OfficeCapacityDTO(**m) for m in result.mappings()]
 
+    async def weekday_capacity(self, weekday: int) -> Optional[int]:
+        stmt = (
+            select(
+                OfficeCapacityWeekday.capacity,
+            ).where(
+                OfficeCapacityWeekday.weekday == weekday,
+            )
+        )
+        result = await self.session.execute(stmt)
 
-# ───────────────────────────────────────────────────────────────────────────────
+        if result is None:
+            return None
+        return result.scalar()
+
+
+# ---------------------------------------------------------------------------#
 #  CALENDAR DATES
-# ───────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------#
     async def get_calendar_dates_by_range(self, cal_date_start: date,
                                    cal_date_end: date) -> List[CalendarDatesDTO]:
         stmt = select(
@@ -237,88 +281,4 @@ class Repository:
 
         result = await self.session.execute(stmt)
         return [CalendarDatesDTO(**m) for m in result.mappings()]
-
-
-# ───────────────────────────────────────────────────────────────────────────────
-#  WAIT LIST
-# ───────────────────────────────────────────────────────────────────────────────
-    async def get_user_waiting_list_by_range(
-            self,
-            user_id: int,
-            week_start: date,
-            week_end: date,
-    ) -> List[UserWaitlistDTO]:
-
-        queue_with_pos = (
-            select(
-                WaitList.cal_date,
-                WaitList.user_id,
-                func.row_number()
-                .over(
-                    partition_by=WaitList.cal_date,
-                    order_by=WaitList.created_at,
-                )
-                .label("position"),
-            )
-            .where(WaitList.cancelled_at.is_(None))  # только активные
-        ).subquery()
-
-        # ---- основной запрос: берём строки нужного пользователя -------------
-        stmt = (
-            select(
-                queue_with_pos.c.cal_date,
-                queue_with_pos.c.position,
-            )
-            .where(
-                queue_with_pos.c.user_id == user_id,
-                queue_with_pos.c.cal_date.between(week_start, week_end),
-            )
-            .order_by(queue_with_pos.c.cal_date)
-        )
-
-        result = await self.session.execute(stmt)
-
-        return [ UserWaitlistDTO(**m) for m in result.mappings()]
-
-
-
-    async def join_to_queue(self,
-                          user_id: int,
-                          cal_date: date) -> None:
-
-        join_request = WaitList(user_id=user_id, cal_date=cal_date)
-        self.session.add(join_request)
-
-
-    async def leave_from_queue(self,
-                               user_id: int,
-                               cal_date: date) -> None:
-        stmt = update(
-            WaitList
-        ).where(
-            WaitList.cal_date == cal_date,
-            WaitList.cancelled_at.is_(None),
-            WaitList.user_id == user_id,
-        ).values(
-            cancelled_at=func.now()
-        )
-        await self.session.execute(stmt)
-
-
-
-    async def check_if_user_promoted(self,
-                                     user_id: int,
-                                     cal_date: date) -> bool:
-        stmt = (
-            select(
-                exists().where(
-                    WaitList.cal_date == cal_date,
-                    WaitList.user_id == user_id,
-                    WaitList.promoted_booking_id.isnot(None),
-                )
-            )
-        )
-        result = await self.session.scalar(stmt)
-
-        return bool(result)
 

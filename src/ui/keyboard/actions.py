@@ -22,6 +22,20 @@ class BookingStep(StrEnum):
     GET_BACK_MENU = auto()
 
 
+class SettingsStep(StrEnum):
+    INIT_SETTINGS = auto()
+    AUTO_CONFIRM = auto()
+    AUTO_CONFIRM_ON = auto()
+    AUTO_CONFIRM_OFF = auto()
+    GET_BACK_MENU = auto()
+
+
+class SettingsCB(CallbackData, prefix = "s"):
+    step: SettingsStep
+    extra: Union[str, int] | None = None
+    idk: str | None = None
+
+
 class MenuCB(CallbackData, prefix="m"):
     step: MenuStep
     extra: Union[str, int] | None = None

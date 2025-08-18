@@ -4,8 +4,5 @@ from aiogram import Router
 
 bot_combined_router = Router()
 
-bot_combined_router.include_routers(
-    user_combined_router,
-
-    common_combined_router
-)
+# не забыть common_combined_router последним
+bot_combined_router.include_routers(user_combined_router, common_combined_router)

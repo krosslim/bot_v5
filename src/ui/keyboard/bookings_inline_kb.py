@@ -4,136 +4,124 @@ from typing import Dict, List
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from src.dto.booking_dto import DateBookingsDTO, WeekAttendanceDTO
+from src.dto.booking_dto import DateBookingsDTO, BookingStatus
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
 from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.utils.idk import gen_idk
 
-def get_booking_kb(
-    days: List[DateBookingsDTO],
-    capacities: List[OfficeCapacityDTO],
-    calendar: List[CalendarDatesDTO],
-    week_info: WeekAttendanceDTO,
-    week_offset: int
-) -> InlineKeyboardMarkup:
 
-    # --- справочники -------------------------------------------------------
+def render_booking_week_kb(
+        days: List[DateBookingsDTO],
+        capacities: List[OfficeCapacityDTO],
+        calendar: List[CalendarDatesDTO],
+        user_id: int,
+        week_offset: int
+) -> InlineKeyboardMarkup:
     cap_by_wd: Dict[int, OfficeCapacityDTO] = {c.weekday: c for c in capacities}
-    holiday_map: Dict[date, bool] = {
-        c.cal_date: (c.is_weekend or c.is_holiday) for c in calendar
-    }
+    holiday_map: Dict[date, bool] = {c.cal_date: (c.is_weekend or c.is_holiday) for c in calendar}
     bookings_map: Dict[date, DateBookingsDTO] = {d.cal_date: d for d in days}
 
-    user_booked_dates = {b.cal_date for b in week_info.bookings}
-    user_wait_dates = {w.cal_date for w in week_info.waitlist}
-
     today = date.today()
-    weekday = today.weekday()
-
-    # --- клавиатура --------------------------------------------------------
     kb = InlineKeyboardBuilder()
 
-    if week_offset >= 0:
+    sorted_calendar = sorted(calendar, key=lambda x: x.cal_date)
 
-        for cal in sorted(calendar, key=lambda x: x.cal_date):
-            day = cal.cal_date
-            wd = day.isoweekday()  # 1 = Пн
+    if week_offset >= 0:
+        day_buttons = []
+        for cal in sorted_calendar:
+            day, wd = cal.cal_date, cal.cal_date.isoweekday()
 
             cap = cap_by_wd.get(wd)
-            if cap is None or holiday_map.get(day, False):
+            if cap is None or holiday_map.get(day, False) or day < today:
                 continue
 
-            dto = bookings_map.get(day)
-            booked_cnt = len(dto.users) if dto else 0
+            booked_cnt = 0
+            user_has_booking = False
+            user_in_waitlist = False
+
+            day_bookings = bookings_map.get(day)
+            if day_bookings:
+                for u in day_bookings.users:
+                    if u.status == BookingStatus.BOOKED:
+                        booked_cnt += 1
+                        if u.user_id == user_id:
+                            user_has_booking = True
+                    elif u.status == BookingStatus.WAITLISTED and u.user_id == user_id:
+                        user_in_waitlist = True
+
             free_seats = cap.capacity - booked_cnt
 
-            if day >= today:
+            btn = _build_day_button(
+                day=day,
+                short=cap.short_name,
+                free=free_seats,
+                user_has_booking=user_has_booking,
+                user_in_waitlist=user_in_waitlist,
+            )
+            day_buttons.append(btn)
 
-                btn = _build_day_button(
-                    day=day,
-                    short=cap.short_name,
-                    free=free_seats,
-                    user_has_booking=day in user_booked_dates,
-                    user_in_waitlist=day in user_wait_dates,
-                )
-                kb.add(btn)
+        if day_buttons:
+            kb.row(*day_buttons, width=5)
 
-        kb.adjust(5)
+    if sorted_calendar:
+        week_start = sorted_calendar[0].cal_date
+        week_end = sorted_calendar[-1].cal_date
+        kb.attach(_paginator_row(week_offset, week_start, week_end))
 
-    kb.attach(
-        _paginator_row(
-            week_offset,
-            week_info.week_start,
-            week_info.week_end,
-        )
-    )
-    kb.attach(_bottom_row(week_offset, weekday))
+    kb.attach(_bottom_row(week_offset, today.weekday()))
 
     return kb.as_markup()
 
 
 def _build_day_button(
-    *,
-    day: date,
-    short: str,
-    free: int,
-    user_has_booking: bool,
-    user_in_waitlist: bool,
+        *,
+        day: date,
+        short: str,
+        free: int,
+        user_has_booking: bool,
+        user_in_waitlist: bool,
 ) -> InlineKeyboardButton:
-    iso = day.isoformat()
-
     if user_has_booking:
-        text = f"✓ {short}"
-        cb = BookingCB(step=BookingStep.UNBOOK,
-                       extra=iso,
-                       idk=gen_idk())
-
+        text, step = f"✓ {short}", BookingStep.UNBOOK
     elif user_in_waitlist:
-        text = f"🚪 {short}"
-        cb = BookingCB(step=BookingStep.LEAVEQ,
-                       extra=iso,
-                       idk=gen_idk())
-    elif free == 0:
-        text = f"⌛ {short}"
-        cb = BookingCB(step=BookingStep.JOINQ,
-                       extra=iso,
-                       idk=gen_idk())
+        text, step = f"🚪 {short}", BookingStep.LEAVEQ
+    elif free <= 0:
+        text, step = f"⌛ {short}", BookingStep.JOINQ
     else:
-        text = short
-        cb = BookingCB(step=BookingStep.BOOK,
-                       extra=iso,
-                       idk=gen_idk())
+        text, step = short, BookingStep.BOOK
 
-    return InlineKeyboardButton(text=text, callback_data=cb.pack())
+    callback_data = BookingCB(
+        step=step,
+        extra=day.isoformat(),
+        idk=gen_idk()
+    ).pack()
+
+    return InlineKeyboardButton(text=text, callback_data=callback_data)
 
 
 def _paginator_row(
-    offset: int,
-    week_start: date,
-    week_end: date,
+        offset: int,
+        week_start: date,
+        week_end: date,
 ) -> InlineKeyboardBuilder:
     row = InlineKeyboardBuilder()
-
     row.row(
         InlineKeyboardButton(text="←", callback_data=BookingCB(
             step=BookingStep.PAGE,
-            extra=offset-1,
+            extra=str(offset - 1),
             idk=gen_idk(),
-        ).pack()
-                             ),
+        ).pack()),
         InlineKeyboardButton(
             text=f"{week_start:%d.%m} - {week_end:%d.%m}",
             callback_data="#",
         ),
         InlineKeyboardButton(text="→", callback_data=BookingCB(
             step=BookingStep.PAGE,
-            extra=offset+1,
+            extra=str(offset + 1),
             idk=gen_idk()
-        ).pack()
-                             ),
+        ).pack()),
     )
-
     return row
 
 
@@ -142,18 +130,18 @@ def _bottom_row(week_offset: int, weekday: int) -> InlineKeyboardBuilder:
     row.add(
         InlineKeyboardButton(
             text="« Выйти",
-            callback_data=BookingCB(step=BookingStep.GET_BACK_MENU,
-                                    idk=gen_idk()).pack(),
-        ))
-    if weekday >= 5 and week_offset == 0:
+            callback_data=BookingCB(step=BookingStep.GET_BACK_MENU, idk=gen_idk()).pack(),
+        )
+    )
+    if weekday >= 4 and week_offset == 0:
         week_offset = -1
+
     if week_offset >= 0:
         row.add(
-        InlineKeyboardButton(text="ℹ️ Помощь", callback_data=BookingCB(
-            step=BookingStep.INFO,
-            idk=gen_idk()
-        ).pack(),
-        ))
-        row.adjust(2)
-
+            InlineKeyboardButton(text="ℹ️ Помощь", callback_data=BookingCB(
+                step=BookingStep.INFO,
+                idk=gen_idk()
+            ).pack()),
+        )
+    row.adjust(2 if week_offset >= 0 else 1)
     return row

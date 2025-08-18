@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import Config
+from src.utils.db_exc_wrapper import DBError
 
 
 def create_engine(cfg: Config) -> AsyncEngine:
@@ -32,9 +33,4 @@ async def get_session(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+        yield session
