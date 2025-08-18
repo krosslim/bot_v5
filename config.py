@@ -37,5 +37,6 @@ def setup_logging(level: int = logging.INFO) -> None:
         stream=sys.stdout
     )
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
+    logging.getLogger("aiogram").setLevel(logging.WARNING)
     # logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
     # logging.getLogger("sqlalchemy.pool").setLevel(logging.INFO)

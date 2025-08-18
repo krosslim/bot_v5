@@ -20,6 +20,7 @@ async def main() -> None:
     logger = logging.getLogger(__name__)
 
     bot: Bot = await container.get(Bot)
+    bot_info = await bot.get_me()
     dp: Dispatcher = await container.get(Dispatcher)
     settings: Config = await container.get(Config)
 
@@ -41,7 +42,7 @@ async def main() -> None:
         await init_system_tasks(session)
 
     try:
-        logger.info("Запуск бота…")
+        logger.info("Инициализация бота: %s", bot_info)
         await dp.start_polling(bot)
 
     finally:
