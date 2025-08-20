@@ -31,6 +31,7 @@ async def handle_booking_page(call: CallbackQuery,
                               state: FSMContext):
 
     week_offset = int(callback_data.extra) if callback_data.extra else 0
+    await state.update_data(week_offset=week_offset)
     await _render_booking_page(call, week_offset, uc, state)
 
 
