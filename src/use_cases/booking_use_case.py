@@ -57,6 +57,20 @@ class BookingUseCase:
         async with self.session.begin():
             await self.booking.leave_from_queue(user_id, cal_date)
 
+    async def week_state(self, start: date, end: date) -> tuple:
+        async with self.session.begin():
+            data = await self.office_capacity.availability_by_range(start, end)
+
+            has_holiday = False
+            has_available = True
+
+            for i in data:
+                if i.is_holiday:
+                    has_holiday = True
+                elif (not i.is_holiday) and (not i.is_available):
+                    has_available = False
+            return has_holiday, has_available
+
 
 
 

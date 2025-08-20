@@ -1,6 +1,6 @@
 from typing import List
-
-from src.dto.office_capacity_dto import OfficeCapacityDTO
+from datetime import date
+from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.services.exceptions import NoCapacityInfo
 from src.storage.postgres.repository import Repository
 
@@ -20,4 +20,7 @@ class OfficeCapacityService:
             raise NoCapacityInfo("⚠️ Не удалось выполнить действие.\nЗа указанный день отсутствует информация о лимитах")
         return data
 
+    async def availability_by_range(self, start: date, end: date) -> List[AvailabilityDTO]:
+        data = await self.repo.get_availability(start, end)
+        return data
 

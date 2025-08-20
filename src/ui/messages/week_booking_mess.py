@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import datetime, timedelta
 from typing import List
-
+from zoneinfo import ZoneInfo
 from src.dto.booking_dto import DateBookingsDTO, BookingStatus
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
@@ -24,20 +24,22 @@ def render_booking_week_mess(
         calendar: List[CalendarDatesDTO],
         user_id: int,
 ) -> str:
-    # Словари для быстрого доступа O(1)
     cap_by_weekday = {c.weekday: c for c in capacities}
     bookings_by_date = {d.cal_date: d for d in dates}
     holiday_map = {c.cal_date: (c.is_weekend or c.is_holiday) for c in calendar}
 
     lines: List[str] = []
-    today = date.today()
 
-    # Основной и единственный цикл по дням
+    now_utc3 = datetime.now(tz=ZoneInfo("Europe/Moscow"))
+    if now_utc3.hour >= 18:
+        today = now_utc3.date() + timedelta(days=1)
+    else:
+        today = now_utc3.date()
+
     for c_day in sorted(calendar, key=lambda x: x.cal_date):
         day, wd = c_day.cal_date, c_day.cal_date.isoweekday()
         c_info = cap_by_weekday.get(wd)
 
-        # Обработка дней без данных или праздников
         if c_info is None:
             header = f"<b>{day:%d.%m}</b> <i>(нет данных)</i>"
             lines.append(f"{header}\n<blockquote expandable><i>Недоступно</i></blockquote>")
@@ -47,23 +49,19 @@ def render_booking_week_mess(
             lines.append(f"{header}\n<blockquote expandable><i>ПРАЗДНИЧНЫЙ ДЕНЬ</i></blockquote>")
             continue
 
-        # Получаем брони на этот день, или пустой объект, если их нет
         day_bookings = bookings_by_date.get(day, DateBookingsDTO(cal_date=day, users=[]))
 
-        # Фильтруем и сортируем списки прямо здесь
         booked_list = sorted([u for u in day_bookings.users if u.status == BookingStatus.BOOKED],
                              key=lambda u: u.created_at)
         wait_list = sorted([u for u in day_bookings.users if u.status == BookingStatus.WAITLISTED],
                            key=lambda u: u.created_at)
 
-        # Вычисляем статус текущего пользователя "на лету"
         user_is_booked = any(u.user_id == user_id for u in booked_list)
         user_waitlist_pos = next((idx for idx, u in enumerate(wait_list, 1) if u.user_id == user_id), None)
 
         booked_count = len(booked_list)
         free_seats = max(c_info.capacity - booked_count, 0)
 
-        # --- Генерация заголовка ---
         base_header = f"<b>{c_info.short_name} {day:%d.%m}</b>"
         if day < today:
             p_was = _plural_ru(booked_count, "был", "было", "было")
@@ -80,7 +78,6 @@ def render_booking_week_mess(
             else:
                 header = f"<b>🔴 {c_info.short_name} {day:%d.%m} → Нет мест</b>"
 
-        # --- Генерация блока с пользователями ---
         if booked_list:
             users_block = "\n".join(u.full_name for u in booked_list)
         else:

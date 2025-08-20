@@ -2,14 +2,14 @@ from collections import defaultdict
 from datetime import date
 from typing import Optional, List, Dict, Union
 
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, func, not_, or_, extract
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
                                  CancelBookingFifoDTO, BookingStatus)
 from src.dto.calendar_dates_dto import CalendarDatesDTO
-from src.dto.office_capacity_dto import OfficeCapacityDTO
+from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
                                          CalendarDate, BookingEvent)
@@ -111,7 +111,7 @@ class Repository:
         stmt = (
             update(CalendarDate)
             .where(and_(*conditions))
-            .values(visit_count=CalendarDate.visit_count + 1)
+            .values(visit_count=CalendarDate.visit_count + 1, updated_at=func.now())
         )
 
         res = await self.session.execute(stmt)
@@ -190,7 +190,7 @@ class Repository:
         dec_stmt = (
             update(CalendarDate)
             .where(CalendarDate.cal_date == cal_date, CalendarDate.visit_count > 0)
-            .values(visit_count=CalendarDate.visit_count - 1)
+            .values(visit_count=CalendarDate.visit_count - 1, updated_at=func.now())
         )
         await self.session.execute(dec_stmt)
         return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=None)
@@ -265,6 +265,34 @@ class Repository:
             return None
         return result.scalar()
 
+    async def get_availability(self, start: date, end: date) -> List[AvailabilityDTO]:
+        stmt = (
+            select(
+                CalendarDate.cal_date,
+                CalendarDate.is_holiday,
+                not_(
+                    or_(
+                        CalendarDate.visit_count >= OfficeCapacityWeekday.capacity,
+                        CalendarDate.is_holiday == True
+                    )
+                ).label('is_available')
+            )
+            .join(
+                OfficeCapacityWeekday,
+                extract('ISODOW', CalendarDate.cal_date) == OfficeCapacityWeekday.weekday
+            )
+            .where(CalendarDate.cal_date.between(start, end))
+        )
+        result = await self.session.execute(stmt)
+        rows = result.mappings().all()
+        return [
+            AvailabilityDTO(
+                cal_date=row["cal_date"],
+                is_holiday=row["is_holiday"],
+                is_available=row["is_available"]
+            )
+            for row in rows
+        ]
 
 # ---------------------------------------------------------------------------#
 #  CALENDAR DATES

@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, List
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -22,7 +23,11 @@ def render_booking_week_kb(
     holiday_map: Dict[date, bool] = {c.cal_date: (c.is_weekend or c.is_holiday) for c in calendar}
     bookings_map: Dict[date, DateBookingsDTO] = {d.cal_date: d for d in days}
 
-    today = date.today()
+    now_utc3 = datetime.now(tz=ZoneInfo("Europe/Moscow"))
+    if now_utc3.hour >= 18:
+        today = now_utc3.date() + timedelta(days=1)
+    else:
+        today = now_utc3.date()
     kb = InlineKeyboardBuilder()
 
     sorted_calendar = sorted(calendar, key=lambda x: x.cal_date)
@@ -138,7 +143,7 @@ def _bottom_row(week_offset: int, weekday: int) -> InlineKeyboardBuilder:
 
     if week_offset >= 0:
         row.add(
-            InlineKeyboardButton(text="ℹ️ Помощь", callback_data=BookingCB(
+            InlineKeyboardButton(text="ℹ️ Инструкция", callback_data=BookingCB(
                 step=BookingStep.INFO,
                 idk=gen_idk()
             ).pack()),
