@@ -1,11 +1,12 @@
 from datetime import date
-from typing import Optional
+from typing import Optional, List, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.dto.booking_dto import OwnBookingDTO, BookingStatus, WaitlistPositionDTO
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
-from src.services.exceptions import FreePlaceIsAvailable
+from src.services.exceptions import FreePlaceIsAvailable, NoActiveBooking
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.user_service import UserService
 
@@ -70,6 +71,34 @@ class BookingUseCase:
                 elif (not i.is_holiday) and (not i.is_available):
                     has_available = False
             return has_holiday, has_available
+
+    async def own_active_bookings(self, user_id: int) -> Tuple[List[OwnBookingDTO], List[WaitlistPositionDTO]]:
+        async with self.session.begin():
+            bookings = await self.booking.get_own_active_bookings(user_id)
+
+            if not bookings:
+                raise NoActiveBooking("❗️В настоящий момент у вас нет активных записей\n\n"
+                                      "↓ Нажмите кнопку ↓\n\n🆕 Забронировать место\n\n ↑ для бронирования ↑")
+
+            date_list = []
+            wait_list_position = []
+
+            for i in bookings:
+                if i.status == BookingStatus.WAITLISTED:
+                    date_list.append(i.cal_date)
+
+            if date_list:
+                wait_list_position = await self.booking.get_waitlist_position(user_id, date_list)
+                # Если есть данные по листу ожидания, то чистим bookings от WAITLISTED
+                bookings = [b for b in bookings if getattr(b, "status", None) == BookingStatus.BOOKED]
+
+            return bookings, wait_list_position
+
+    async def confirm_booking(self, user_id: int, cal_date: date) -> None:
+        async with self.session.begin():
+            await self.booking.confirm_booking(user_id, cal_date)
+
+
 
 
 

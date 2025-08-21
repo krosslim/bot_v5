@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
-                                 CancelBookingFifoDTO, BookingStatus)
+                                 CancelBookingFifoDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO)
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO
@@ -79,6 +79,71 @@ class Repository:
                 )
             )
         return [DateBookingsDTO(cal_date=cd, users=grouped[cd]) for cd in sorted(grouped)]
+
+    async def own_active_bookings(self, user_id: int, start: date) -> List[OwnBookingDTO]:
+
+        stmt = (
+            select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status,Booking.sub_status)
+            .where(
+                Booking.cal_date >= start,
+                Booking.user_id == user_id,
+                Booking.status.in_([BookingStatus.BOOKED, BookingStatus.WAITLISTED])
+            )
+            .order_by(Booking.cal_date)
+        )
+        result = await self.session.execute(stmt)
+        bookings = result.all()
+        return [OwnBookingDTO.model_validate(booking) for booking in bookings]
+
+    async def position_in_waitlist(self, user_id: int, date_list: list) -> List[WaitlistPositionDTO]:
+
+        sub_q = (
+            select(
+                Booking.cal_date,
+                Booking.user_id,
+                func.row_number().over(
+                    partition_by=Booking.cal_date,
+                    order_by=[Booking.created_at, Booking.booking_id]
+                ).label('position')
+            )
+            .where(
+                Booking.cal_date.in_(date_list),
+                Booking.status == BookingStatus.WAITLISTED
+            )
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                sub_q.c.cal_date,
+                sub_q.c.position
+            )
+            .where(sub_q.c.user_id == user_id)
+            .order_by(sub_q.c.cal_date)
+        )
+
+        result = await self.session.execute(stmt)
+        rows = result.mappings().all()
+        return [
+            WaitlistPositionDTO(
+                cal_date=row["cal_date"],
+                position=row["position"]
+            )
+            for row in rows
+        ]
+
+    async def confirm_booking(self, user_id: int, cal_date: date) -> Optional[int]:
+        stmt = (
+            update(Booking).where(
+                Booking.user_id == user_id,
+                Booking.cal_date == cal_date,
+                Booking.sub_status == BookingStatus.RESERVED
+            ).values(sub_status=BookingStatus.CONFIRMED)
+        ).returning(Booking.booking_id)
+        res = await self.session.execute(stmt)
+        row = res.first()
+        return int(row[0]) if row else None
+
 
     # -------------------- ОБЩЕЕ (запись истории бронирования) --------------------
     async def insert_event(

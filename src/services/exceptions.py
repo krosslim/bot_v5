@@ -42,7 +42,9 @@ class UserIsAlreadyLeaveQueue(BookingError):
     """Пользователь уже покинул очередь"""
     pass
 
-
+class NoActiveBooking(BookingError):
+    """У пользователя нет активных бронирований"""
+    pass
 
 
 

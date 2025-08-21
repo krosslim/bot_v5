@@ -24,6 +24,11 @@ class Config(BaseSettings):
     POSTGRES_POOL_PRE_PING: bool = True
 
     TG_CHAT_ID: int = -681141068
+    MSC_TZ: str = "Europe/Moscow"
+    WORK_END_HOUR: int = 12
+    PAGINATION_LIMIT_WEEKS: int = 4
+
+
 
 
 settings = Config()

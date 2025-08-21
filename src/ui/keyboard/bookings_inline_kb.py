@@ -1,5 +1,4 @@
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date
 from typing import Dict, List
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -10,6 +9,7 @@ from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
 from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.utils.idk import gen_idk
+from src.utils.today import effective_today
 
 
 def render_booking_week_kb(
@@ -23,11 +23,7 @@ def render_booking_week_kb(
     holiday_map: Dict[date, bool] = {c.cal_date: (c.is_weekend or c.is_holiday) for c in calendar}
     bookings_map: Dict[date, DateBookingsDTO] = {d.cal_date: d for d in days}
 
-    now_utc3 = datetime.now(tz=ZoneInfo("Europe/Moscow"))
-    if now_utc3.hour >= 18:
-        today = now_utc3.date() + timedelta(days=1)
-    else:
-        today = now_utc3.date()
+    today = effective_today()
     kb = InlineKeyboardBuilder()
 
     sorted_calendar = sorted(calendar, key=lambda x: x.cal_date)
@@ -138,15 +134,15 @@ def _bottom_row(week_offset: int, weekday: int) -> InlineKeyboardBuilder:
             callback_data=BookingCB(step=BookingStep.GET_BACK_MENU, idk=gen_idk()).pack(),
         )
     )
-    if weekday >= 4 and week_offset == 0:
-        week_offset = -1
-
-    if week_offset >= 0:
+    # if weekday >= 4 and week_offset == 0:
+    #     week_offset = -1
+    #
+    if week_offset > -1:
         row.add(
             InlineKeyboardButton(text="ℹ️ Инструкция", callback_data=BookingCB(
                 step=BookingStep.INFO,
                 idk=gen_idk()
             ).pack()),
         )
-    row.adjust(2 if week_offset >= 0 else 1)
+    row.adjust(2 if week_offset > -1 else 1)
     return row

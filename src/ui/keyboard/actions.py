@@ -8,7 +8,6 @@ class MenuStep(StrEnum):
     BOOKING = auto()
     MY_BOOKING = auto()
     SETTINGS = auto()
-    INFO = auto()
 
 
 class BookingStep(StrEnum):
@@ -20,6 +19,26 @@ class BookingStep(StrEnum):
     JOINQ = auto()
     INFO = auto()
     GET_BACK_MENU = auto()
+
+
+class MyBookingStep(StrEnum):
+    INIT_MY_BOOKING = auto()
+    GET_BACK_MENU = auto()
+    GET_INFO = auto()
+
+    BOOKINGS = auto()
+    WAITLIST = auto()
+
+    BOOK_DAY = auto()
+    CONFIRM_BOOKING = auto()
+    CANCEL_BOOKING = auto()
+    GET_BACK_MY_BOOKING_DAYS = auto()
+
+    WAITLIST_DAY = auto()
+    LEAVE_QUEUE = auto()
+    GET_BACK_MY_WAITLIST_DAYS = auto()
+
+    GET_BACK_MY_BOOK_MENU = auto()
 
 
 class SettingsStep(StrEnum):
@@ -36,8 +55,8 @@ class SettingsCB(CallbackData, prefix = "s"):
     idk: str | None = None
 
 
-class MenuCB(CallbackData, prefix="m"):
-    step: MenuStep
+class MyBookingCB(CallbackData, prefix="m"):
+    step: MyBookingStep
     extra: Union[str, int] | None = None
     idk: str | None = None
 

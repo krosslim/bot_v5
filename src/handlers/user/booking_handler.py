@@ -30,7 +30,8 @@ async def handle_booking_page(call: CallbackQuery,
                               uc: FromDishka[BookingUseCase],
                               state: FSMContext):
 
-    week_offset = int(callback_data.extra) if callback_data.extra else 0
+    _, _, week_offset = week_range(int(callback_data.extra) if callback_data.extra else 0)
+    # week_offset = int(callback_data.extra) if callback_data.extra else 0
     await state.update_data(week_offset=week_offset)
     await _render_booking_page(call, week_offset, uc, state)
 

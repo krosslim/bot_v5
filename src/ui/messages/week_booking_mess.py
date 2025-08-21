@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta
 from typing import List
-from zoneinfo import ZoneInfo
+
 from src.dto.booking_dto import DateBookingsDTO, BookingStatus
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
+from src.utils.today import effective_today
 
 
 def _plural_ru(n: int, form1: str, form2: str, form5: str) -> str:
@@ -30,11 +30,7 @@ def render_booking_week_mess(
 
     lines: List[str] = []
 
-    now_utc3 = datetime.now(tz=ZoneInfo("Europe/Moscow"))
-    if now_utc3.hour >= 18:
-        today = now_utc3.date() + timedelta(days=1)
-    else:
-        today = now_utc3.date()
+    today = effective_today()
 
     for c_day in sorted(calendar, key=lambda x: x.cal_date):
         day, wd = c_day.cal_date, c_day.cal_date.isoweekday()

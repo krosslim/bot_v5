@@ -1,10 +1,10 @@
 from datetime import date
 from typing import List, Optional
-
-from src.dto.booking_dto import DateBookingsDTO, BookingStatus
+from src.dto.booking_dto import DateBookingsDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO
 from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
                                      CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
 from src.storage.postgres.repository import Repository
+from src.utils.today import effective_today
 
 
 class BookingService:
@@ -17,6 +17,15 @@ class BookingService:
         )
         return data
 
+    async def get_own_active_bookings(self, user_id: int) -> List[OwnBookingDTO]:
+
+        today = effective_today()
+        bookings = await self.repo.own_active_bookings(user_id, today)
+        return bookings
+
+    async def get_waitlist_position(self, user_id: int, date_list: list) -> List[WaitlistPositionDTO]:
+        position = await self.repo.position_in_waitlist(user_id, date_list)
+        return position
 
     async def pre_check_booking(self, user_id: int, cal_date: date, capacity: int) -> bool:
         check = await self.repo.take_capacity_slot(user_id, cal_date, capacity, False)
@@ -73,7 +82,10 @@ class BookingService:
         await self.repo.insert_event(booking_id, BookingStatus.CANCELED, BookingStatus.CANCELED_CHANGED_MIND, user_id)
 
 
-
+    async def confirm_booking(self, user_id: int, cal_date: date) -> None:
+        booking_id = await self.repo.confirm_booking(user_id, cal_date)
+        if booking_id:
+            await self.repo.insert_event(booking_id, BookingStatus.BOOKED, BookingStatus.CONFIRMED, user_id)
 
 
 

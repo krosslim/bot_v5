@@ -14,17 +14,35 @@ class UserBookingDTO(BaseModel):
     status: str
     created_at: datetime
 
+
 class DateBookingsDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
     cal_date: date
     users: List[UserBookingDTO]
 
+
 class CancelBookingFifoDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     canceled_user_id: int | None
     promoted_user_id: int | None
+
+
+class OwnBookingDTO(BaseModel):
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    booking_id: int
+    user_id: int
+    cal_date: date
+    status: str
+    sub_status: str
+
+class WaitlistPositionDTO(BaseModel):
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    cal_date: date
+    position: int
 
 class BookingStatus(StrEnum):
     # Основные статусы
