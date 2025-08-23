@@ -30,8 +30,8 @@ async def handle_booking_page(call: CallbackQuery,
                               uc: FromDishka[BookingUseCase],
                               state: FSMContext):
 
-    _, _, week_offset = week_range(int(callback_data.extra) if callback_data.extra else 0)
-    # week_offset = int(callback_data.extra) if callback_data.extra else 0
+    _, _, week_offset = week_range(int(callback_data.extra) if callback_data.extra else None)
+
     await state.update_data(week_offset=week_offset)
     await _render_booking_page(call, week_offset, uc, state)
 
@@ -154,7 +154,7 @@ async def handle_booking_help(call: CallbackQuery, uc: FromDishka[BookingUseCase
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.GET_BACK_MENU})))
 async def handle_back_menu_button(call: CallbackQuery, state: FSMContext):
-    if state:
+    if await state.get_state():
         await state.clear()
     await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
 

@@ -2,11 +2,12 @@ from datetime import date, timedelta
 from typing import Tuple
 
 from config import settings
+from src.utils.today import effective_today
 
 
 def week_range(offset_weeks: int | None = None) -> Tuple[date, date, int]:
 
-    today = date.today()
+    today = effective_today()
     this_monday = today - timedelta(days=today.weekday())
 
     if offset_weeks is None:
