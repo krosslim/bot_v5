@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.PORT }}
+        command_timeout: 30m
+        script: |
+          echo "Starting deployment..."
+          
+          cd bot_v5 || exit 1
+          echo "Changed to bot_v5 directory"
+          
+          echo "Stopping containers..."
+          docker compose down
+          
+          echo "Pulling latest changes..."
+          git pull origin main
+          
+          echo "Building and starting containers..."
+          docker compose up --build -d
+          
+          echo "Checking container status..."
+          docker compose ps
+          
+          echo "Deployment completed successfully!"
