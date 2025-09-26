@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List
 
 from pydantic import BaseModel, ConfigDict
 
@@ -22,6 +23,20 @@ class UserBookingSessionDTO(BaseModel):
     user_id: int
     message_id: int
 
+class DictDTO(BaseModel):
+    model_config = ConfigDict(frozen=True, from_attributes=True)
 
+    id: int
+    name: str
+
+
+class UserBookingDaysDTO(BaseModel):
+    team: str
+    position: str
+    name: str
+    days: List[str]
+
+class UsersBookingDaysDTO(BaseModel):
+    users: List[UserBookingDaysDTO]
 
 

@@ -1,6 +1,7 @@
 from datetime import date
 from typing import List, Optional
 from src.dto.booking_dto import DateBookingsDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO
+from src.dto.user_dto import UserBookingDaysDTO
 from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
                                      CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
 from src.storage.postgres.repository import Repository
@@ -14,6 +15,12 @@ class BookingService:
     async def get_active_bookings_by_range(self, start: date, end: date) -> List[DateBookingsDTO]:
         data = await self.repo.bookings_by_range(
             start, end, [BookingStatus.BOOKED, BookingStatus.WAITLISTED]
+        )
+        return data
+
+    async def get_bookings_for_remind(self, tomorrow: date) -> List[DateBookingsDTO]:
+        data = await self.repo.bookings_by_range(
+            tomorrow, tomorrow, [BookingStatus.BOOKED]
         )
         return data
 
@@ -82,10 +89,19 @@ class BookingService:
         await self.repo.insert_event(booking_id, BookingStatus.CANCELED, BookingStatus.CANCELED_CHANGED_MIND, user_id)
 
 
-    async def confirm_booking(self, user_id: int, cal_date: date) -> None:
+    async def confirm_booking(self, user_id: int, cal_date: date) -> Optional[int]:
         booking_id = await self.repo.confirm_booking(user_id, cal_date)
         if booking_id:
             await self.repo.insert_event(booking_id, BookingStatus.BOOKED, BookingStatus.CONFIRMED, user_id)
+        return booking_id
+
+
+    async def get_booking_changes(self, month_offset: int = 0) -> bool:
+        return await self.repo.has_booking_changes(month_offset)
+
+    async def get_users_month_bookings(self, month_offset: int = 0) -> List[UserBookingDaysDTO]:
+        return await self.repo.bookings_data_for_sheet(month_offset)
+
 
 
 

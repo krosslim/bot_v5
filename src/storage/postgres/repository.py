@@ -2,17 +2,17 @@ from collections import defaultdict
 from datetime import date
 from typing import Optional, List, Dict, Union
 
-from sqlalchemy import select, update, and_, func, not_, or_, extract
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select, update, and_, func, not_, or_, extract, text, literal
+from sqlalchemy.dialects.postgresql import insert as pg_insert, aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
                                  CancelBookingFifoDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO)
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
-from src.dto.user_dto import UserDTO
+from src.dto.user_dto import UserDTO, DictDTO, UserBookingDaysDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
-                                         CalendarDate, BookingEvent)
+                                         CalendarDate, BookingEvent, Profession, Product)
 from src.utils.db_exc_wrapper import with_db_errors
 
 
@@ -24,8 +24,9 @@ class Repository:
 # ---------------------------------------------------------------------------#
 #  USERS
 # ---------------------------------------------------------------------------#
-    async def create_user(self, user_id: int, full_name: str) -> None:
-        new_user = User(user_id=user_id, full_name=full_name)
+    async def create_user(self, user_id: int, full_name: str,
+                          profession_id: int, product_id: int) -> None:
+        new_user = User(user_id=user_id, full_name=full_name, profession_id=profession_id, product_id=product_id)
         self.session.add(new_user)
 
     async def get_user_by_id(self, user_id: int) -> Optional[UserDTO]:
@@ -62,7 +63,8 @@ class Repository:
 
         stmt = (
             select(
-                Booking.cal_date, Booking.user_id, User.full_name, Booking.status, Booking.created_at
+                Booking.cal_date, Booking.user_id, User.full_name,
+                Booking.status, Booking.sub_status, Booking.created_at
             )
             .join(User, Booking.user_id == User.user_id)
             .where(Booking.cal_date.between(start, end), Booking.status.in_(status_list))
@@ -72,10 +74,10 @@ class Repository:
         data = rows.all()
 
         grouped: Dict[date, List[UserBookingDTO]] = defaultdict(list)
-        for cal_date, user_id, full_name, status, created_at in data:
+        for cal_date, user_id, full_name, status, sub_status, created_at in data:
             grouped[cal_date].append(
                 UserBookingDTO(
-                    user_id=user_id, full_name=full_name, status=status, created_at=created_at
+                    user_id=user_id, full_name=full_name, status=status, sub_status=sub_status, created_at=created_at
                 )
             )
         return [DateBookingsDTO(cal_date=cd, users=grouped[cd]) for cd in sorted(grouped)]
@@ -138,7 +140,7 @@ class Repository:
                 Booking.user_id == user_id,
                 Booking.cal_date == cal_date,
                 Booking.sub_status == BookingStatus.RESERVED
-            ).values(sub_status=BookingStatus.CONFIRMED)
+            ).values(sub_status=BookingStatus.CONFIRMED, updated_at=func.now())
         ).returning(Booking.booking_id)
         res = await self.session.execute(stmt)
         row = res.first()
@@ -192,7 +194,7 @@ class Repository:
             .values(user_id=user_id, cal_date=cal_date, status=status,sub_status=sub_status)
             .on_conflict_do_update(
                 index_elements=[Booking.user_id, Booking.cal_date],
-                set_=dict(status=status, sub_status=sub_status),
+                set_=dict(status=status, sub_status=sub_status, updated_at=func.now()),
                 where=Booking.status != status
             )
             .returning(Booking.booking_id)
@@ -212,7 +214,7 @@ class Repository:
                 Booking.cal_date == cal_date,
                 Booking.status == BookingStatus.BOOKED
             )
-            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND)
+            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND, updated_at=func.now())
             .returning(Booking.booking_id)
         )
         cancel_res = await self.session.execute(cancel_stmt)
@@ -238,7 +240,7 @@ class Repository:
         promote_stmt = (
             update(Booking)
             .where(Booking.booking_id == head_sub_q, Booking.status == BookingStatus.WAITLISTED)
-            .values(status=BookingStatus.BOOKED, sub_status=BookingStatus.RESERVED)
+            .values(status=BookingStatus.BOOKED, sub_status=BookingStatus.CONFIRMED, updated_at=func.now())
             .returning(Booking.booking_id, Booking.user_id)
         )
         res_promote = await self.session.execute(promote_stmt)
@@ -248,7 +250,7 @@ class Repository:
             promoted_id = int(promoted_row[0])
             promoted_user_id = int(promoted_row[1])
             await self.insert_event(
-                promoted_id, BookingStatus.BOOKED, BookingStatus.RESERVED, promoted_user_id
+                promoted_id, BookingStatus.BOOKED, BookingStatus.CONFIRMED, promoted_user_id
             )
             return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=promoted_user_id)
 
@@ -273,7 +275,7 @@ class Repository:
             )
             .on_conflict_do_update(
                 index_elements=[Booking.user_id, Booking.cal_date],
-                set_=dict(status=BookingStatus.WAITLISTED, sub_status=BookingStatus.WAITLISTED_MANUAL),
+                set_=dict(status=BookingStatus.WAITLISTED, sub_status=BookingStatus.WAITLISTED_MANUAL, updated_at=func.now()),
                 where=Booking.status.notin_((BookingStatus.BOOKED, BookingStatus.WAITLISTED)),
             )
             .returning(Booking.booking_id)
@@ -291,7 +293,7 @@ class Repository:
                 Booking.cal_date == cal_date,
                 Booking.status == BookingStatus.WAITLISTED,
             )
-            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND)
+            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND, updated_at=func.now())
             .returning(Booking.booking_id)
         )
         res = await self.session.execute(stmt)
@@ -299,6 +301,94 @@ class Repository:
         if not row:
             return None
         return int(row[0])
+
+
+    # -------------------- ПРОВЕРКА АПДЕЙТОВ ПО БРОНИРОВАНИЯ --------------------
+    async def has_booking_changes(self, month_offset: int = 0) -> bool:
+        month_shift = func.make_interval(0, month_offset)
+        month_shift_next = func.make_interval(0, month_offset + 1)
+
+        subq = (
+            select(1)
+            .where(
+                Booking.updated_at >= func.now() - text("interval '60 seconds'"),
+                Booking.cal_date >= func.date_trunc(
+                    "month", func.current_date() + month_shift
+                ),
+                Booking.cal_date < func.date_trunc(
+                    "month", func.current_date() + month_shift_next
+                ),
+            )
+        )
+
+        stmt = select(subq.exists())
+        result = await self.session.execute(stmt)
+        return result.scalar_one()
+
+
+    async def bookings_data_for_sheet(self, month_offset: int = 1) -> List[UserBookingDaysDTO]:
+
+        # Границы месяца [start, end)
+        month_start = func.date_trunc("month", func.current_date() + func.make_interval(0, month_offset))
+        month_end = func.date_trunc("month", func.current_date() + func.make_interval(0, month_offset + 1))
+
+        # Алиас месяца из даты бронирования, чтобы не дублировать выражение
+        month_of = func.date_trunc("month", Booking.cal_date).label("month_of")
+
+        # array_agg(to_char(... ) ORDER BY bookings.cal_date)
+        days_agg = func.array_agg(
+            aggregate_order_by(
+                func.to_char(Booking.cal_date, literal("DD.MM")),
+                Booking.cal_date.asc()
+            )
+        ).label("days")
+
+        stmt = (
+            select(
+                Booking.user_id,
+                User.full_name.label("name"),
+                Product.name.label("team"),
+                Profession.name.label("position"),
+                days_agg,
+                # month_of можно не возвращать наружу, но удобно иметь для отладки
+            )
+            .join(User, User.user_id == Booking.user_id)
+            .join(Product, Product.id == User.product_id)
+            .join(Profession, Profession.id == User.profession_id)
+            .where(
+                Booking.status == "BOOKED",
+                Booking.cal_date >= month_start,
+                Booking.cal_date < month_end,
+            )
+            .group_by(
+                Booking.user_id,
+                User.full_name,
+                Product.name,
+                Profession.name,
+                month_of,
+            )
+            .order_by(
+                Booking.user_id,
+                month_of,
+            )
+        )
+
+        result = await self.session.execute(stmt)
+        rows = result.mappings().all()
+
+        users = [
+            UserBookingDaysDTO(
+                team=row["team"],
+                position=row["position"],
+                name=row["name"],
+                days=row["days"] or [],
+            )
+            for row in rows
+        ]
+        return users
+
+
+
 
 
 # ---------------------------------------------------------------------------#
@@ -374,4 +464,21 @@ class Repository:
 
         result = await self.session.execute(stmt)
         return [CalendarDatesDTO(**m) for m in result.mappings()]
+
+
+# ---------------------------------------------------------------------------#
+#  PROFESSIONS & PRODUCTS
+# ---------------------------------------------------------------------------#
+    async def get_dict_data(self, dict_type: str) -> List[DictDTO]:
+
+        if dict_type == 'professions':
+            result = await self.session.execute(
+                select(Profession.id, Profession.name)
+            )
+        else:
+            result = await self.session.execute(
+                select(Product.id, Product.name)
+            )
+        return [DictDTO(**m) for m in result.mappings()]
+
 

@@ -38,12 +38,17 @@ class User(Base):
     auto_confirm: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
     auto_join_queue: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
+    is_lead: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
+    profession_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("professions.id"), nullable=False)
+    product_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("products.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships
     booking_weekdays: Mapped[List["UserBookingWeekday"]] = relationship(back_populates="user")
     bookings: Mapped[List["Booking"]] = relationship(back_populates="user")
     updated_booking_events: Mapped[List["BookingEvent"]] = relationship(back_populates="updated_by_user")
+    professions: Mapped["Profession"] = relationship(back_populates="user")
+    products: Mapped["Product"] = relationship(back_populates="user")
 
 
 class UserBookingWeekday(Base):
@@ -57,6 +62,28 @@ class UserBookingWeekday(Base):
 
     # relationships
     user: Mapped["User"] = relationship(back_populates="booking_weekdays")
+
+
+class Profession(Base):
+    __tablename__ = "professions"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    # relationships
+    user: Mapped["User"] = relationship(back_populates="professions")
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+    # relationships
+    user: Mapped["User"] = relationship(back_populates="products")
 
 
 # ---------------------------------------------------------------------------#
@@ -98,6 +125,7 @@ class Booking(Base):
     status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
     sub_status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships
     user: Mapped["User"] = relationship(back_populates="bookings")

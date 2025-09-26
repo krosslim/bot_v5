@@ -22,5 +22,5 @@ class UseCaseProvider(Provider):
         return BookingUseCase(session, booking, office_capacity, calendar_dates, user)
 
     @provide(scope=Scope.REQUEST)
-    def provide_user_use_case(self, user: UserService, session: AsyncSession) -> UserUseCase:
-        return UserUseCase(user, session)
+    def provide_user_use_case(self, user: UserService, booking: BookingService, session: AsyncSession) -> UserUseCase:
+        return UserUseCase(user, booking, session)

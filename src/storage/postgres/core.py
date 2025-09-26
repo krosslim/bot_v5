@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import Config
-from src.utils.db_exc_wrapper import DBError
 
 
 def create_engine(cfg: Config) -> AsyncEngine:

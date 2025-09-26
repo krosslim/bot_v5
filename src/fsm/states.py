@@ -3,3 +3,6 @@ from aiogram.fsm.state import StatesGroup, State
 
 class CreateUserState(StatesGroup):
     full_name = State()
+    profession = State()
+    product = State()
+    confirmation = State()

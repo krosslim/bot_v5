@@ -1,4 +1,4 @@
-class UserWarning(Exception):
+class UserWarn(Exception):
     """Бизнес предупреждения без необходимости отката транзакции"""
     pass
 
@@ -6,10 +6,13 @@ class UserError(Exception):
     """Бизнес ошибки, требующие отката транзакции"""
     pass
 
-class UserNotFound(UserWarning):
+class UserNotFound(UserWarn):
     """Пользователь не найден"""
     pass
 
+class FullNameIsIncorrect(UserWarn):
+    "Не корректный формат имени"
+    pass
 
 class BookingError(Exception):
     pass

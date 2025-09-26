@@ -24,7 +24,7 @@ async def handle_settings_page(call: CallbackQuery):
 # выйти в меню
 @router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.GET_BACK_MENU})))
 async def handle_get_back_menu(call: CallbackQuery, state: FSMContext):
-    if state:
+    if await state.get_state():
         await state.clear()
     await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
 

@@ -25,3 +25,24 @@ def bot_menu_mess() -> str:
 def start_db_exc_mess() -> str:
     return ("<b>⚠️ Ошибка: Сервис временно не доступен.</b>\n\n"
             "Подождите немного и перезапустите бота /start")
+
+def incorrect_full_name_mess() -> str:
+    return ("<blockquote><b>⚠️ Ошибка: Некорректный формат данных</b>\nВведите имя и фамилию корректно\nНапример: Иванов Иван</blockquote>\n\n"
+            "Введите <b>фамилию и имя</b> ещё раз ⤵︎︎")
+
+def form_data_mess(full_name: str, profession: str | None, product: str | None) -> str:
+
+    if profession is None:
+        data = "Укажите <b>должность</b> ⤵︎"
+    elif product is None:
+        data = "Укажите <b>команду</b> ⤵︎"
+    else:
+        data = ""
+
+    return ("<b>Форма регистрации</b>\n"
+            "<blockquote>"
+            f"• Имя: {full_name}\n"
+            f"• Должность: {'...' if profession is None else profession}\n"
+            f"• Команда: {'...' if product is None else product}"
+            "</blockquote>\n\n"
+            f"{data}")

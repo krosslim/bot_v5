@@ -12,6 +12,7 @@ class UserBookingDTO(BaseModel):
     user_id: int
     full_name: str
     status: str
+    sub_status: str
     created_at: datetime
 
 

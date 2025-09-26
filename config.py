@@ -12,6 +12,9 @@ class Config(BaseSettings):
                                       extra='ignore')
 
     TOKEN: str = "TOKEN"
+    BOT_USERNAME: str = "BOT_USERNAME"
+    TG_CHAT_ID: int = -681141068
+
 
     REDIS_URL: str = "redis://localhost:6379/0"
 
@@ -23,12 +26,13 @@ class Config(BaseSettings):
     POSTGRES_ECHO: bool = False
     POSTGRES_POOL_PRE_PING: bool = True
 
-    TG_CHAT_ID: int = -681141068
     MSC_TZ: str = "Europe/Moscow"
     WORK_END_HOUR: int = 12
+    BOOKING_SESSION_SEC: int = 300
     PAGINATION_LIMIT_WEEKS: int = 4
 
-
+    GOOGLE_SHEET_URL: str = "https://script.google.com/macros/s/abcd/exec"
+    GOOGLE_SHEET_TOKEN: str = "TOKEN"
 
 
 settings = Config()
