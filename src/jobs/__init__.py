@@ -35,7 +35,7 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
 
     sched.add_job(
         partial(chat_remind_job, container),
-        trigger=CronTrigger(day_of_week="mon,tue,wed,thu,sun", hour=21, minute=15, timezone=sched.timezone),
+        trigger=CronTrigger(day_of_week="mon,tue,wed,thu,sun", hour=16, minute=00, timezone=sched.timezone),
         id="chat_remind_job",
         max_instances=1,
         misfire_grace_time=60,
@@ -57,14 +57,16 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
         day_of_week="mon,tue,wed,thu,sun",
         hour="16-23",
         minute="*",
-        second=0
+        second=0,
+        timezone=sched.timezone
     )
 
     morning_next = CronTrigger(
         day_of_week="mon,tue,wed,thu,fri",
         hour="0-11",
         minute="*",
-        second=0
+        second=0,
+        timezone=sched.timezone
     )
     sched.add_job(
         partial(check_chat_remind_job, container),

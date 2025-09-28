@@ -71,7 +71,7 @@ async def chat_remind_job(container: AsyncContainer) -> None:
                 text=build_digest_message(bookings, capacity, tomorrow),
                 reply_markup=confirm_kb(bookings, capacity, tomorrow)
             )
-            print(message.message_id)
+            # print(message.message_id)
             await sc_svc.upsert_chat_message_id(message.message_id)
 
         except DBError as e:
