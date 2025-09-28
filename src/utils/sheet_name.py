@@ -1,4 +1,5 @@
 from datetime import date
+
 from dateutil.relativedelta import relativedelta
 
 MONTHS_RU = {

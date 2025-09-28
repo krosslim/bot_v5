@@ -1,16 +1,16 @@
+import asyncio
 import logging
-import time
-from datetime import timedelta, date
+import time as time_func
+from datetime import timedelta, date, datetime, time
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from dishka import AsyncContainer
-from sqlalchemy.ext.asyncio import AsyncSession
-from aiogram.utils.deep_linking import create_start_link
 
 from config import settings
 from src.clients.google_sheet_client import update_sheet_data
 from src.services.booking_service import BookingService
+from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.ui.keyboard.booking_remind_kb import confirm_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
@@ -27,7 +27,7 @@ async def cleanup_booking_session_job(container: AsyncContainer) -> None:
     async with container() as req:
         bot: Bot = await req.get(Bot)
         svc: TechService = await req.get(TechService)
-        session_limit = int(time.time() - settings.BOOKING_SESSION_SEC)
+        session_limit = int(time_func.time() - settings.BOOKING_SESSION_SEC)
         users = await svc.get_booking_session(session_limit)
 
         if not users:
@@ -53,27 +53,110 @@ async def cleanup_booking_session_job(container: AsyncContainer) -> None:
 async def chat_remind_job(container: AsyncContainer) -> None:
     async with container() as req:
         bot: Bot = await req.get(Bot)
-        svc: BookingService = await req.get(BookingService)
-        session: AsyncSession = await req.get(AsyncSession)
+        booking_svc: BookingService = await req.get(BookingService)
+        capacity_svc: OfficeCapacityService = await req.get(OfficeCapacityService)
+        sc_svc: TechService = await req.get(TechService)
 
         tomorrow = date.today() + timedelta(days=1)
+        weekday = tomorrow.isoweekday()
 
         try:
-            async with session.begin():
-                bookings = await svc.get_bookings_for_remind(tomorrow)
+            bookings = await booking_svc.get_bookings_for_remind(tomorrow)
+            if bookings:
                 bookings = bookings[0]
+            capacity = await capacity_svc.get_weekday_capacity(weekday)
 
-                link = await create_start_link(bot, "confirm_today")
-
-                message = await bot.send_message(
-                    chat_id=settings.TG_CHAT_ID,
-                    text=build_digest_message(bookings),
-                    reply_markup=confirm_kb(bookings, link)
-                )
-                print(message.message_id)
+            message = await bot.send_message(
+                chat_id=settings.TG_CHAT_ID,
+                text=build_digest_message(bookings, capacity, tomorrow),
+                reply_markup=confirm_kb(bookings, capacity, tomorrow)
+            )
+            print(message.message_id)
+            await sc_svc.upsert_chat_message_id(message.message_id)
 
         except DBError as e:
             logger.exception(f"ERROR: chat_remind_job | {str(e)}")
+
+
+# -------------------------------- Проверка актуальность сообщения в чате --------------------------------
+async def check_chat_remind_job(container: AsyncContainer) -> None:
+    async with container() as req:
+        bot: Bot = await req.get(Bot)
+        booking_svc: BookingService = await req.get(BookingService)
+        capacity_svc: OfficeCapacityService = await req.get(OfficeCapacityService)
+        sc_svc: TechService = await req.get(TechService)
+
+        now = datetime.now()
+
+        # Смысл: если щас от 16-23 значит чекать надо данные для завтрашнего дня. Если 0-12 то сегодняшнего
+        if time(16, 0) <= now.time() <= time(23, 59, 59):
+            target_date = (now + timedelta(days=1)).date()
+            # print(f'Выбран завтрашний день: {target_date}')
+        else:
+            target_date = now.date()
+            # print(f'Выбран сегодняшний день: {target_date}')
+
+        try:
+            check_updates = await booking_svc.get_booking_changes_for_day(target_date)
+            # print(f'Наличие изменений: {check_updates}')
+
+            if not check_updates:
+                # print('Изменений нет. Останавливаемся')
+                return
+
+            weekday = target_date.isoweekday()
+            # print(f'День недели (число): {weekday}')
+
+            bookings = await booking_svc.get_bookings_for_remind(target_date)
+            # print(f'Получаем бронирования: {bookings}')
+            if bookings:
+                # print(f'Бронирования есть. Извлекаем их из массива: {bookings}')
+                bookings = bookings[0]
+            capacity = await capacity_svc.get_weekday_capacity(weekday)
+            # print(f'Получаем вместительность для {target_date}: {capacity}')
+
+            message_id = await sc_svc.get_chat_message_id()
+            # print(f'Получаем id сообщения в чате для {target_date}: {message_id}')
+
+            if not message_id:
+                # print('Сообщения нет. Создаем его в чате и сохраняем id в базе')
+                message = await bot.send_message(
+                    chat_id=settings.TG_CHAT_ID,
+                    text=build_digest_message(bookings, capacity, target_date),
+                    reply_markup=confirm_kb(bookings, capacity, target_date)
+                )
+                await sc_svc.upsert_chat_message_id(message.message_id)
+                return
+
+            try:
+                # print('Сообщение есть, пытаемся исправить его')
+                await bot.edit_message_text(
+                    chat_id=settings.TG_CHAT_ID,
+                    message_id=message_id,
+                    text=build_digest_message(bookings, capacity, target_date),
+                    reply_markup=confirm_kb(bookings, capacity, target_date)
+                )
+                return
+            except TelegramBadRequest as e:
+                # print('Сообщение в базе есть, но не удалось его отредактировать')
+                logger.exception(f"ERROR: check_chat_remind_job | {str(e)}")
+                if "message to edit not found" in e.message:
+                    # print('Сообщение в базе есть, но админ удалил его. Поэтому создаем новое')
+                    message = await bot.send_message(
+                        chat_id=settings.TG_CHAT_ID,
+                        text=build_digest_message(bookings, capacity, target_date),
+                        reply_markup=confirm_kb(bookings, capacity, target_date)
+                    )
+                    await sc_svc.upsert_chat_message_id(message.message_id)
+                    return
+                else:
+                    # print('Сообщение в базе есть, но с предыдущего раза оно не обновлялось')
+                    return
+
+        except DBError as e:
+            # print('Ошибка базы данных')
+            logger.exception(f"ERROR: check_chat_remind_job | {str(e)}")
+            return
 
 
 # -------------------------------- Обновление Google-таблицы бронирований --------------------------------
@@ -89,6 +172,7 @@ async def sheet_update_job(container: AsyncContainer) -> None:
                     as_dict = [u.model_dump() for u in booking_data]
                     sheet_name = month_name(offset)
                     await update_sheet_data(sheet_name, as_dict)
+                    await asyncio.sleep(3)
 
             return
         except DBError as e:
@@ -96,18 +180,7 @@ async def sheet_update_job(container: AsyncContainer) -> None:
 
 
 
-
-
-
-
-
-
-
-# Уведомление о "завтра", в ПН, ВТ, СР, ЧТ, ВС
-    # Джоб, который до конца дня держит список актуальным (запускается и умирает после рассылки в чат)
 # Подведение итогов в ПТ
-# Уведомление о "завтра" + кол-во свободных мест на неделю в ВС
-    # Джоб, который до конца дня держит список актуальным (запускается и умирает после рассылки в чат)
 # Джоб для автобронирования
 
 

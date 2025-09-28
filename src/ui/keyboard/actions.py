@@ -49,6 +49,11 @@ class SettingsStep(StrEnum):
     GET_BACK_MENU = auto()
 
 
+class ChatBookingStep(StrEnum):
+    CONFIRM_BOOKING = auto()
+    ADD_BOOKING = auto()
+
+
 class SettingsCB(CallbackData, prefix = "s"):
     step: SettingsStep
     extra: Union[str, int] | None = None
@@ -66,6 +71,11 @@ class BookingCB(CallbackData, prefix="b"):
     extra: Union[str, int] | None = None
     idk: str
 
+
+class ChatBookingCB(CallbackData, prefix="chat"):
+    step: ChatBookingStep
+    extra: Union[str, int] | None = None
+    idk: str | None = None
 
 
 

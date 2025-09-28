@@ -1,5 +1,6 @@
 from datetime import date
 from typing import List, Optional
+
 from src.dto.booking_dto import DateBookingsDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO
 from src.dto.user_dto import UserBookingDaysDTO
 from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
@@ -37,8 +38,7 @@ class BookingService:
     async def pre_check_booking(self, user_id: int, cal_date: date, capacity: int) -> bool:
         check = await self.repo.take_capacity_slot(user_id, cal_date, capacity, False)
         if not check:
-            raise FreePlaceIsNotFound("⏳ Мест уже нет, но ты можешь встать в очередь, "
-                                      "нажав на кнопку еще раз.")
+            raise FreePlaceIsNotFound("⏳ Мест уже нет, но ты можешь встать в очередь.")
         return check
 
 
@@ -99,8 +99,13 @@ class BookingService:
     async def get_booking_changes(self, month_offset: int = 0) -> bool:
         return await self.repo.has_booking_changes(month_offset)
 
+
     async def get_users_month_bookings(self, month_offset: int = 0) -> List[UserBookingDaysDTO]:
         return await self.repo.bookings_data_for_sheet(month_offset)
+
+
+    async def get_booking_changes_for_day(self, cal_date: date) -> bool:
+        return await self.repo.has_booking_changes_for_day(cal_date)
 
 
 

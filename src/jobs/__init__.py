@@ -2,11 +2,12 @@ import logging
 from functools import partial
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.combining import OrTrigger
 from dishka import AsyncContainer
 
-from src.jobs.cron_jobs import cleanup_booking_session_job, chat_remind_job, sheet_update_job
+from src.jobs.cron_jobs import cleanup_booking_session_job, chat_remind_job, sheet_update_job, check_chat_remind_job
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,13 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
 
     # sched.add_job(
     #     partial(chat_remind_job, container),
-    #     trigger=IntervalTrigger(seconds=5),
+    #     trigger=IntervalTrigger(seconds=10),
     #     id="chat_remind_job",
     #     max_instances=1,
     #     misfire_grace_time=60,
     #     coalesce=True
     # )
+
     sched.add_job(
         partial(chat_remind_job, container),
         trigger=CronTrigger(day_of_week="mon,tue,wed,thu,sun", hour=16, minute=00),
@@ -51,4 +53,26 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
     )
     logger.info("register job: sheet_update_job | Interval 1 minute")
 
+    evening = CronTrigger(
+        day_of_week="mon,tue,wed,thu,sun",
+        hour="16-23",
+        minute="*",
+        second=0
+    )
+
+    morning_next = CronTrigger(
+        day_of_week="mon,tue,wed,thu,fri",
+        hour="0-11",
+        minute="*",
+        second=0
+    )
+    sched.add_job(
+        partial(check_chat_remind_job, container),
+        trigger=OrTrigger([evening, morning_next]),
+        id="check_chat_remind_job",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+    )
+    logger.info("register job: check_chat_remind_job")
 

@@ -1,9 +1,10 @@
+import re
 from typing import List
 
 from src.dto.user_dto import UserDTO, DictDTO
 from src.services.exceptions import UserNotFound, FullNameIsIncorrect
 from src.storage.postgres.repository import Repository
-import re
+
 
 class UserService:
 

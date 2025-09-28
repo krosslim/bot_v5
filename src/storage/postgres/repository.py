@@ -12,7 +12,8 @@ from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO, DictDTO, UserBookingDaysDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
-                                         CalendarDate, BookingEvent, Profession, Product)
+                                         CalendarDate, BookingEvent, Profession, Product,
+                                         SystemConfig)
 from src.utils.db_exc_wrapper import with_db_errors
 
 
@@ -325,17 +326,14 @@ class Repository:
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
-
+    # -------------------- ПОЛУЧЕНИЕ ДАННЫХ ДЛЯ GOOGLE-ТАБЛИЦЫ --------------------
     async def bookings_data_for_sheet(self, month_offset: int = 1) -> List[UserBookingDaysDTO]:
 
-        # Границы месяца [start, end)
         month_start = func.date_trunc("month", func.current_date() + func.make_interval(0, month_offset))
         month_end = func.date_trunc("month", func.current_date() + func.make_interval(0, month_offset + 1))
 
-        # Алиас месяца из даты бронирования, чтобы не дублировать выражение
         month_of = func.date_trunc("month", Booking.cal_date).label("month_of")
 
-        # array_agg(to_char(... ) ORDER BY bookings.cal_date)
         days_agg = func.array_agg(
             aggregate_order_by(
                 func.to_char(Booking.cal_date, literal("DD.MM")),
@@ -350,7 +348,6 @@ class Repository:
                 Product.name.label("team"),
                 Profession.name.label("position"),
                 days_agg,
-                # month_of можно не возвращать наружу, но удобно иметь для отладки
             )
             .join(User, User.user_id == Booking.user_id)
             .join(Product, Product.id == User.product_id)
@@ -387,8 +384,23 @@ class Repository:
         ]
         return users
 
+    # -------------------- ПРОВЕРКА АПДЕЙТОВ ПО БРОНИРОВАНИЯ ДЛЯ ДНЯ --------------------
+    async def has_booking_changes_for_day(self, cal_date: date) -> bool:
 
+        subq = (
+            select(1)
+            .where(
+                Booking.cal_date == cal_date,
+                Booking.updated_at.between(
+                    func.now() - text("interval '60 seconds'"),
+                    func.now()
+                )
+            )
+        )
 
+        stmt = select(subq.exists())
+        result = await self.session.execute(stmt)
+        return result.scalar_one()
 
 
 # ---------------------------------------------------------------------------#
@@ -419,6 +431,7 @@ class Repository:
         if result is None:
             return None
         return result.scalar()
+
 
     async def get_availability(self, start: date, end: date) -> List[AvailabilityDTO]:
         stmt = (
@@ -482,3 +495,25 @@ class Repository:
         return [DictDTO(**m) for m in result.mappings()]
 
 
+# ---------------------------------------------------------------------------#
+#  SYSTEM CONFIG
+# ---------------------------------------------------------------------------#
+    async def upsert_chat_message_id(self, message_id: str) -> None:
+        stmt = (
+            pg_insert(SystemConfig)
+            .values(key="chat_digest_message_id", value=message_id)
+            .on_conflict_do_update(
+                index_elements=[SystemConfig.key],
+                set_=dict(value=message_id),
+                where=(SystemConfig.key == "chat_digest_message_id")
+            )
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+        return None
+
+    async def get_chat_message_id(self) -> str | None:
+        result = await self.session.execute(
+            select(SystemConfig.value).where(SystemConfig.key == 'chat_digest_message_id')
+        )
+        return result.scalar_one_or_none()

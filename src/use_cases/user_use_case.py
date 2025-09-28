@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.user_dto import UserDTO, DictDTO
 from src.services.booking_service import BookingService
-from src.services.user_service import UserService
 from src.services.exceptions import UserWarn
+from src.services.user_service import UserService
 
 
 class UserUseCase:

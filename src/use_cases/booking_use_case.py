@@ -3,10 +3,12 @@ from typing import Optional, List, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.dto.booking_dto import OwnBookingDTO, BookingStatus, WaitlistPositionDTO
+from src.dto.booking_dto import OwnBookingDTO, BookingStatus, WaitlistPositionDTO, DateBookingsDTO
+from src.dto.user_dto import UserDTO
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
 from src.services.exceptions import FreePlaceIsAvailable, NoActiveBooking
+from src.services.exceptions import UserWarn
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.user_service import UserService
 
@@ -94,9 +96,26 @@ class BookingUseCase:
 
             return bookings, wait_list_position
 
-    async def confirm_booking(self, user_id: int, cal_date: date) -> None:
+    async def confirm_booking(self, user_id: int, cal_date: date) -> Optional[int]:
         async with self.session.begin():
-            await self.booking.confirm_booking(user_id, cal_date)
+            return await self.booking.confirm_booking(user_id, cal_date)
+
+    async def chat_booking_data(self, cal_date: date) -> Tuple[DateBookingsDTO, int]:
+
+        weekday = cal_date.isoweekday()
+        bookings = await self.booking.get_bookings_for_remind(cal_date)
+        bookings = bookings[0]
+        capacity = await self.office_capacity.get_weekday_capacity(weekday)
+        return bookings, capacity
+
+    async def get_user_for_chat_booking(self, user_id: int) -> Optional[UserDTO]:
+        async with self.session.begin():
+            try:
+                user = await self.user.get_user(user_id)
+                return user
+            except UserWarn:
+                return None
+
 
 
 

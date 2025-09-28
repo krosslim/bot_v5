@@ -1,13 +1,12 @@
 import asyncio
 import logging
+import ssl
 from typing import Optional, Dict, Any, List
 
 import aiohttp
-import ssl
 import certifi
 
 from config import settings
-
 
 logger = logging.getLogger(__name__)
 

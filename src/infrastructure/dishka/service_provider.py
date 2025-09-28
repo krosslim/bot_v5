@@ -27,6 +27,6 @@ class ServiceProvider(Provider):
         return CalendarDatesService(repo)
 
     @provide(scope=Scope.REQUEST)
-    def provide_tech_service(self, store: RedisStore) -> TechService:
-        return TechService(store)
+    def provide_tech_service(self, store: RedisStore, repo: Repository) -> TechService:
+        return TechService(store, repo)
 
