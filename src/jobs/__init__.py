@@ -2,9 +2,9 @@ import logging
 from functools import partial
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.combining import OrTrigger
 from dishka import AsyncContainer
 
 from src.jobs.cron_jobs import cleanup_booking_session_job, chat_remind_job, sheet_update_job, check_chat_remind_job
@@ -35,7 +35,7 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
 
     sched.add_job(
         partial(chat_remind_job, container),
-        trigger=CronTrigger(day_of_week="mon,tue,wed,thu,sun", hour=16, minute=00),
+        trigger=CronTrigger(day_of_week="mon,tue,wed,thu,sun", hour=21, minute=15, timezone=sched.timezone),
         id="chat_remind_job",
         max_instances=1,
         misfire_grace_time=60,
