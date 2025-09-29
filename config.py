@@ -33,6 +33,7 @@ class Config(BaseSettings):
 
     GOOGLE_SHEET_URL: str = "https://script.google.com/macros/s/abcd/exec"
     GOOGLE_SHEET_TOKEN: str = "TOKEN"
+    GOOGLE_SHEET_USER_URL: str = "https://docs.google.com/spreadsheets"
 
 
 settings = Config()

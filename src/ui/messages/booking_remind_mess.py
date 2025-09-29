@@ -42,8 +42,9 @@ def build_digest_message(bookings: DateBookingsDTO, capacity: int, cal_date: dat
     body = "\n".join(lines)
 
     # --- FOOTER ---
-    contacts = f'<a href="https://t.me/{settings.BOT_USERNAME}?start=">@{settings.BOT_USERNAME}</a>'
-    contact_info = f"<b>🤖→ {contacts}</b>"
+    contacts = f'<a href="https://t.me/{settings.BOT_USERNAME}?start=">🤖 БОТ</a>'
+    google_sheet = f'<a href="{settings.GOOGLE_SHEET_USER_URL}">📗 ТАБЛИЦА ПОСЕЩЕНИЙ</a>'
+    additional_info = f"<b>{contacts} | {google_sheet}</b>"
     if has_reserved:
         footer = (
             "<blockquote>Для подтверждения брони — жми\n"
@@ -51,8 +52,8 @@ def build_digest_message(bookings: DateBookingsDTO, capacity: int, cal_date: dat
             "Для брони свободного слота — жми\n"
             "<b>ЗАНЯТЬ МЕСТО</b>"
             "</blockquote>"
-        ) + contact_info
+        ) + additional_info
     else:
-        footer = contact_info
+        footer = additional_info
 
     return header + body + "\n\n" + footer

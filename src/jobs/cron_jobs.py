@@ -69,7 +69,8 @@ async def chat_remind_job(container: AsyncContainer) -> None:
             message = await bot.send_message(
                 chat_id=settings.TG_CHAT_ID,
                 text=build_digest_message(bookings, capacity, tomorrow),
-                reply_markup=confirm_kb(bookings, capacity, tomorrow)
+                reply_markup=confirm_kb(bookings, capacity, tomorrow),
+                disable_web_page_preview=True
             )
             # print(message.message_id)
             await sc_svc.upsert_chat_message_id(message.message_id)
@@ -123,7 +124,8 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                 message = await bot.send_message(
                     chat_id=settings.TG_CHAT_ID,
                     text=build_digest_message(bookings, capacity, target_date),
-                    reply_markup=confirm_kb(bookings, capacity, target_date)
+                    reply_markup=confirm_kb(bookings, capacity, target_date),
+                    disable_web_page_preview=True
                 )
                 await sc_svc.upsert_chat_message_id(message.message_id)
                 return
@@ -134,7 +136,8 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                     chat_id=settings.TG_CHAT_ID,
                     message_id=message_id,
                     text=build_digest_message(bookings, capacity, target_date),
-                    reply_markup=confirm_kb(bookings, capacity, target_date)
+                    reply_markup=confirm_kb(bookings, capacity, target_date),
+                    disable_web_page_preview=True
                 )
                 return
             except TelegramBadRequest as e:
@@ -145,7 +148,8 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                     message = await bot.send_message(
                         chat_id=settings.TG_CHAT_ID,
                         text=build_digest_message(bookings, capacity, target_date),
-                        reply_markup=confirm_kb(bookings, capacity, target_date)
+                        reply_markup=confirm_kb(bookings, capacity, target_date),
+                        disable_web_page_preview=True
                     )
                     await sc_svc.upsert_chat_message_id(message.message_id)
                     return
@@ -172,7 +176,7 @@ async def sheet_update_job(container: AsyncContainer) -> None:
                     as_dict = [u.model_dump() for u in booking_data]
                     sheet_name = month_name(offset)
                     await update_sheet_data(sheet_name, as_dict)
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(1.5)
 
             return
         except DBError as e:
@@ -180,8 +184,20 @@ async def sheet_update_job(container: AsyncContainer) -> None:
 
 
 
-# Подведение итогов в ПТ
-# Джоб для автобронирования
+# TODO
+#     JOBS
+#             1. Подведение итогов в ПТ
+#             2. Напоминание о бронировании в 18:30, 21:00
+#             3. Отмена всех не подтвержденных броней
+#             4. Автобронирование
+#     Комплексные
+#             1. Добавить в сообщение меню кнопку-ссылку на google-таблицу+++
+#             2. Добавить в сообщение в чате кнопку-ссылку на google-таблицу+++
+#             3. Поправить велком-текст "Это бот для..." сделать его короче+++
+#             4. Сделать так, чтобы при брони через чат бронь была авто-подтверждена+++
+#             5. Сделать так, чтобы при нажатии Подтвердить ошибка при Отсутствие брони и Наличие брони отличалось+++
+#             6. Поправить текст при освобождении места в очереди (бронь авто-подтверждена)+++
+#             7. Сделать так, чтобы все бронирования от 16:00 до 12:00 следующего дня были с авто подтверждением+++
 
 
 

@@ -11,6 +11,7 @@ from src.services.exceptions import FreePlaceIsAvailable, NoActiveBooking
 from src.services.exceptions import UserWarn
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.user_service import UserService
+from src.utils.is_autoconfirm import is_in_autoconfirm_period
 
 
 class BookingUseCase:
@@ -35,9 +36,13 @@ class BookingUseCase:
             calendar = await self.calendar_dates.get_calendar_dates_by_range(monday, friday)
             return active, capacity, calendar
 
-    async def book_place(self, user_id: int, cal_date: date) -> None:
+    async def book_place(self, user_id: int, cal_date: date, auto_confirm: bool | None = None) -> None:
         async with self.session.begin():
-            auto_confirm = await self.user.get_user_auto_confirm(user_id)
+            if auto_confirm is None:
+                if not is_in_autoconfirm_period(cal_date):
+                    auto_confirm = await self.user.get_user_auto_confirm(user_id)
+                else:
+                    auto_confirm = True
             capacity = await self.office_capacity.get_weekday_capacity(cal_date.isoweekday())
             await self.booking.pre_check_booking(user_id, cal_date, capacity)
             await self.booking.create_booking(user_id, cal_date, auto_confirm)
@@ -116,6 +121,8 @@ class BookingUseCase:
             except UserWarn:
                 return None
 
+    async def user_booking_for_date(self, user_id: int, cal_date: date) -> Optional[OwnBookingDTO]:
+        return await self.booking.get_user_booking_for_day(user_id, cal_date)
 
 
 

@@ -1,9 +1,9 @@
 import logging
 from typing import List
 
+from src.dto.user_dto import UserBookingSessionDTO
 from src.storage.postgres.repository import Repository
 from src.storage.redis.store import RedisStore
-from src.dto.user_dto import UserBookingSessionDTO
 
 logger = logging.getLogger(__name__)
 

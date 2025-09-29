@@ -148,6 +148,23 @@ class Repository:
         return int(row[0]) if row else None
 
 
+    async def get_user_booking_for_date(self, user_id: int, cal_date: date) -> Optional[OwnBookingDTO]:
+        stmt = (
+            select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status,Booking.sub_status)
+            .where(
+                Booking.cal_date == cal_date,
+                Booking.user_id == user_id,
+                Booking.status == BookingStatus.BOOKED
+            )
+            .limit(1)
+        )
+        res = await self.session.execute(stmt)
+        booking = res.first()
+        if booking is None:
+            return None
+        return OwnBookingDTO.model_validate(booking)
+
+
     # -------------------- ОБЩЕЕ (запись истории бронирования) --------------------
     async def insert_event(
             self, booking_id: int, status: str, sub_status: str, user_id: int

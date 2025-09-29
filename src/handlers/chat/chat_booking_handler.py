@@ -35,14 +35,18 @@ async def handle_chat_booking(call: CallbackQuery, callback_data: ChatBookingCB,
                               show_alert=True)
         else:
             if step == ChatBookingStep.ADD_BOOKING:
-                await uc.book_place(user_id=call.from_user.id, cal_date=cal_date)
-                await call.answer(text="✅ Место забронировано", show_alert=True)
+                await uc.book_place(user_id=call.from_user.id, cal_date=cal_date, auto_confirm=True)
+                await call.answer(text="✅ Место успешно забронировано", show_alert=True)
             else:
                 booking_id = await uc.confirm_booking(user_id=call.from_user.id, cal_date=cal_date)
                 if booking_id:
                     await call.answer(text="✅ Бронь подтверждена", show_alert=True)
                 else:
-                    await call.answer(text="⚠️ Бронь уже подтверждена или отсутствует", show_alert=True)
+                    if await uc.user_booking_for_date(user_id=call.from_user.id, cal_date=cal_date):
+                        await call.answer(text="✅ Бронь уже подтверждена. Повторное подтверждение не требуется",
+                                          show_alert=True)
+                    else:
+                        await call.answer(text="⚠️ Бронь для подтверждения отсутствует", show_alert=True)
 
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)
@@ -56,7 +60,8 @@ async def handle_chat_booking(call: CallbackQuery, callback_data: ChatBookingCB,
         bookings, capacity = await uc.chat_booking_data(cal_date=cal_date)
         await call.message.edit_text(
             text=build_digest_message(bookings, capacity, cal_date),
-            reply_markup=confirm_kb(bookings, capacity, cal_date)
+            reply_markup=confirm_kb(bookings, capacity, cal_date),
+            disable_web_page_preview=True
         )
     except DBError:
         await call.answer(text="⚠️ Ошибка: Не удалось выполнить действие.\n"

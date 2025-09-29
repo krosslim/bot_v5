@@ -107,6 +107,9 @@ class BookingService:
     async def get_booking_changes_for_day(self, cal_date: date) -> bool:
         return await self.repo.has_booking_changes_for_day(cal_date)
 
+    async def get_user_booking_for_day(self, user_id: int, cal_date: date) -> Optional[OwnBookingDTO]:
+        return await self.repo.get_user_booking_for_date(user_id, cal_date)
+
 
 
 
