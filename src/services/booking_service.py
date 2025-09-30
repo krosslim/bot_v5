@@ -1,11 +1,11 @@
 from datetime import date
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from src.dto.booking_dto import DateBookingsDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO
-from src.dto.user_dto import UserBookingDaysDTO
 from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
                                      CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
 from src.storage.postgres.repository import Repository
+from src.utils.month_first_last_by_offset import month_first_last
 from src.utils.today import effective_today
 
 
@@ -100,8 +100,32 @@ class BookingService:
         return await self.repo.has_booking_changes(month_offset)
 
 
-    async def get_users_month_bookings(self, month_offset: int = 0) -> List[UserBookingDaysDTO]:
-        return await self.repo.bookings_data_for_sheet(month_offset)
+    async def get_users_month_bookings(self, month_offset: int = 0) -> List[Dict[str, Any]]:
+
+        start, end = month_first_last(month_offset)
+        data = await self.repo.bookings_data_for_sheet(start, end)
+
+        grouped = {}
+
+        for item in data:
+            key = (item['team'], item['position'], item['name'])
+
+            if key not in grouped:
+                grouped[key] = []
+
+            if item['cal_date'] is not None:
+                grouped[key].append(item['cal_date'])
+
+        result = []
+        for (team, position, name), dates in grouped.items():
+            result.append({
+                'team': team,
+                'position': position,
+                'name': name,
+                'days': [d.strftime('%d.%m') for d in sorted(dates)],
+            })
+
+        return result
 
 
     async def get_booking_changes_for_day(self, cal_date: date) -> bool:

@@ -171,11 +171,16 @@ async def sheet_update_job(container: AsyncContainer) -> None:
         try:
             for offset in range(3):
                 has_changes = await svc.get_booking_changes(offset)
+                # print(f"Наличие изменений: {has_changes}")
                 if has_changes:
+                    print()
                     booking_data = await svc.get_users_month_bookings(offset)
-                    as_dict = [u.model_dump() for u in booking_data]
+                    # print(f"Данные: {booking_data}")
+                    # print("---------")
                     sheet_name = month_name(offset)
-                    await update_sheet_data(sheet_name, as_dict)
+                    # print(f"Месяц: {sheet_name}")
+                    # print()
+                    await update_sheet_data(sheet_name, booking_data)
                     await asyncio.sleep(1.5)
 
             return
@@ -190,14 +195,7 @@ async def sheet_update_job(container: AsyncContainer) -> None:
 #             2. Напоминание о бронировании в 18:30, 21:00
 #             3. Отмена всех не подтвержденных броней
 #             4. Автобронирование
-#     Комплексные
-#             1. Добавить в сообщение меню кнопку-ссылку на google-таблицу+++
-#             2. Добавить в сообщение в чате кнопку-ссылку на google-таблицу+++
-#             3. Поправить велком-текст "Это бот для..." сделать его короче+++
-#             4. Сделать так, чтобы при брони через чат бронь была авто-подтверждена+++
-#             5. Сделать так, чтобы при нажатии Подтвердить ошибка при Отсутствие брони и Наличие брони отличалось+++
-#             6. Поправить текст при освобождении места в очереди (бронь авто-подтверждена)+++
-#             7. Сделать так, чтобы все бронирования от 16:00 до 12:00 следующего дня были с авто подтверждением+++
+
 
 
 

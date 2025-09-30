@@ -1,16 +1,17 @@
 from collections import defaultdict
 from datetime import date
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Union, Sequence
 
-from sqlalchemy import select, update, and_, func, not_, or_, extract, text, literal
-from sqlalchemy.dialects.postgresql import insert as pg_insert, aggregate_order_by
+from sqlalchemy import select, update, and_, func, not_, or_, extract, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
                                  CancelBookingFifoDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO)
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
-from src.dto.user_dto import UserDTO, DictDTO, UserBookingDaysDTO
+from src.dto.user_dto import UserDTO, DictDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
                                          CalendarDate, BookingEvent, Profession, Product,
                                          SystemConfig)
@@ -344,62 +345,31 @@ class Repository:
         return result.scalar_one()
 
     # -------------------- ПОЛУЧЕНИЕ ДАННЫХ ДЛЯ GOOGLE-ТАБЛИЦЫ --------------------
-    async def bookings_data_for_sheet(self, month_offset: int = 1) -> List[UserBookingDaysDTO]:
-
-        month_start = func.date_trunc("month", func.current_date() + func.make_interval(0, month_offset))
-        month_end = func.date_trunc("month", func.current_date() + func.make_interval(0, month_offset + 1))
-
-        month_of = func.date_trunc("month", Booking.cal_date).label("month_of")
-
-        days_agg = func.array_agg(
-            aggregate_order_by(
-                func.to_char(Booking.cal_date, literal("DD.MM")),
-                Booking.cal_date.asc()
-            )
-        ).label("days")
-
+    async def bookings_data_for_sheet(self, start: date, end: date) -> Sequence[RowMapping]:
         stmt = (
             select(
-                Booking.user_id,
+                User.user_id,
                 User.full_name.label("name"),
                 Product.name.label("team"),
                 Profession.name.label("position"),
-                days_agg,
+                Booking.cal_date
             )
-            .join(User, User.user_id == Booking.user_id)
             .join(Product, Product.id == User.product_id)
             .join(Profession, Profession.id == User.profession_id)
-            .where(
-                Booking.status == "BOOKED",
-                Booking.cal_date >= month_start,
-                Booking.cal_date < month_end,
+            .outerjoin(
+                Booking,
+                and_(
+                    Booking.cal_date.between(start, end),
+                    Booking.user_id == User.user_id,
+                    Booking.status == BookingStatus.BOOKED,
+                ),
             )
-            .group_by(
-                Booking.user_id,
-                User.full_name,
-                Product.name,
-                Profession.name,
-                month_of,
-            )
-            .order_by(
-                Booking.user_id,
-                month_of,
-            )
+            .order_by(User.full_name, Booking.cal_date)
         )
-
         result = await self.session.execute(stmt)
-        rows = result.mappings().all()
 
-        users = [
-            UserBookingDaysDTO(
-                team=row["team"],
-                position=row["position"],
-                name=row["name"],
-                days=row["days"] or [],
-            )
-            for row in rows
-        ]
-        return users
+        return result.mappings().all()
+
 
     # -------------------- ПРОВЕРКА АПДЕЙТОВ ПО БРОНИРОВАНИЯ ДЛЯ ДНЯ --------------------
     async def has_booking_changes_for_day(self, cal_date: date) -> bool:
