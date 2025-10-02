@@ -1,6 +1,4 @@
-import datetime
-
-from src.dto.booking_dto import WeekVisitsDTO
+from src.dto.booking_dto import WeekVisitsDTO, UserBookingWeekResultDTO
 
 
 def pluralize_person(count: int) -> str:
@@ -15,15 +13,20 @@ def pluralize_person(count: int) -> str:
     return "человек"
 
 
-def week_summary_mess(week_data: list[WeekVisitsDTO]) -> str:
+def pluralize_visit(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "визит"
+    elif 2 <= count % 10 <= 4 and (count % 100 < 10 or count % 100 >= 20):
+        return "визита"
+    else:
+        return "визитов"
+
+
+def week_summary_mess(week_data: list[WeekVisitsDTO], max_visitors: list[UserBookingWeekResultDTO]) -> str:
+
     weekdays_ru = {
-        0: "Понедельник",
-        1: "Вторник",
-        2: "Среда",
-        3: "Четверг",
-        4: "Пятница",
-        5: "Суббота",
-        6: "Воскресенье"
+        0: "Понедельник", 1: "Вторник", 2: "Среда", 3: "Четверг",
+        4: "Пятница", 5: "Суббота", 6: "Воскресенье"
     }
 
     if not week_data:
@@ -41,9 +44,32 @@ def week_summary_mess(week_data: list[WeekVisitsDTO]) -> str:
         word = pluralize_person(visits)
         lines.append(f"• {weekdays_ru[weekday_index]} – {visits} {word}")
 
+    winner_block = ""
+    if max_visitors:
+        booking_count = max_visitors[0].booking_count
+        visit_word = pluralize_visit(booking_count)
+
+        names = [
+            f'<a href="tg://user?id={user.user_id}">{user.full_name}</a>'
+            for user in max_visitors
+        ]
+        names_str = ", ".join(names)
+
+        if len(max_visitors) == 1:
+            title = f"🏆 Победитель ({booking_count} {visit_word})"
+        else:
+            title = f"🏆 Победители (по {booking_count} {visit_word})"
+
+        winner_block = (
+            f"<b>{title}</b>\n"
+            f"<tg-spoiler>{names_str}</tg-spoiler>\n\n"
+        )
+
     result = (
         f"<b>✨ Итоги недели ({week_start:%d.%m}–{week_end:%d.%m})</b>\n"
         f"<blockquote>{chr(10).join(lines)}</blockquote>\n\n"
+        f"{winner_block}"  
         f"<b>Всем хороших выходных! 🫶</b>"
     )
     return result
+

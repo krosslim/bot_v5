@@ -1,7 +1,8 @@
 from datetime import date
 from typing import List, Optional, Dict, Any
 
-from src.dto.booking_dto import DateBookingsDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO, WeekVisitsDTO
+from src.dto.booking_dto import (DateBookingsDTO, BookingStatus, OwnBookingDTO,
+                                 WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
 from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
                                      CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
 from src.storage.postgres.repository import Repository
@@ -138,6 +139,9 @@ class BookingService:
 
     async def week_visits(self, start: date, end: date) -> List[WeekVisitsDTO]:
         return await self.repo.get_week_visits(start, end)
+
+    async def week_max(self, start: date, end: date) -> List[UserBookingWeekResultDTO]:
+        return await self.repo.get_users_max_bookings(start, end)
 
 
 

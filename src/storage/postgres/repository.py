@@ -8,7 +8,8 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
-                                 CancelBookingFifoDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO, WeekVisitsDTO)
+                                 CancelBookingFifoDTO, BookingStatus, OwnBookingDTO,
+                                 WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO, DictDTO
@@ -181,6 +182,39 @@ class Repository:
             )
             for row in rows
         ]
+
+    async def get_users_max_bookings(self, start: date, end: date) -> List[UserBookingWeekResultDTO]:
+
+        counts = (
+            select(
+                Booking.user_id,
+                User.full_name,
+                func.count(Booking.booking_id).label("booking_count"),
+            )
+            .join(User, User.user_id == Booking.user_id)
+            .where(
+                Booking.cal_date.between(start, end),
+                Booking.status == BookingStatus.BOOKED,
+            )
+            .group_by(Booking.user_id, User.full_name)
+            .cte("counts")
+        )
+
+        max_count_subq = select(func.max(counts.c.booking_count)).scalar_subquery()
+
+        stmt = (
+            select(
+                counts.c.user_id,
+                counts.c.full_name,
+                counts.c.booking_count
+            )
+            .where(counts.c.booking_count == max_count_subq)
+        )
+
+        res = await self.session.execute(stmt)
+        rows = res.mappings().all()
+
+        return [UserBookingWeekResultDTO.model_validate(row) for row in rows]
 
     # -------------------- ОБЩЕЕ (запись истории бронирования) --------------------
     async def insert_event(

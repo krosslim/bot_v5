@@ -51,6 +51,13 @@ class WeekVisitsDTO(BaseModel):
     cal_date: date
     visits: int
 
+class UserBookingWeekResultDTO(BaseModel):
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    user_id: int
+    full_name: str
+    booking_count: int
+
 
 class BookingStatus(StrEnum):
     # Основные статусы

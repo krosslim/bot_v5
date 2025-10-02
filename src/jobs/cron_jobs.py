@@ -233,9 +233,10 @@ async def week_result_job(container: AsyncContainer) -> None:
 
         try:
             res = await svc.week_visits(start, end)
+            max_visitors = await svc.week_max(start, end)
             await bot.send_message(
                 chat_id=settings.TG_CHAT_ID,
-                text=week_summary_mess(res),
+                text=week_summary_mess(res, max_visitors),
                 reply_markup=week_summary_kb(),
                 disable_web_page_preview=True
             )
@@ -271,7 +272,7 @@ async def sheet_update_job(container: AsyncContainer) -> None:
 
 # TODO
 #     JOBS
-#             1. Подведение итогов в ПТ
+#             1. Подведение итогов в ПТ+++
 #             2. Напоминание о бронировании в 18:30, 21:00
 #             3. Отмена всех не подтвержденных броней
 
