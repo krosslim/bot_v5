@@ -20,7 +20,9 @@ def render_booking_week_kb(
         week_offset: int
 ) -> InlineKeyboardMarkup:
     cap_by_wd: Dict[int, OfficeCapacityDTO] = {c.weekday: c for c in capacities}
-    holiday_map: Dict[date, bool] = {c.cal_date: (c.is_weekend or c.is_holiday) for c in calendar}
+    holiday_map: Dict[date, bool] = {c.cal_date: c.is_holiday for c in calendar}
+    workday_map: Dict[date, bool] = {c.cal_date: c.is_workday for c in calendar}
+    weekend_map: Dict[date, bool] = {c.cal_date: c.is_weekend for c in calendar}
     bookings_map: Dict[date, DateBookingsDTO] = {d.cal_date: d for d in days}
 
     today = effective_today()
@@ -34,7 +36,13 @@ def render_booking_week_kb(
             day, wd = cal.cal_date, cal.cal_date.isoweekday()
 
             cap = cap_by_wd.get(wd)
-            if cap is None or holiday_map.get(day, False) or day < today:
+            if cap is None:
+                continue
+            if day < today:
+                continue
+            if holiday_map.get(day, False):
+                continue
+            if weekend_map.get(day, False) and not workday_map.get(day, True):
                 continue
 
             booked_cnt = 0
@@ -63,7 +71,7 @@ def render_booking_week_kb(
             day_buttons.append(btn)
 
         if day_buttons:
-            kb.row(*day_buttons, width=5)
+            kb.row(*day_buttons, width=7)
 
     if sorted_calendar:
         week_start = sorted_calendar[0].cal_date

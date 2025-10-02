@@ -7,7 +7,7 @@ from dishka import FromDishka
 from src.services.exceptions import BookingError
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
 from src.ui.keyboard.booking_remind_kb import confirm_kb
-from src.ui.messages.booking_remind_mess import build_digest_message
+from src.ui.messages.booking_remind_mess import build_digest_message_v2
 from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.today import effective_today
@@ -59,7 +59,7 @@ async def handle_chat_booking(call: CallbackQuery, callback_data: ChatBookingCB,
     try:
         bookings, capacity = await uc.chat_booking_data(cal_date=cal_date)
         await call.message.edit_text(
-            text=build_digest_message(bookings, capacity, cal_date),
+            text=build_digest_message_v2(bookings, capacity, cal_date),
             reply_markup=confirm_kb(bookings, capacity, cal_date),
             disable_web_page_preview=True
         )

@@ -93,6 +93,7 @@ class CalendarDate(Base):
     __tablename__ = "calendar_dates"
 
     cal_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    is_workday: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
     is_weekend: Mapped[bool] = mapped_column(Boolean, nullable=False)
     is_holiday: Mapped[bool] = mapped_column(Boolean, nullable=False)
     visit_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))

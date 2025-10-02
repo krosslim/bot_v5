@@ -15,7 +15,6 @@ class Config(BaseSettings):
     BOT_USERNAME: str = "BOT_USERNAME"
     TG_CHAT_ID: int = -681141068
 
-
     REDIS_URL: str = "redis://localhost:6379/0"
 
     POSTGRES_URL: str = "postgresql+asyncpg://localhost:5432/bot_db_v5"
@@ -27,9 +26,16 @@ class Config(BaseSettings):
     POSTGRES_POOL_PRE_PING: bool = True
 
     MSC_TZ: str = "Europe/Moscow"
-    WORK_END_HOUR: int = 12
-    BOOKING_SESSION_SEC: int = 300
-    PAGINATION_LIMIT_WEEKS: int = 4
+
+    WORK_END_HOUR: int = 12             # Время, до которого можно бронировать место для текущего дня
+    BOOKING_SESSION_SEC: int = 300      # Время сессии бронирования при нажатии кнопки "Забронировать место"
+    PAGINATION_LIMIT_WEEKS: int = 4     # Сколько недель можно глянуть в "Забронировать место"
+
+    REMIND_JOB_HOUR: int = 16           # Ежедневный дайджест в чате (часы запуска)
+    REMIND_JOB_MINUTES: int = 00        # Ежедневный дайджест в чате (минуты запуска)
+
+    FRIDAY_JOB_HOUR: int = 17           # Пятничное подведение итогов (часы запуска)
+    FRIDAY_JOB_MINUTES: int = 45        # Пятничное подведение итогов (минуты запуска)
 
     GOOGLE_SHEET_URL: str = "https://script.google.com/macros/s/abcd/exec"
     GOOGLE_SHEET_TOKEN: str = "TOKEN"

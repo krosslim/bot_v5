@@ -13,5 +13,6 @@ class AvailabilityDTO(BaseModel):
     cal_date: date
     is_holiday: bool
     is_available: bool
+    is_weekend: bool
 
 

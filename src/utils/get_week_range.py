@@ -19,7 +19,6 @@ def week_range(offset_weeks: int | None = None) -> Tuple[date, date, int]:
         week_offset = 1 if today.weekday() >= 5 else 0
 
     monday = this_monday + timedelta(weeks=week_offset)
-    friday = monday + timedelta(days=4)
+    sunday = monday + timedelta(days=6)
 
-    return monday, friday, week_offset
-
+    return monday, sunday, week_offset

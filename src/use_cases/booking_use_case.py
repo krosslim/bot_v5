@@ -29,11 +29,11 @@ class BookingUseCase:
         self.calendar_dates = calendar_dates
         self.user = user
 
-    async def booking_page_data(self, monday: date, friday: date) -> tuple:
+    async def booking_page_data(self, start: date, end: date) -> tuple:
         async with self.session.begin():
-            active = await self.booking.get_active_bookings_by_range(monday, friday)
+            active = await self.booking.get_active_bookings_by_range(start, end)
             capacity = await self.office_capacity.get_office_capacity()
-            calendar = await self.calendar_dates.get_calendar_dates_by_range(monday, friday)
+            calendar = await self.calendar_dates.get_calendar_dates_by_range(start, end)
             return active, capacity, calendar
 
     async def book_place(self, user_id: int, cal_date: date, auto_confirm: bool | None = None) -> None:
@@ -73,7 +73,7 @@ class BookingUseCase:
             has_available = True
 
             for i in data:
-                if i.is_holiday:
+                if i.is_holiday and not i.is_weekend:
                     has_holiday = True
                 elif (not i.is_holiday) and (not i.is_available):
                     has_available = False

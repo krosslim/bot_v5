@@ -162,8 +162,8 @@ async def handle_back_menu_button(call: CallbackQuery, state: FSMContext):
 # ---------------------------------------------- helpers ----------------------------------------------
 async def _render_booking_page(call: CallbackQuery, week_offset: int, uc: BookingUseCase, state: FSMContext) -> None:
     try:
-        monday, friday, _ = week_range(week_offset)
-        active, capacity, calendar = await uc.booking_page_data(monday=monday, friday=friday)
+        monday, sunday, _ = week_range(week_offset)
+        active, capacity, calendar = await uc.booking_page_data(start=monday, end=sunday)
         await call.message.edit_text(
             text=render_booking_week_mess(active, capacity, calendar, call.from_user.id),
             reply_markup=render_booking_week_kb(active, capacity, calendar, call.from_user.id, week_offset)

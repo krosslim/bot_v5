@@ -13,3 +13,6 @@ class CalendarDatesService:
                                   week_end: date) -> List[CalendarDatesDTO]:
         data = await self.repo.get_calendar_dates_by_range(week_start, week_end)
         return data
+
+    async def is_workday(self, cal_date: date) -> bool:
+        return await self.repo.get_workday(cal_date)

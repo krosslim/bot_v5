@@ -8,7 +8,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
-                                 CancelBookingFifoDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO)
+                                 CancelBookingFifoDTO, BookingStatus, OwnBookingDTO, WaitlistPositionDTO, WeekVisitsDTO)
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO, DictDTO
@@ -165,6 +165,22 @@ class Repository:
             return None
         return OwnBookingDTO.model_validate(booking)
 
+    async def get_week_visits(self, start: date, end: date) -> List[WeekVisitsDTO]:
+
+        stmt = (
+            select(Booking.cal_date, func.count(Booking.booking_id).label("visits"))
+            .where(Booking.cal_date.between(start, end), Booking.status == BookingStatus.BOOKED)
+            .group_by(Booking.cal_date)
+        )
+        res = await self.session.execute(stmt)
+        rows = res.mappings().all()
+        return [
+            WeekVisitsDTO(
+                cal_date=row["cal_date"],
+                visits=row["visits"]
+            )
+            for row in rows
+        ]
 
     # -------------------- ОБЩЕЕ (запись истории бронирования) --------------------
     async def insert_event(
@@ -425,6 +441,7 @@ class Repository:
             select(
                 CalendarDate.cal_date,
                 CalendarDate.is_holiday,
+                CalendarDate.is_weekend,
                 not_(
                     or_(
                         CalendarDate.visit_count >= OfficeCapacityWeekday.capacity,
@@ -444,7 +461,8 @@ class Repository:
             AvailabilityDTO(
                 cal_date=row["cal_date"],
                 is_holiday=row["is_holiday"],
-                is_available=row["is_available"]
+                is_available=row["is_available"],
+                is_weekend=row["is_weekend"]
             )
             for row in rows
         ]
@@ -457,13 +475,20 @@ class Repository:
         stmt = select(
             CalendarDate.cal_date,
             CalendarDate.is_holiday,
-            CalendarDate.is_weekend
+            CalendarDate.is_weekend,
+            CalendarDate.is_workday
         ).where(
             CalendarDate.cal_date.between(cal_date_start, cal_date_end),
         ).order_by(CalendarDate.cal_date)
 
         result = await self.session.execute(stmt)
         return [CalendarDatesDTO(**m) for m in result.mappings()]
+
+    async def get_workday(self, cal_date: date) -> bool:
+        result = await self.session.execute(
+            select(CalendarDate.is_workday).where(CalendarDate.cal_date == cal_date)
+        )
+        return result.scalar_one()
 
 
 # ---------------------------------------------------------------------------#

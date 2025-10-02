@@ -45,6 +45,13 @@ class WaitlistPositionDTO(BaseModel):
     cal_date: date
     position: int
 
+class WeekVisitsDTO(BaseModel):
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    cal_date: date
+    visits: int
+
+
 class BookingStatus(StrEnum):
     # Основные статусы
     BOOKED = auto()

@@ -14,6 +14,6 @@ def is_in_autoconfirm_period(cal_date: date) -> bool:
         return True
 
     if cal_date == today + timedelta(days=1):
-        return now.time() >= time(16, 0)
+        return now.time() >= time(settings.REMIND_JOB_HOUR, settings.REMIND_JOB_MINUTES)
 
     return False
