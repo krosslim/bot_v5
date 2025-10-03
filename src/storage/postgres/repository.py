@@ -168,11 +168,17 @@ class Repository:
 
     async def get_week_visits(self, start: date, end: date) -> List[WeekVisitsDTO]:
 
+        # stmt = (
+        #     select(Booking.cal_date, func.count(Booking.booking_id).label("visits"))
+        #     .where(Booking.cal_date.between(start, end), Booking.status == BookingStatus.BOOKED)
+        #     .group_by(Booking.cal_date)
+        # )
+
         stmt = (
-            select(Booking.cal_date, func.count(Booking.booking_id).label("visits"))
-            .where(Booking.cal_date.between(start, end), Booking.status == BookingStatus.BOOKED)
-            .group_by(Booking.cal_date)
+            select(CalendarDate.cal_date, CalendarDate.visit_count.label("visits"))
+            .where(CalendarDate.cal_date >= start, CalendarDate.cal_date <= end)
         )
+
         res = await self.session.execute(stmt)
         rows = res.mappings().all()
         return [
