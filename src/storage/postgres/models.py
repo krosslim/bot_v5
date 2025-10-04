@@ -202,3 +202,14 @@ class SystemConfig(Base):
     key: Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+# ---------------------------------------------------------------------------#
+#  digest_schedule
+# ---------------------------------------------------------------------------#
+class DigestSchedule(Base):
+    __tablename__ = "digest_schedule"
+
+    cal_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

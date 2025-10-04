@@ -1,6 +1,8 @@
 import logging
-from typing import List
+from datetime import date
+from typing import List, Optional
 
+from src.dto.calendar_dates_dto import DigestScheduleDTO
 from src.dto.user_dto import UserBookingSessionDTO
 from src.storage.postgres.repository import Repository
 from src.storage.redis.store import RedisStore
@@ -63,16 +65,11 @@ class TechService:
             logger.warning(f"finish_multiple_booking_sessions | No booking session found for {data}")
 
 
-    async def upsert_chat_message_id(self, message_id: int) -> None:
-        return await self.repo.upsert_chat_message_id(str(message_id))
+    async def upsert_chat_message_id(self, cal_date: date, message_id: int) -> None:
+        return await self.repo.upsert_chat_message_id(cal_date, message_id)
 
-    async def get_chat_message_id(self) -> int | None:
-        message_id = await self.repo.get_chat_message_id()
+    async def get_chat_message_id(self, cal_date: date) -> int | None:
+        return await self.repo.get_chat_message_id(cal_date)
 
-        try:
-            if message_id:
-                return int(message_id)
-            else:
-                return None
-        except ValueError:
-            return None
+    async def last_message(self) -> Optional[DigestScheduleDTO]:
+        return await self.repo.get_last_message()

@@ -91,28 +91,14 @@ async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler) ->
                 disable_web_page_preview=True
             )
             # print(message.message_id)
-            await sc_svc.upsert_chat_message_id(message.message_id)
+            await sc_svc.upsert_chat_message_id(cal_date=tomorrow, message_id=message.message_id)
 
             logger.info("chat_remind_job | finished at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
 
             # print("Регистрируем задачу для апдейтов каждую минуту")
             start, end = effective_datetime_range()
             # print(f"Период пинга: от {start} до {end} каждую минуту")
-            sched.add_job(
-                partial(check_chat_remind_job, container),
-                trigger=CronTrigger(
-                    minute="*",
-                    start_date=start,
-                    end_date=end,
-                    timezone=sched.timezone
-                ),
-                id="check_chat_remind_job",
-                max_instances=1,
-                coalesce=True,
-                misfire_grace_time=60,
-                replace_existing=True
-            )
-            logger.info("register job: check_chat_remind_job | start: %s, end: %s", start, end)
+            _add_job_checker(sched, container, start, end)
 
         except DBError as e:
             logger.exception(f"ERROR: chat_remind_job | {str(e)}")
@@ -129,7 +115,7 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
         capacity_svc: OfficeCapacityService = await req.get(OfficeCapacityService)
         sc_svc: TechService = await req.get(TechService)
 
-        now = datetime.now()
+        now = datetime.now(tz=ZoneInfo(settings.MSC_TZ))
 
         # Смысл: если щас от 16-23 значит чекать надо данные для завтрашнего дня. Если 0-12 то сегодняшнего
         if time(settings.REMIND_JOB_HOUR, settings.REMIND_JOB_MINUTES) <= now.time() <= time(23, 59, 59):
@@ -158,7 +144,7 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
             capacity = await capacity_svc.get_weekday_capacity(weekday)
             # print(f'Получаем вместительность для {target_date}: {capacity}')
 
-            message_id = await sc_svc.get_chat_message_id()
+            message_id = await sc_svc.get_chat_message_id(cal_date=target_date)
             # print(f'Получаем id сообщения в чате для {target_date}: {message_id}')
 
             if not message_id:
@@ -169,7 +155,7 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                     reply_markup=confirm_kb(bookings, capacity, target_date),
                     disable_web_page_preview=True
                 )
-                await sc_svc.upsert_chat_message_id(message.message_id)
+                await sc_svc.upsert_chat_message_id(cal_date=target_date, message_id=message.message_id)
                 return
 
             try:
@@ -193,7 +179,7 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                         reply_markup=confirm_kb(bookings, capacity, target_date),
                         disable_web_page_preview=True
                     )
-                    await sc_svc.upsert_chat_message_id(message.message_id)
+                    await sc_svc.upsert_chat_message_id(cal_date=target_date, message_id=message.message_id)
                     return
                 else:
                     # print('Сообщение в базе есть, но с предыдущего раза оно не обновлялось')
@@ -203,6 +189,50 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
             # print('Ошибка базы данных')
             logger.exception(f"ERROR: check_chat_remind_job | {str(e)}")
             return
+
+
+# -------------------------------- Job health чекер --------------------------------
+async def check_chat_remind_reserve_job(container: AsyncContainer, sched: AsyncIOScheduler) -> None:
+
+    now = datetime.now(tz=ZoneInfo(settings.MSC_TZ))
+    today_date = now.date()
+    tomorrow_date = today_date + timedelta(days=1)
+    if settings.WORK_END_HOUR <= now.hour < settings.REMIND_JOB_HOUR:
+        logger.info("check_chat_remind_reserve_job | removed cause not in work hour")
+        return
+
+    async with container() as req:
+        sc_svc: TechService = await req.get(TechService)
+
+        try:
+            message = await sc_svc.last_message()
+            if not message:
+                logger.info("check_chat_remind_reserve_job | removed cause where are no message data")
+                return
+
+            start_dt = now + timedelta(minutes=1)
+
+            if message.cal_date == today_date:
+                end_dt = datetime.combine(
+                    date=today_date,
+                    time=time(settings.WORK_END_HOUR, 0),
+                    tzinfo=ZoneInfo(settings.MSC_TZ)
+                )
+            elif message.cal_date == tomorrow_date:
+                end_dt = datetime.combine(
+                    date=tomorrow_date,
+                    time=time(settings.WORK_END_HOUR, 0),
+                    tzinfo=ZoneInfo(settings.MSC_TZ)
+                )
+            else:
+                logger.info("check_chat_remind_reserve_job | removed cause now %s and message cal_date %s",
+                            now, message.cal_date)
+                return
+
+            _add_job_checker(sched, container, start_dt, end_dt)
+
+        except DBError as e:
+            logger.exception(f"ERROR: check_chat_remind_reserve_job | {str(e)}")
 
 
 # -------------------------------- Пятничное/субботнее подведение итогов --------------------------------
@@ -268,6 +298,31 @@ async def sheet_update_job(container: AsyncContainer) -> None:
         except DBError as e:
             logger.exception(f"ERROR: sheet_update_job | {str(e)}")
 
+
+# -------------------------------- helpers --------------------------------
+def _add_job_checker(
+        sched: AsyncIOScheduler,
+        container: AsyncContainer,
+        start: datetime,
+        end: datetime
+) -> None:
+
+    sched.add_job(
+        partial(check_chat_remind_job, container),
+        trigger=CronTrigger(
+            minute="*",
+            start_date=start,
+            end_date=end,
+            timezone=sched.timezone
+        ),
+        id="check_chat_remind_job",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+        replace_existing=True
+    )
+
+    logger.info("register job: check_chat_remind_job | start: %s, end: %s", start, end)
 
 
 # TODO

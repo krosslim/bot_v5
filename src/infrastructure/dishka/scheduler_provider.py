@@ -3,14 +3,15 @@ from typing import AsyncGenerator
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dishka import Provider, Scope, provide, AsyncContainer
 
+from config import settings as s
 from src.jobs import register_jobs
 
 
 class SchedulerProvider(Provider):
 
-    def __init__(self, tz: str = "Europe/Moscow") -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._tz = tz
+        self._tz = s.MSC_TZ
 
     @provide(scope=Scope.APP)
     async def scheduler(self, container: AsyncContainer) -> AsyncGenerator[AsyncIOScheduler, None]:
@@ -19,4 +20,5 @@ class SchedulerProvider(Provider):
         try:
             yield sched
         finally:
-            sched.shutdown(wait=False)
+            if sched.running:
+                sched.shutdown(wait=False)

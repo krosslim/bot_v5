@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
                                  CancelBookingFifoDTO, BookingStatus, OwnBookingDTO,
                                  WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
-from src.dto.calendar_dates_dto import CalendarDatesDTO
+from src.dto.calendar_dates_dto import CalendarDatesDTO, DigestScheduleDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO, DictDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
                                          CalendarDate, BookingEvent, Profession, Product,
-                                         SystemConfig)
+                                         DigestSchedule)
 from src.utils.db_exc_wrapper import with_db_errors
 
 
@@ -548,24 +548,46 @@ class Repository:
 
 
 # ---------------------------------------------------------------------------#
-#  SYSTEM CONFIG
+#  DIGEST SCHEDULE
 # ---------------------------------------------------------------------------#
-    async def upsert_chat_message_id(self, message_id: str) -> None:
+    async def upsert_chat_message_id(self, cal_date: date, message_id: int) -> None:
         stmt = (
-            pg_insert(SystemConfig)
-            .values(key="chat_digest_message_id", value=message_id)
+            pg_insert(DigestSchedule)
+            .values(cal_date=cal_date, message_id=message_id)
             .on_conflict_do_update(
-                index_elements=[SystemConfig.key],
-                set_=dict(value=message_id),
-                where=(SystemConfig.key == "chat_digest_message_id")
+                index_elements=[DigestSchedule.cal_date],
+                set_=dict(message_id=message_id),
+                where=(DigestSchedule.cal_date == cal_date)
             )
         )
         await self.session.execute(stmt)
         await self.session.commit()
         return None
 
-    async def get_chat_message_id(self) -> str | None:
+
+    async def get_chat_message_id(self, cal_date: date) -> int | None:
         result = await self.session.execute(
-            select(SystemConfig.value).where(SystemConfig.key == 'chat_digest_message_id')
+            select(DigestSchedule.message_id).where(DigestSchedule.cal_date == cal_date)
         )
         return result.scalar_one_or_none()
+
+
+    async def get_last_message(self) -> Optional[DigestScheduleDTO]:
+
+        res = await self.session.execute(
+            select(
+                DigestSchedule.cal_date,
+                DigestSchedule.message_id,
+                DigestSchedule.created_at
+            )
+            .order_by(DigestSchedule.cal_date.desc())
+            .limit(1)
+        )
+        message = res.first()
+
+        if not message:
+            return None
+
+        return DigestScheduleDTO.model_validate(message)
+
+
