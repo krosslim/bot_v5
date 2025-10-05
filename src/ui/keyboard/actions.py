@@ -52,6 +52,8 @@ class SettingsStep(StrEnum):
 class ChatBookingStep(StrEnum):
     CONFIRM_BOOKING = auto()
     ADD_BOOKING = auto()
+    CONFIRM_BOOKING_IN_REMINDER = auto()
+    CANCEL_BOOKING_IN_REMINDER = auto()
 
 
 class SettingsCB(CallbackData, prefix = "s"):

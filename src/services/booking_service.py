@@ -1,5 +1,5 @@
 from datetime import date
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 from src.dto.booking_dto import (DateBookingsDTO, BookingStatus, OwnBookingDTO,
                                  WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
@@ -25,6 +25,19 @@ class BookingService:
             tomorrow, tomorrow, [BookingStatus.BOOKED]
         )
         return data
+
+    async def get_bookings_by_status(
+            self,
+            start: date,
+            end: date,
+            status_list: Union[str, List[str]],
+            sub_status_list: Optional[Union[str, List[str]]] = None
+    ) -> List[DateBookingsDTO]:
+
+        if sub_status_list is not None:
+            return await self.repo.bookings_by_range(start, end, status_list, sub_status_list)
+
+        return await self.repo.bookings_by_range(start, end, status_list)
 
     async def get_own_active_bookings(self, user_id: int) -> List[OwnBookingDTO]:
 

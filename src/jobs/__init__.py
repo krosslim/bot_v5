@@ -13,7 +13,8 @@ from src.jobs.cron_jobs import (
     chat_remind_job,
     sheet_update_job,
     week_result_job,
-    check_chat_remind_reserve_job
+    check_chat_remind_reserve_job,
+    remind_to_confirm_booking_job
 )
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,26 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
     )
     logger.info("register job: check_chat_remind_reserve_job | next run_dt=%s", run_dt)
 
+
+    sched.add_job(
+        partial(remind_to_confirm_booking_job, container),
+        trigger=CronTrigger(
+            hour=f"{s.CONFIRM_REMIND_JOB_HOUR},{s.CONFIRM_REMIND_REPEAT_JOB_HOUR}",
+            minute = f"{s.CONFIRM_REMIND_JOB_MINUTES},{s.CONFIRM_REMIND_REPEAT_JOB_MINUTES}",
+            timezone = sched.timezone
+        ),
+        id="remind_to_confirm_booking_job",
+        max_instances = 1,
+        coalesce = True,
+        misfire_grace_time = 60,
+        replace_existing = True
+    )
+
+    logger.info("register job: remind_to_confirm_booking_job | every day | first at: %s:%s, second at %s:%s",
+                s.CONFIRM_REMIND_JOB_HOUR, s.CONFIRM_REMIND_JOB_MINUTES,
+                s.CONFIRM_REMIND_REPEAT_JOB_HOUR, s.CONFIRM_REMIND_REPEAT_JOB_MINUTES)
+
+
     # --- Для тестов ---
     # sched.add_job(
     #     partial(week_result_job, container),
@@ -102,11 +123,19 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
     #     misfire_grace_time=60,
     # )
 
-    # --- Для тестов ---
     # sched.add_job(
     #     partial(chat_remind_job, container, sched),
     #     trigger=IntervalTrigger(seconds=10),
     #     id="chat_remind_job_test",
+    #     max_instances=1,
+    #     misfire_grace_time=60,
+    #     coalesce=True
+    # )
+
+    # sched.add_job(
+    #     partial(remind_to_confirm_booking_job, container, sched),
+    #     trigger=IntervalTrigger(seconds=10),
+    #     id="remind_to_confirm_booking_job_test",
     #     max_instances=1,
     #     misfire_grace_time=60,
     #     coalesce=True

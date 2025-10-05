@@ -14,7 +14,7 @@ from src.utils.today import effective_today
 
 router = Router()
 
-
+# Действия в чате по бронированию
 @router.callback_query(ChatBookingCB.filter(F.step.in_({ChatBookingStep.ADD_BOOKING, ChatBookingStep.CONFIRM_BOOKING})))
 async def handle_chat_booking(call: CallbackQuery, callback_data: ChatBookingCB, uc: FromDishka[BookingUseCase]):
     step = callback_data.step

@@ -13,14 +13,17 @@ from dishka import AsyncContainer
 
 from config import settings
 from src.clients.google_sheet_client import update_sheet_data
+from src.dto.booking_dto import BookingStatus
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.ui.keyboard.booking_remind_kb import confirm_kb
+from src.ui.keyboard.confirm_remind_kb import remind_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.week_result_kb import week_summary_kb
 from src.ui.messages.booking_remind_mess import build_digest_message_v2
+from src.ui.messages.confirm_to_remind_mess import remind_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
 from src.utils.db_exc_wrapper import DBError
@@ -106,9 +109,6 @@ async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler) ->
 
 # -------------------------------- Проверка актуальность сообщения в чате --------------------------------
 async def check_chat_remind_job(container: AsyncContainer) -> None:
-
-    # logger.info("check_chat_remind_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
-
     async with container() as req:
         bot: Bot = await req.get(Bot)
         booking_svc: BookingService = await req.get(BookingService)
@@ -245,20 +245,23 @@ async def week_result_job(container: AsyncContainer) -> None:
         svc: BookingService = await req.get(BookingService)
         cal_date_svc: CalendarDatesService = await req.get(CalendarDatesService)
 
-        # если суббота рабочий день (джоб чекает если завтра рабочий день, то не запускается)
-        tomorrow = date.today() + timedelta(days=1)
-        is_workday = await cal_date_svc.is_workday(tomorrow)
-        if is_workday:
-            # print("hui")
-            return
+        # если суббота рабочий день (джоб чекает если рабочий день, то не запускается)
 
         today = date.today()
         start = today - timedelta(days=today.weekday())
+        tomorrow = date.today() + timedelta(days=1)
 
-        # Если последний рабочий день пт, то плюсуем 4 иначе 5
         if today.isoweekday() == 5:
+            # Проверка для пятницы на то, что суббота рабочий день
+            is_workday = await cal_date_svc.is_workday(tomorrow)
+            if is_workday:
+                return
             end = start + timedelta(days=4)
         else:
+            # Проверка для субботы поэтому today (в else тк в расписании fri, sat)
+            is_workday = await cal_date_svc.is_workday(today)
+            if not is_workday:
+                return
             end = start + timedelta(days=5)
 
         try:
@@ -299,6 +302,57 @@ async def sheet_update_job(container: AsyncContainer) -> None:
             logger.exception(f"ERROR: sheet_update_job | {str(e)}")
 
 
+# -------------------------------- Напоминание о подтверждении брони --------------------------------
+async def remind_to_confirm_booking_job(container: AsyncContainer) -> None:
+
+    logger.info("remind_to_confirm_booking_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
+    async with container() as req:
+        bot: Bot = await req.get(Bot)
+        svc: BookingService = await req.get(BookingService)
+
+        tomorrow = date.today() + timedelta(days=1)
+        # print(f"определяем завтрашний день: {tomorrow}")
+
+        reserved_bookings = await svc.get_bookings_by_status(tomorrow, tomorrow, BookingStatus.BOOKED, BookingStatus.RESERVED)
+        # print(f"получаем брони со статусом RESERVED: {reserved_bookings}")
+        # print()
+
+        if not reserved_bookings:
+            logger.info("remind_to_confirm_booking_job | no data for %s", tomorrow)
+            return
+
+        reserved_bookings = reserved_bookings[0]
+        # print(f"брони есть, извлекаем данные для {tomorrow}: {reserved_bookings}")
+        # print()
+
+        if not reserved_bookings.users:
+            logger.info("remind_to_confirm_booking_job | no users to confirm for %s", tomorrow)
+            return
+
+        current_hour = datetime.now(tz=ZoneInfo(settings.MSC_TZ)).hour
+        # print(f"получаем текущий час для определения текста сообщения: {current_hour}")
+        if current_hour == settings.CONFIRM_REMIND_JOB_HOUR:
+            message_text = remind_mess(escalation=False)
+        elif current_hour == settings.CONFIRM_REMIND_REPEAT_JOB_HOUR:
+            message_text = remind_mess(escalation=True)
+        else:
+            logger.info("remind_to_confirm_booking_job | time has not got registartion (input: %s)",
+                        current_hour)
+            return
+
+        for users in reserved_bookings.users:
+            await bot.send_message(
+                chat_id=users.user_id,
+                text=message_text,
+                reply_markup=remind_kb(tomorrow)
+            )
+
+        logger.info("remind_to_confirm_booking_job | finished at %s | users count is %s",
+                    datetime.now(tz=ZoneInfo(settings.MSC_TZ)), len(reserved_bookings.users)
+                    )
+
+
 # -------------------------------- helpers --------------------------------
 def _add_job_checker(
         sched: AsyncIOScheduler,
@@ -327,8 +381,7 @@ def _add_job_checker(
 
 # TODO
 #     JOBS
-#             1. Напоминание о бронировании в 18:30, 21:00
-#             2. Отмена всех не подтвержденных броней
+#             1. Отмена всех не подтвержденных броней
 
 
 

@@ -1,4 +1,4 @@
-from datetime import date
+# from datetime import date
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
@@ -16,27 +16,26 @@ from src.ui.messages.start_mess import (start_db_exc_mess, bot_init_mess,
 from src.use_cases.user_use_case import UserUseCase
 from src.utils.db_exc_wrapper import DBError
 
-
 router = Router()
 
 
-@router.message(CommandStart(deep_link=True, magic=F.args == "confirm_today"))
-async def handle_deep_link_start(msg: Message, uc: FromDishka[UserUseCase], state: FSMContext):
-    if await state.get_state():
-        await state.clear()
-
-    try:
-        user_id = msg.from_user.id
-        cal_date = date.today()
-
-        booking_id = await uc.confirm_booking(user_id, cal_date)
-        if booking_id:
-            await msg.bot.send_message(
-                chat_id=user_id,
-                text="Бронь успешно подтверждена ✅"
-            )
-    except DBError:
-        await msg.answer(text=start_db_exc_mess())
+# @router.message(CommandStart(deep_link=True, magic=F.args == "confirm_today"))
+# async def handle_deep_link_start(msg: Message, uc: FromDishka[UserUseCase], state: FSMContext):
+#     if await state.get_state():
+#         await state.clear()
+#
+#     try:
+#         user_id = msg.from_user.id
+#         cal_date = date.today()
+#
+#         booking_id = await uc.confirm_booking(user_id, cal_date)
+#         if booking_id:
+#             await msg.bot.send_message(
+#                 chat_id=user_id,
+#                 text="Бронь успешно подтверждена ✅"
+#             )
+#     except DBError:
+#         await msg.answer(text=start_db_exc_mess())
 
 
 @router.message(CommandStart())

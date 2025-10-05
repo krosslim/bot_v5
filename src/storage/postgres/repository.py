@@ -59,7 +59,9 @@ class Repository:
 #  BOOKINGS
 # ---------------------------------------------------------------------------#
     async def bookings_by_range(
-            self, start: date, end: date, status: Union[str, List[str]]
+            self,
+            start: date, end: date,
+            status: Union[str, List[str]], sub_status: Optional[Union[str, List[str]]] = None,
     ) -> List[DateBookingsDTO]:
 
         status_list = [status] if isinstance(status, str) else status
@@ -71,8 +73,15 @@ class Repository:
             )
             .join(User, Booking.user_id == User.user_id)
             .where(Booking.cal_date.between(start, end), Booking.status.in_(status_list))
-            .order_by(Booking.cal_date, Booking.created_at)
         )
+
+        if sub_status is not None:
+            sub_status_list = [sub_status] if isinstance(sub_status, str) else sub_status
+            stmt = stmt.where(Booking.sub_status.in_(sub_status_list))
+
+        stmt = stmt.order_by(Booking.cal_date, Booking.created_at)
+
+
         rows = await self.session.execute(stmt)
         data = rows.all()
 
@@ -108,7 +117,7 @@ class Repository:
                 Booking.user_id,
                 func.row_number().over(
                     partition_by=Booking.cal_date,
-                    order_by=[Booking.created_at, Booking.booking_id]
+                    order_by=[Booking.updated_at, Booking.booking_id]
                 ).label('position')
             )
             .where(

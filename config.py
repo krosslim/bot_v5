@@ -37,6 +37,16 @@ class Config(BaseSettings):
     FRIDAY_JOB_HOUR: int = 17           # Пятничное подведение итогов (часы запуска)
     FRIDAY_JOB_MINUTES: int = 45        # Пятничное подведение итогов (минуты запуска)
 
+    CONFIRM_REMIND_JOB_HOUR: int = 18           # Напоминание о подтверждении брони (часы запуска)
+    CONFIRM_REMIND_JOB_MINUTES: int = 30        # Напоминание о подтверждении брони (минуты запуска)
+
+    CONFIRM_REMIND_REPEAT_JOB_HOUR: int = 21    # Финальное напоминание о подтверждении брони (часы запуска)
+    CONFIRM_REMIND_REPEAT_JOB_MINUTES: int = 00 # Финальное напоминание о подтверждении брони (минуты запуска)
+
+    CANCEL_BOOKING_JOB_HOUR: int = 21           # Отмена не подтвержденных броней (часы запуска)
+    CANCEL_BOOKING_JOB_MINUTES: int = 30        # Отмена не подтвержденных броней (минуты запуска)
+
+
     GOOGLE_SHEET_URL: str = "https://script.google.com/macros/s/abcd/exec"
     GOOGLE_SHEET_TOKEN: str = "TOKEN"
     GOOGLE_SHEET_USER_URL: str = "https://docs.google.com/spreadsheets"
