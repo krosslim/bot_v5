@@ -14,6 +14,7 @@ class UserBookingDTO(BaseModel):
     status: str
     sub_status: str
     created_at: datetime
+    updated_at: datetime
 
 
 class DateBookingsDTO(BaseModel):

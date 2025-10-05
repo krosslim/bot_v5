@@ -67,13 +67,13 @@ def render_booking_week_mess(
             elif u.status == BookingStatus.WAITLISTED:
                 waitlist_raw.append(u)
 
-        wait_list = sorted(waitlist_raw, key=lambda u: u.created_at)
+        wait_list = sorted(waitlist_raw, key=lambda u: u.updated_at)
         for idx, u in enumerate(wait_list, 1):
             if u.user_id == user_id:
                 user_waitlist_pos = idx
                 break
 
-        booked_list = sorted(booked_raw, key=lambda u: (u.user_id != user_id, u.created_at))
+        booked_list = sorted(booked_raw, key=lambda u: (u.user_id != user_id, u.full_name))
 
         booked_count = len(booked_list)
         free_seats = max(c_info.capacity - booked_count, 0)

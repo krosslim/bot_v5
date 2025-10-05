@@ -69,7 +69,7 @@ class Repository:
         stmt = (
             select(
                 Booking.cal_date, Booking.user_id, User.full_name,
-                Booking.status, Booking.sub_status, Booking.created_at
+                Booking.status, Booking.sub_status, Booking.created_at, Booking.updated_at
             )
             .join(User, Booking.user_id == User.user_id)
             .where(Booking.cal_date.between(start, end), Booking.status.in_(status_list))
@@ -86,10 +86,12 @@ class Repository:
         data = rows.all()
 
         grouped: Dict[date, List[UserBookingDTO]] = defaultdict(list)
-        for cal_date, user_id, full_name, status, sub_status, created_at in data:
+        for cal_date, user_id, full_name, status, sub_status, created_at, updated_at in data:
             grouped[cal_date].append(
                 UserBookingDTO(
-                    user_id=user_id, full_name=full_name, status=status, sub_status=sub_status, created_at=created_at
+                    user_id=user_id, full_name=full_name,
+                    status=status, sub_status=sub_status,
+                    created_at=created_at, updated_at=updated_at
                 )
             )
         return [DateBookingsDTO(cal_date=cd, users=grouped[cd]) for cd in sorted(grouped)]
