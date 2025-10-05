@@ -5,6 +5,7 @@ from functools import partial
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.combining import OrTrigger
 from dishka import AsyncContainer
 
 from config import settings as s
@@ -96,11 +97,18 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
 
     sched.add_job(
         partial(remind_to_confirm_booking_job, container),
-        trigger=CronTrigger(
-            hour=f"{s.CONFIRM_REMIND_JOB_HOUR},{s.CONFIRM_REMIND_REPEAT_JOB_HOUR}",
-            minute = f"{s.CONFIRM_REMIND_JOB_MINUTES},{s.CONFIRM_REMIND_REPEAT_JOB_MINUTES}",
-            timezone = sched.timezone
-        ),
+        trigger=OrTrigger([
+            CronTrigger(
+            hour=s.CONFIRM_REMIND_JOB_HOUR,
+            minute=s.CONFIRM_REMIND_JOB_MINUTES,
+            timezone=sched.timezone
+            ),
+            CronTrigger(
+                hour=s.CONFIRM_REMIND_REPEAT_JOB_HOUR,
+                minute=s.CONFIRM_REMIND_REPEAT_JOB_MINUTES,
+                timezone=sched.timezone
+            )
+        ]),
         id="remind_to_confirm_booking_job",
         max_instances = 1,
         coalesce = True,

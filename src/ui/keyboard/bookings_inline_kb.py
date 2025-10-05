@@ -123,7 +123,11 @@ def _paginator_row(
         ).pack()),
         InlineKeyboardButton(
             text=f"{week_start:%d.%m} - {week_end:%d.%m}",
-            callback_data="#",
+            callback_data=BookingCB(
+            step=BookingStep.WEEK_INFO,
+            extra=f"{week_start:%d.%m} - {week_end:%d.%m}",
+            idk=gen_idk(),
+        ).pack(),
         ),
         InlineKeyboardButton(text="→", callback_data=BookingCB(
             step=BookingStep.PAGE,

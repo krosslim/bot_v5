@@ -101,6 +101,8 @@ async def handle_queue_join(call: CallbackQuery,
 
     try:
         await uc.waitlist_place(call.from_user.id, cal_date)
+        await call.answer(text="Записали тебя в очередь!\nОтправим пуш, если появится место",
+                          show_alert=True)
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)
     except DBError:
@@ -157,6 +159,15 @@ async def handle_back_menu_button(call: CallbackQuery, state: FSMContext):
     if await state.get_state():
         await state.clear()
     await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
+
+
+@router.callback_query(BookingCB.filter(F.step.in_({BookingStep.WEEK_INFO})))
+async def handle_week_info(call: CallbackQuery, callback_data: BookingCB):
+    await call.answer(text=f"🗓️ Выбрано {callback_data.extra}\n\n"
+                           f"• Для записи: жми ПН–ПТ\n───────────\n"
+                           f"• Сменить неделю: ← →\n───────────\n"
+                           f"• Узнать статус дня:\n ℹ️ Инструкция",
+                      show_alert=True)
 
 
 # ---------------------------------------------- helpers ----------------------------------------------

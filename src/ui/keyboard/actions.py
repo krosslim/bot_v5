@@ -13,6 +13,7 @@ class MenuStep(StrEnum):
 class BookingStep(StrEnum):
     INIT_BOOKING = auto()
     PAGE = auto()
+    WEEK_INFO = auto()
     BOOK = auto()
     UNBOOK = auto()
     LEAVEQ = auto()
