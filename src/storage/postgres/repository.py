@@ -364,7 +364,8 @@ class Repository:
             .where(
                 Booking.cal_date == cal_date,
                 Booking.status == current_status,
-                Booking.sub_status == current_sub_status
+                Booking.sub_status == current_sub_status,
+                Booking.updated_at == func.now()
             )
             .values(status=status, sub_status=sub_status)
             .returning(Booking.booking_id, Booking.user_id)

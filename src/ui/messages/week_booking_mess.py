@@ -26,9 +26,6 @@ def render_booking_week_mess(
 ) -> str:
     cap_by_weekday = {c.weekday: c for c in capacities}
     bookings_by_date = {d.cal_date: d for d in dates}
-    holiday_map = {c.cal_date: c.is_holiday for c in calendar}
-    workday_map = {c.cal_date: c.is_workday for c in calendar}
-    weekend_map = {c.cal_date: c.is_weekend for c in calendar}
 
     lines: List[str] = []
     today = effective_today()
@@ -44,12 +41,12 @@ def render_booking_week_mess(
             lines.append(f"{header}\n<blockquote expandable><i>Недоступно</i></blockquote>")
             continue
 
-        if holiday_map.get(day, False) and not weekend_map.get(day, False):
+        if c_day.is_holiday and not c_day.is_weekend:
             header = f"<b>🌴 {c_info.short_name} {day_str}</b>"
             lines.append(f"{header}\n<blockquote expandable><i>ПРАЗДНИЧНЫЙ ДЕНЬ</i></blockquote>")
             continue
 
-        if weekend_map.get(day, False) and not workday_map.get(day, True):
+        if c_day.is_weekend and not c_day.is_workday:
             continue
 
         day_bookings = bookings_by_date.get(day)
