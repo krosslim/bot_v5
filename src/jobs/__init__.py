@@ -121,12 +121,12 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
                 s.CONFIRM_REMIND_JOB_HOUR, s.CONFIRM_REMIND_JOB_MINUTES,
                 s.CONFIRM_REMIND_REPEAT_JOB_HOUR, s.CONFIRM_REMIND_REPEAT_JOB_MINUTES)
 
-
+    run_minute = s.WORK_END_MINUTES+1
     sched.add_job(
         partial(cancel_waitlist_bookings_job, container),
         trigger=CronTrigger(
             hour=s.WORK_END_HOUR,
-            minute=1,
+            minute=run_minute,
             timezone=sched.timezone
         ),
         id="cancel_waitlist_bookings_job",
@@ -135,7 +135,7 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
         coalesce=True,
         replace_existing=True
     )
-    logger.info("register job: cancel_waitlist_bookings_job | every day | start at: %s:01", s.WORK_END_HOUR)
+    logger.info("register job: cancel_waitlist_bookings_job | every day | start at: %s:%s", s.WORK_END_HOUR, run_minute)
 
 
     # --- Для тестов ---

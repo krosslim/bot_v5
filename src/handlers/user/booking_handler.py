@@ -11,6 +11,7 @@ from src.services.exceptions import BookingError
 from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.ui.keyboard.bookings_inline_kb import render_booking_week_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
+from src.ui.keyboard.menu_inline_kb import own_booking_kb
 from src.ui.messages.auto_book_mess import build_promote_message
 from src.ui.messages.help_booking_mess import render_help_booking_mess
 from src.ui.messages.start_mess import bot_menu_mess
@@ -71,12 +72,7 @@ async def handle_book_cancel_action(call: CallbackQuery,
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
-        promote_user_id = await uc.cancel_book_place(call.from_user.id, cal_date)
-        if promote_user_id:
-            try:
-                await call.bot.send_message(chat_id=promote_user_id, text=build_promote_message(cal_date=cal_date))
-            except TelegramBadRequest as e_tg:
-                logger.exception(f"Не удалось отправить сообщение {promote_user_id} | {str(e_tg)}")
+        await promote_user_after_cancel(call, uc, cal_date)
     except BookingError as e:
         await call.answer(text = str(e), show_alert = True)
     except DBError:
@@ -193,3 +189,16 @@ async def _render_booking_page(call: CallbackQuery, week_offset: int, uc: Bookin
             )
         except TelegramBadRequest:
             return
+
+
+async def promote_user_after_cancel(call: CallbackQuery, uc: BookingUseCase, cal_date: date) -> None:
+    promote_user_id = await uc.cancel_book_place(call.from_user.id, cal_date)
+    if promote_user_id:
+        try:
+            await call.bot.send_message(
+                chat_id=promote_user_id,
+                text=build_promote_message(cal_date=cal_date),
+                reply_markup=own_booking_kb()
+            )
+        except TelegramBadRequest as e_tg:
+            logger.exception(f"Не удалось отправить сообщение {promote_user_id} | {str(e_tg)}")

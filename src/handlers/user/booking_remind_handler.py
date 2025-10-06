@@ -2,17 +2,18 @@ import logging
 from datetime import date, datetime, time, timedelta
 
 from aiogram import Router, F
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
 from config import settings as s
+from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.exceptions import BookingError
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
-from src.ui.keyboard.menu_inline_kb import get_menu_kb
-from src.ui.messages.auto_book_mess import build_promote_message
+from src.ui.keyboard.menu_inline_kb import own_booking_kb, get_menu_kb
+from src.ui.messages.start_mess import bot_menu_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.db_exc_wrapper import DBError
+from src.utils.tommorow import fmt_date_ru
 
 router = Router()
 
@@ -27,6 +28,7 @@ async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingC
 
     cal_date = date.fromisoformat(callback_data.extra)
     tomorrow = date.today() + timedelta(days=1)
+    str_tomorrow = fmt_date_ru(tomorrow)
 
     if cal_date != tomorrow:
         await call.message.edit_reply_markup(reply_markup=None)
@@ -48,11 +50,13 @@ async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingC
             booking_id = await uc.confirm_booking(user_id=call.from_user.id, cal_date=cal_date)
             if booking_id:
                 await call.message.edit_reply_markup(reply_markup=None)
-                await call.answer(text="✅ Бронь подтверждена", show_alert=True)
+                await call.answer(text="✅ Бронь на завтра подтверждена", show_alert=True)
                 await call.bot.send_message(
                     chat_id=call.from_user.id,
-                    text=f"{tomorrow} → Бронь подтверждена\n\n<b>Главное меню ⤵</b>",
-                    reply_markup=get_menu_kb(),
+                    text=f"<b>{str_tomorrow} → Подтверждено</b>\n\n"
+                         f"<blockquote><b>Как подключить автоподтверждение?</b>\n"
+                         f"/menu → ⚙ Настройки → Автоподтверждение брони</blockquote>",
+                    reply_markup=own_booking_kb(),
                 )
             else:
                 if await uc.user_booking_for_date(user_id=call.from_user.id, cal_date=cal_date):
@@ -64,20 +68,13 @@ async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingC
                     await call.answer(text="⚠️ Бронь для подтверждения отсутствует", show_alert=True)
 
         if step == ChatBookingStep.CANCEL_BOOKING_IN_REMINDER:
-            promote_user_id = await uc.cancel_book_place(call.from_user.id, cal_date)
-            if promote_user_id:
-                try:
-                    await call.bot.send_message(chat_id=promote_user_id, text=build_promote_message(cal_date=cal_date))
-                except TelegramBadRequest as e_tg:
-                    logger.exception(f"Не удалось отправить сообщение {promote_user_id} | {str(e_tg)}")
+
+            await promote_user_after_cancel(call, uc, cal_date)
 
             await call.message.edit_reply_markup(reply_markup=None)
             await call.answer(text="✅ Бронь на завтра отменена", show_alert=True)
-            await call.bot.send_message(
-                chat_id=call.from_user.id,
-                text=f"{tomorrow} → Бронь отменена\n\n<b>Главное меню ⤵</b>",
-                reply_markup=get_menu_kb(),
-            )
+            await call.bot.send_message(chat_id=call.from_user.id, text=f"<b>{str_tomorrow} → Отменено</b>")
+            await call.bot.send_message(chat_id=call.from_user.id, text=bot_menu_mess(), reply_markup=get_menu_kb())
 
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)

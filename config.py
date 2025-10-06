@@ -28,6 +28,8 @@ class Config(BaseSettings):
     MSC_TZ: str = "Europe/Moscow"
 
     WORK_END_HOUR: int = 12             # Время, до которого можно бронировать место для текущего дня
+    WORK_END_MINUTES: int = 00
+
     BOOKING_SESSION_SEC: int = 300      # Время сессии бронирования при нажатии кнопки "Забронировать место"
     PAGINATION_LIMIT_WEEKS: int = 4     # Сколько недель можно глянуть в "Забронировать место"
 

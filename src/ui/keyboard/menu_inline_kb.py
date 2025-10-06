@@ -35,3 +35,13 @@ def get_menu_kb() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def own_booking_kb() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.row(
+        InlineKeyboardButton(
+            text="Управлять бронированием",
+            callback_data=MyBookingCB(step=MyBookingStep.INIT_MY_BOOKING).pack()
+        ),
+        width=1
+    )
+    return kb.as_markup()

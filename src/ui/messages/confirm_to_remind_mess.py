@@ -12,7 +12,5 @@ def remind_mess(escalation: bool):
                 f"В течение <b>{minutes_left} минут</b> запись будет отменена, если не подтвердить")
 
     return ("<b>ℹ️ Напоминаем о брони на завтра</b>\n\n"
-            f"Подтвердите визит до <b>{s.CANCEL_BOOKING_JOB_HOUR}:{s.CANCEL_BOOKING_JOB_MINUTES}.</b> "
-            f"Иначе бронь отменится.\n\n"
-            f"<blockquote>Автоподтверждение можно подключить через настройки:\n"
-            f"/menu → Настройки → Автоподтверждение брони</blockquote>")
+            f"Подтвердите визит до <b>{s.CANCEL_BOOKING_JOB_HOUR}:{s.CANCEL_BOOKING_JOB_MINUTES}.</b>\n"
+            f"Иначе бронь отменится и перейдет другому.")

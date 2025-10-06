@@ -7,11 +7,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
+from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.exceptions import BookingError
 from src.ui.keyboard.actions import MyBookingCB, MyBookingStep
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.my_booking_inline_kb import render_my_booking_kb, render_book_day_kb
-from src.ui.messages.auto_book_mess import build_promote_message
 from src.ui.messages.my_booking_mess import render_my_booking_mess, render_book_day_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.use_cases.booking_use_case import BookingUseCase
@@ -39,12 +39,7 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
     try:
         if step == MyBookingStep.CANCEL_BOOKING:
             cancel_dt = _parse_iso_date(callback_data.extra)
-            promote_user_id = await uc.cancel_book_place(user_id, cancel_dt)
-            if promote_user_id:
-                try:
-                    await call.bot.send_message(chat_id=promote_user_id, text=build_promote_message(cal_date=cancel_dt))
-                except TelegramBadRequest as e_tg:
-                    logger.exception(f"Не удалось отправить сообщение {promote_user_id} | {str(e_tg)}")
+            await promote_user_after_cancel(call, uc, cancel_dt)
         elif step == MyBookingStep.LEAVE_QUEUE:
             cancel_dt = _parse_iso_date(callback_data.extra)
             await uc.cancel_waitlist_place(user_id, cancel_dt)
