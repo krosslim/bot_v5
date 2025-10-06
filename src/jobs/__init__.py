@@ -15,7 +15,8 @@ from src.jobs.cron_jobs import (
     sheet_update_job,
     week_result_job,
     check_chat_remind_reserve_job,
-    remind_to_confirm_booking_job
+    remind_to_confirm_booking_job,
+    cancel_waitlist_bookings_job
 )
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,22 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
     logger.info("register job: remind_to_confirm_booking_job | every day | first at: %s:%s, second at %s:%s",
                 s.CONFIRM_REMIND_JOB_HOUR, s.CONFIRM_REMIND_JOB_MINUTES,
                 s.CONFIRM_REMIND_REPEAT_JOB_HOUR, s.CONFIRM_REMIND_REPEAT_JOB_MINUTES)
+
+
+    sched.add_job(
+        partial(cancel_waitlist_bookings_job, container),
+        trigger=CronTrigger(
+            hour=s.WORK_END_HOUR,
+            minute=1,
+            timezone=sched.timezone
+        ),
+        id="cancel_waitlist_bookings_job",
+        max_instances=1,
+        misfire_grace_time=60,
+        coalesce=True,
+        replace_existing=True
+    )
+    logger.info("register job: cancel_waitlist_bookings_job | every day | start at: %s:01", s.WORK_END_HOUR)
 
 
     # --- Для тестов ---

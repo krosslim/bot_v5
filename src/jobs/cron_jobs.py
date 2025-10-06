@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramBadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dishka import AsyncContainer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from src.clients.google_sheet_client import update_sheet_data
@@ -353,6 +354,28 @@ async def remind_to_confirm_booking_job(container: AsyncContainer) -> None:
                     )
 
 
+# -------------------------------- Отменить все брони зависшие в очереди --------------------------------
+async def cancel_waitlist_bookings_job(container: AsyncContainer) -> None:
+    logger.info("cancel_waitlist_bookings_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
+    async with container() as req:
+        svc: BookingService = await req.get(BookingService)
+        session: AsyncSession = await req.get(AsyncSession)
+
+        try:
+            async with session.begin():
+                res = await svc.update_booking_status(
+                    date.today(),
+                    BookingStatus.WAITLISTED,           # текущий
+                    BookingStatus.WAITLISTED_MANUAL,
+                    BookingStatus.CANCELED,             # Новый
+                    BookingStatus.CANCELED_NO_SPOTS_WAITLIST
+                )
+                logger.info("cancel_waitlist_bookings_job | updated_count=%s", res)
+        except DBError as e:
+            logger.exception(f"ERROR: cancel_waitlist_job | {str(e)}")
+
+
 # -------------------------------- helpers --------------------------------
 def _add_job_checker(
         sched: AsyncIOScheduler,
@@ -382,7 +405,6 @@ def _add_job_checker(
 # TODO
 #   JOBS
 #   1. Отмена всех не подтвержденных броней
-#   2. Отмена тех кто был в листе ожидания
 
 
 

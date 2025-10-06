@@ -349,6 +349,46 @@ class Repository:
         return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=None)
 
 
+    # -------------------- ИЗМЕНИТЬ СТАТУС БРОНИРОВАНИЯ --------------------
+    async def update_booking_status(
+            self,
+            cal_date: date,
+            current_status: BookingStatus,
+            current_sub_status: BookingStatus,
+            status: BookingStatus,
+            sub_status: BookingStatus
+    ) -> int:
+
+        upd_stmt = (
+            update(Booking)
+            .where(
+                Booking.cal_date == cal_date,
+                Booking.status == current_status,
+                Booking.sub_status == current_sub_status
+            )
+            .values(status=status, sub_status=sub_status)
+            .returning(Booking.booking_id, Booking.user_id)
+        )
+
+        res = await self.session.execute(upd_stmt)
+        rows = res.fetchall()
+        if not rows:
+            return 0
+
+        events_payload = [
+            {
+                "booking_id": r.booking_id,
+                "status": status,
+                "sub_status": sub_status,
+                "updated_by": r.user_id
+            }
+            for r in rows
+        ]
+        await self.session.execute(pg_insert(BookingEvent), events_payload)
+
+        return len(events_payload)
+
+
     # -------------------- ВСТАТЬ В ОЧЕРЕДЬ --------------------
     async def upsert_waitlisted(self, user_id: int, cal_date: date) -> Optional[int]:
         stmt = (

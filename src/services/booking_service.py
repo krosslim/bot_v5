@@ -109,6 +109,16 @@ class BookingService:
             await self.repo.insert_event(booking_id, BookingStatus.BOOKED, BookingStatus.CONFIRMED, user_id)
         return booking_id
 
+    async def update_booking_status(
+            self,
+            cal_date: date,
+            current_status: BookingStatus,
+            current_sub_status: BookingStatus,
+            status: BookingStatus,
+            sub_status: BookingStatus
+    ) -> int:
+        return await self.repo.update_booking_status(cal_date, current_status, current_sub_status, status, sub_status)
+
 
     async def get_booking_changes(self, month_offset: int = 0) -> bool:
         return await self.repo.has_booking_changes(month_offset)
@@ -152,6 +162,7 @@ class BookingService:
 
     async def week_visits(self, start: date, end: date) -> List[WeekVisitsDTO]:
         return await self.repo.get_week_visits(start, end)
+
 
     async def week_max(self, start: date, end: date) -> List[UserBookingWeekResultDTO]:
         return await self.repo.get_users_max_bookings(start, end)
