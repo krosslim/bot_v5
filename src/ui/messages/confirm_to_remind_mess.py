@@ -1,7 +1,7 @@
 from config import settings as s
 
 
-def remind_mess(escalation: bool):
+def remind_mess(escalation: bool) -> str:
     if escalation:
         minutes_left = (
                 (s.CANCEL_BOOKING_JOB_HOUR * 60 + s.CANCEL_BOOKING_JOB_MINUTES)

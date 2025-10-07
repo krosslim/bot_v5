@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,9 +47,9 @@ class BookingUseCase:
             await self.booking.pre_check_booking(user_id, cal_date, capacity)
             await self.booking.create_booking(user_id, cal_date, auto_confirm)
 
-    async def cancel_book_place(self, user_id: int, cal_date: date) -> Optional[int]:
+    async def cancel_book_place(self, user_id: int, cal_date: date, cancel_sub_status: str | None) -> Optional[int]:
         async with self.session.begin():
-            promote_user_id = await self.booking.cancel_booking(user_id, cal_date)
+            promote_user_id = await self.booking.cancel_booking(user_id, cal_date, cancel_sub_status)
             return promote_user_id
 
     async def waitlist_place(self, user_id: int, cal_date: date) -> None:
@@ -109,7 +109,8 @@ class BookingUseCase:
 
         weekday = cal_date.isoweekday()
         bookings = await self.booking.get_bookings_for_remind(cal_date)
-        bookings = bookings[0]
+        if bookings:
+            bookings = bookings[0]
         capacity = await self.office_capacity.get_weekday_capacity(weekday)
         return bookings, capacity
 
@@ -125,6 +126,15 @@ class BookingUseCase:
         return await self.booking.get_user_booking_for_day(user_id, cal_date)
 
 
+    async def bookings_by_status(
+            self,
+            start: date,
+            end: date,
+            status_list: Union[str, List[str]],
+            sub_status_list: Optional[Union[str, List[str]]] = None
+    ) -> List[DateBookingsDTO]:
+        async with self.session.begin():
+            return await self.booking.get_bookings_by_status(start, end, status_list, sub_status_list)
 
 
 

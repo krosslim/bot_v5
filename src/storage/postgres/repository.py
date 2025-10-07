@@ -291,7 +291,16 @@ class Repository:
 
 
     # -------------------- ОТМЕНА БРОНИРОВАНИЯ --------------------
-    async def cancel_booking(self, cancel_user_id: int, cal_date: date) -> CancelBookingFifoDTO:
+    async def cancel_booking(
+            self,
+            cancel_user_id: int,
+            cal_date: date,
+            cancel_sub_status: str | None
+    ) -> CancelBookingFifoDTO:
+
+        if cancel_sub_status is None:
+            cancel_sub_status = BookingStatus.CANCELED_CHANGED_MIND
+
         # отмена
         cancel_stmt = (
             update(Booking)
@@ -300,7 +309,7 @@ class Repository:
                 Booking.cal_date == cal_date,
                 Booking.status == BookingStatus.BOOKED
             )
-            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND, updated_at=func.now())
+            .values(status=BookingStatus.CANCELED, sub_status=cancel_sub_status, updated_at=func.now())
             .returning(Booking.booking_id)
         )
         cancel_res = await self.session.execute(cancel_stmt)
@@ -310,7 +319,7 @@ class Repository:
 
         canceled_id = int(cancel_row[0])
         await self.insert_event(
-            canceled_id, BookingStatus.CANCELED, BookingStatus.CANCELED_CHANGED_MIND, cancel_user_id
+            canceled_id, BookingStatus.CANCELED, cancel_sub_status, cancel_user_id
         )
 
         # поиск замены

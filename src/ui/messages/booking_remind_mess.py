@@ -1,7 +1,7 @@
 from datetime import date
 from html import escape
 
-from config import settings
+from config import settings as s
 from src.dto.booking_dto import BookingStatus, DateBookingsDTO
 from src.utils.tommorow import fmt_date_ru
 
@@ -43,8 +43,8 @@ def build_digest_message(bookings: DateBookingsDTO, capacity: int, cal_date: dat
     body = "\n".join(lines)
 
     # --- FOOTER ---
-    contacts = f'<a href="https://t.me/{settings.BOT_USERNAME}?start=">🤖 БОТ</a>'
-    google_sheet = f'<a href="{settings.GOOGLE_SHEET_USER_URL}">📗 ТАБЛИЦА ПОСЕЩЕНИЙ</a>'
+    contacts = f'<a href="https://t.me/{s.BOT_USERNAME}?start=">🤖 БОТ</a>'
+    google_sheet = f'<a href="{s.GOOGLE_SHEET_USER_URL}">📗 ТАБЛИЦА ПОСЕЩЕНИЙ</a>'
     additional_info = f"<b>{contacts} | {google_sheet}</b>"
     if has_reserved:
         footer = (
@@ -67,7 +67,7 @@ def build_digest_message_v2(bookings: DateBookingsDTO, capacity: int, cal_date: 
 
     # --- BODY ---
     confirmed_title_default = "<blockquote><b>✅ Подтвердили присутствие</b></blockquote>"
-    reserved_title  = "<blockquote><b>🕒 Ожидаем подтверждение</b></blockquote>"
+    reserved_title  = f"<blockquote><b>🕒 Ожидаем подтверждение до {s.CANCEL_BOOKING_JOB_HOUR}:{s.CANCEL_BOOKING_JOB_MINUTES}</b></blockquote>"
 
     confirmed_lines: list[str] = []
     reserved_lines: list[str] = []
@@ -118,8 +118,8 @@ def build_digest_message_v2(bookings: DateBookingsDTO, capacity: int, cal_date: 
 
 
     # --- FOOTER ---
-    contacts = f'<a href="https://t.me/{settings.BOT_USERNAME}?start=">🤖 БОТ ›</a>'
-    google_sheet = f'<a href="{settings.GOOGLE_SHEET_USER_URL}">📗 ТАБЛИЦА ›</a>'
+    contacts = f'<a href="https://t.me/{s.BOT_USERNAME}?start=">🤖 БОТ ›</a>'
+    google_sheet = f'<a href="{s.GOOGLE_SHEET_USER_URL}">📗 ТАБЛИЦА ›</a>'
     additional_info = f"<b>{google_sheet}  |  {contacts}</b>"
 
     parts = [header]

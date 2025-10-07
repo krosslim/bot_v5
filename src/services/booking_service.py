@@ -71,9 +71,9 @@ class BookingService:
                              "Повторная бронь не требуется.")
 
 
-    async def cancel_booking(self, user_id: int, cal_date: date) -> Optional[int]:
+    async def cancel_booking(self, user_id: int, cal_date: date, cancel_sub_status: str | None) -> Optional[int]:
 
-        cancel_promote = await self.repo.cancel_booking(user_id, cal_date)
+        cancel_promote = await self.repo.cancel_booking(user_id, cal_date, cancel_sub_status)
 
         if cancel_promote.canceled_user_id is None:
             raise CancelIsAlreadyExist("✅ У тебя больше нет брони на этот день! "

@@ -15,21 +15,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import settings
 from src.clients.google_sheet_client import update_sheet_data
 from src.dto.booking_dto import BookingStatus
+from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.ui.keyboard.booking_remind_kb import confirm_kb
 from src.ui.keyboard.confirm_remind_kb import remind_kb
-from src.ui.keyboard.menu_inline_kb import get_menu_kb
+from src.ui.keyboard.menu_inline_kb import get_menu_kb, check_bookings_kb
 from src.ui.keyboard.week_result_kb import week_summary_kb
 from src.ui.messages.booking_remind_mess import build_digest_message_v2
 from src.ui.messages.confirm_to_remind_mess import remind_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
+from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.sheet_name import month_name
 from src.utils.today import effective_datetime_range
+from src.utils.tommorow import fmt_date_ru
 
 logger = logging.getLogger(__name__)
 
@@ -376,6 +379,57 @@ async def cancel_waitlist_bookings_job(container: AsyncContainer) -> None:
             logger.exception(f"ERROR: cancel_waitlist_job | {str(e)}")
 
 
+# -------------------------------- Отмена не подтвержденных бронирований --------------------------------
+async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
+
+    logger.info("cancel_not_confirmed_booking_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
+    async with container() as req:
+        uc: BookingUseCase = await req.get(BookingUseCase)
+        bot: Bot = await req.get(Bot)
+
+        tomorrow = date.today() + timedelta(days=1)
+        # print(f"определяем завтрашний день: {tomorrow}")
+
+        reserved = await uc.bookings_by_status(
+            tomorrow,
+            tomorrow,
+            BookingStatus.BOOKED,
+            BookingStatus.RESERVED
+        )
+        # print(f"получаем брони со статусом RESERVED: {reserved}")
+        # print()
+
+        if not reserved:
+            logger.info("cancel_not_confirmed_booking_job | no data for %s", tomorrow)
+            return
+
+        reserved = reserved[0]
+        # print(f"брони есть, извлекаем данные для {tomorrow}: {reserved}")
+        # print()
+
+        if not reserved.users:
+            logger.info("cancel_not_confirmed_booking_job | no users to confirm for %s", tomorrow)
+            return
+
+        for user in reserved.users:
+            await promote_user_after_cancel(
+                call=None,
+                uc=uc,
+                cal_date=tomorrow,
+                bot=bot,
+                user_id=user.user_id,
+                cancel_sub_status=BookingStatus.CANCELED_NOT_CONFIRMED
+            )
+            await _send_cancel_message(
+                bot=bot,
+                user_id=user.user_id,
+                cal_date=tomorrow
+            )
+
+        logger.info("cancel_not_confirmed_booking_job | total_count=%s", len(reserved.users))
+
+
 # -------------------------------- helpers --------------------------------
 def _add_job_checker(
         sched: AsyncIOScheduler,
@@ -402,9 +456,22 @@ def _add_job_checker(
     logger.info("register job: check_chat_remind_job | start: %s, end: %s", start, end)
 
 
-# TODO
-#   JOBS
-#   1. Отмена всех не подтвержденных броней
+async def _send_cancel_message(bot: Bot, user_id: int, cal_date: date) -> None:
+
+    str_date = fmt_date_ru(cal_date)
+
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=f"<b>❗️ {str_date} → Бронь отменена</b>\n\n"
+                 f"<blockquote>К сожалению, мы так и не получили подтверждение о завтрашней записи.\n"
+                 f"Поэтому она была автоматически отменена. "
+                 f"Если места еще остались, ты можешь попробовать занять.\nНовую запись подтверждать не придется</blockquote>",
+            reply_markup=check_bookings_kb()
+        )
+    except TelegramBadRequest as e_tg:
+        logger.exception(f"Не удалось отправить сообщение {user_id} | {str(e_tg)}")
+
 
 
 

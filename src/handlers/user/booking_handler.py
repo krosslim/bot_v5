@@ -1,7 +1,7 @@
 import logging
 from datetime import date
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -191,14 +191,39 @@ async def _render_booking_page(call: CallbackQuery, week_offset: int, uc: Bookin
             return
 
 
-async def promote_user_after_cancel(call: CallbackQuery, uc: BookingUseCase, cal_date: date) -> None:
-    promote_user_id = await uc.cancel_book_place(call.from_user.id, cal_date)
+async def promote_user_after_cancel(
+        call: CallbackQuery | None,
+        uc: BookingUseCase,
+        cal_date: date,
+        bot: Bot | None = None,
+        user_id: int | None = None,
+        cancel_sub_status: str | None = None
+) -> None:
+
+    if call:
+        user_id = call.from_user.id
+
+    if call is None and user_id is None:
+        return
+
+    promote_user_id = await uc.cancel_book_place(user_id, cal_date, cancel_sub_status)
     if promote_user_id:
         try:
-            await call.bot.send_message(
-                chat_id=promote_user_id,
-                text=build_promote_message(cal_date=cal_date),
-                reply_markup=own_booking_kb()
-            )
+            if call and bot is None:
+                await call.bot.send_message(
+                    chat_id=promote_user_id,
+                    text=build_promote_message(cal_date=cal_date),
+                    reply_markup=own_booking_kb()
+                )
+
+            elif bot and call is None:
+                await bot.send_message(
+                    chat_id=promote_user_id,
+                    text=build_promote_message(cal_date=cal_date),
+                    reply_markup=own_booking_kb()
+                )
+            else:
+                logger.exception(f"Сообщение для user_id {promote_user_id} не отправлено. Аргументы функции заданы неверно")
+                return
         except TelegramBadRequest as e_tg:
             logger.exception(f"Не удалось отправить сообщение {promote_user_id} | {str(e_tg)}")

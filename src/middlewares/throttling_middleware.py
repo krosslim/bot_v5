@@ -24,7 +24,7 @@ class ThrottlingMiddleware(BaseMiddleware):
         tech_service = await container.get(TechService)
 
         set_key = await tech_service.set_throttling_key(
-                user_id=user_id, idk=idk,ttl=3
+                user_id=user_id, idk=idk,ttl=2
         )
 
         if set_key is False:
