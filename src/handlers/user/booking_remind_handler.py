@@ -1,5 +1,6 @@
 import logging
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
@@ -36,7 +37,7 @@ async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingC
                           show_alert=True)
         return
 
-    current_time = datetime.now().time()
+    current_time = datetime.now(tz=ZoneInfo(s.MSC_TZ)).time()
     cancel_time = time(s.CANCEL_BOOKING_JOB_HOUR, s.CANCEL_BOOKING_JOB_MINUTES)
 
     if current_time > cancel_time:
