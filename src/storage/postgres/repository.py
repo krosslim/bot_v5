@@ -55,6 +55,12 @@ class Repository:
         stmt = (update(User).where(User.user_id == user_id).values(auto_confirm=auto_confirm))
         await self.session.execute(stmt)
 
+    async def update_is_active(self, user_id: int, is_active: bool) -> int:
+        stmt = (update(User).where(User.user_id == user_id).values(is_active=is_active))
+        res = await self.session.execute(stmt)
+        return res.rowcount #type: ignore
+
+
 # ---------------------------------------------------------------------------#
 #  BOOKINGS
 # ---------------------------------------------------------------------------#
@@ -134,7 +140,7 @@ class Repository:
                 sub_q.c.cal_date,
                 sub_q.c.position
             )
-            .where(sub_q.c.user_id == user_id)
+            .where(sub_q.c.user_id == user_id) #type: ignore
             .order_by(sub_q.c.cal_date)
         )
 
@@ -225,7 +231,7 @@ class Repository:
                 counts.c.full_name,
                 counts.c.booking_count
             )
-            .where(counts.c.booking_count == max_count_subq)
+            .where(counts.c.booking_count == max_count_subq) #type: ignore
         )
 
         res = await self.session.execute(stmt)
@@ -480,6 +486,7 @@ class Repository:
                     Booking.status == BookingStatus.BOOKED,
                 ),
             )
+            .where(User.is_active.is_(True))
             .order_by(User.full_name, Booking.cal_date)
         )
         result = await self.session.execute(stmt)

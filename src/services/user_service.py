@@ -43,6 +43,9 @@ class UserService:
     async def get_dict_data(self, dict_type: str) -> List[DictDTO]:
         return await self.repo.get_dict_data(dict_type)
 
+    async def update_is_active(self, user_id: int, is_active: bool) -> int:
+        return await self.repo.update_is_active(user_id, is_active)
+
 
 
 

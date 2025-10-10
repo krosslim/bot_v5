@@ -152,7 +152,7 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
         coalesce=True,
         replace_existing=True
     )
-    logger.info("register job: cancel_waitlist_bookings_job | every day | start at: %s:%s",
+    logger.info("register job: cancel_not_confirmed_booking_job | every day | start at: %s:%s",
                 s.CANCEL_BOOKING_JOB_HOUR, s.CANCEL_BOOKING_JOB_MINUTES)
 
 

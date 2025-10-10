@@ -1,19 +1,27 @@
+import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot
 from aiogram.enums import ChatMemberStatus
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import (
     TelegramObject,
-    Message,
     CallbackQuery,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ChatMembershipMiddleware(BaseMiddleware):
 
-    def __init__(self, chat_id: int):
+    def __init__(
+            self,
+            chat_id: int,
+            *,
+            deny_text: str = "⚠️ Доступ к боту запрещен",
+    ):
         self.chat_id = chat_id
+        self.deny_text = deny_text
 
     async def __call__(
         self,
@@ -23,26 +31,30 @@ class ChatMembershipMiddleware(BaseMiddleware):
     ) -> Any | None:
         bot: Bot = data["bot"]
 
-        if isinstance(event, Message):
-            user_id = event.from_user.id
-        elif isinstance(event, CallbackQuery):
-            user_id = event.from_user.id
-        else:
+        from_user = getattr(event, "from_user", None)
+        if not from_user:
             return await handler(event, data)
+        user_id = from_user.id
 
         try:
             member = await bot.get_chat_member(self.chat_id, user_id)
             if member.status in {ChatMemberStatus.LEFT, ChatMemberStatus.KICKED}:
-                await bot.send_message(
-                    user_id,
-                    "<b>⚠️ Ошибка:</b> Доступ к боту запрещен",
-                )
-                return None
-        except TelegramBadRequest:
-            await bot.send_message(
-                user_id,
-                "<b>⚠️ Ошибка:</b> Доступ к боту запрещен",
-            )
+                return await self._deny(event)
+            elif member.status == ChatMemberStatus.RESTRICTED:
+                ok = bool(getattr(member, "is_member", False))
+                if not ok:
+                    return await self._deny(event)
+        except (TelegramBadRequest, TelegramForbiddenError):
+            logger.exception("Bot is not a chat member | chat_id: %s", self.chat_id)
             return None
 
         return await handler(event, data)
+
+    async def _deny(self, event: TelegramObject) -> None:
+        if isinstance(event, CallbackQuery):
+            try:
+                await event.answer(text=self.deny_text, show_alert=True)
+            except TelegramBadRequest:
+                return None
+
+        return None

@@ -1,18 +1,15 @@
-from datetime import date
 from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.user_dto import UserDTO, DictDTO
-from src.services.booking_service import BookingService
 from src.services.exceptions import UserWarn
 from src.services.user_service import UserService
 
 
 class UserUseCase:
-    def __init__(self, user: UserService, booking: BookingService, session: AsyncSession):
+    def __init__(self, user: UserService, session: AsyncSession):
         self.user = user
-        self.booking = booking
         self.session = session
 
     async def check_exists(self, user_id: int) -> Optional[UserDTO]:
@@ -42,10 +39,9 @@ class UserUseCase:
         async with self.session.begin():
             await self.user.update_auto_confirm(user_id, auto_confirm)
 
-    async def confirm_booking(self, user_id: int, cal_date: date) -> Optional[int]:
+    async def update_is_active(self, user_id: int, is_active: bool) -> int:
         async with self.session.begin():
-            booking_id = await self.booking.confirm_booking(user_id, cal_date)
-            return booking_id
+            return await self.user.update_is_active(user_id, is_active)
 
     async def get_professions(self) -> List[DictDTO]:
         return await self.user.get_dict_data('professions')
