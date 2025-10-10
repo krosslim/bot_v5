@@ -46,7 +46,12 @@ async def handle_left_chat_member(
         u_uc: FromDishka[UserUseCase],
         b_uc: FromDishka[BookingUseCase]
 ):
-    member = event.from_user.id
+
+    if event.user.is_bot:
+        return
+
+    member = event.user.id
+
     await u_uc.update_is_active(member, False)
     logger.info("User %s is left from chat", member)
 
@@ -74,8 +79,6 @@ async def handle_left_chat_member(
             BookingStatus.CANCELED,  # Новый
             BookingStatus.CANCELED_LEFT_CHAT
         )
-
-
 
 
 # ----------------------------------------------helpers----------------------------------------------

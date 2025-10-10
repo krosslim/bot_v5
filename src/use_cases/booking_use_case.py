@@ -102,7 +102,8 @@ class BookingUseCase:
             return bookings, wait_list_position
 
     async def my_bookings(self, user_id: int) -> List[OwnBookingDTO]:
-        return await self.booking.get_own_active_bookings(user_id)
+        async with self.session.begin():
+            return await self.booking.get_own_active_bookings(user_id)
 
     async def confirm_booking(self, user_id: int, cal_date: date) -> Optional[int]:
         async with self.session.begin():
