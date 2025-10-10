@@ -101,6 +101,9 @@ class BookingUseCase:
 
             return bookings, wait_list_position
 
+    async def my_bookings(self, user_id: int) -> List[OwnBookingDTO]:
+        return await self.booking.get_own_active_bookings(user_id)
+
     async def confirm_booking(self, user_id: int, cal_date: date) -> Optional[int]:
         async with self.session.begin():
             return await self.booking.confirm_booking(user_id, cal_date)
@@ -137,7 +140,18 @@ class BookingUseCase:
             return await self.booking.get_bookings_by_status(start, end, status_list, sub_status_list)
 
 
-
+    async def update_by_status(
+            self,
+            cal_date: date,
+            current_status: BookingStatus,
+            current_sub_status: BookingStatus,
+            status: BookingStatus,
+            sub_status: BookingStatus
+    ) -> int:
+        async with self.session.begin():
+            return await self.booking.update_booking_status(
+                cal_date, current_status, current_sub_status, status, sub_status
+            )
 
 
 
