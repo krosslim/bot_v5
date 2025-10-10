@@ -47,10 +47,10 @@ async def handle_left_chat_member(
         b_uc: FromDishka[BookingUseCase]
 ):
 
-    if event.user.is_bot:
+    if event.new_chat_member.user.is_bot:
         return
 
-    member = event.user.id
+    member = event.new_chat_member.user.id
 
     await u_uc.update_is_active(member, False)
     logger.info("User %s is left from chat", member)
