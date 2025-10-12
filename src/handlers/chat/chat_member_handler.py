@@ -39,7 +39,7 @@ async def handle_new_chat_member(msg: Message, uc: FromDishka[UserUseCase]):
         )
 
 
-@router.chat_member(ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))
+@router.chat_member(F.chat.id == s.TG_CHAT_ID, ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))
 async def handle_left_chat_member(
         event: ChatMemberUpdated,
         bot: Bot,
