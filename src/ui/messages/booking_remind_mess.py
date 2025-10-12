@@ -119,17 +119,17 @@ def build_digest_message_v2(bookings: DateBookingsDTO, capacity: int, cal_date: 
 
 
     # --- FOOTER ---
-    contacts = f'<a href="https://t.me/{s.BOT_USERNAME}?start=">🤖 БОТ ›</a>'
-    google_sheet = f'<a href="{s.GOOGLE_SHEET_USER_URL}">📗 ТАБЛИЦА ›</a>'
-    additional_info = f"<b>{google_sheet}  |  {contacts}</b>"
+    contacts = f'<a href="https://t.me/{s.BOT_USERNAME}?start=">🤖 Бот ›</a>'
+    google_sheet = f'<a href="{s.GOOGLE_SHEET_USER_URL}">📗 Таблица ›</a>'
     last_update = _get_updated_text()
+    additional_info = f"<blockquote><b>{last_update} | {google_sheet} | {contacts}</b></blockquote>"
 
     parts = [header]
     if confirmed_block:
         parts += [confirmed_block, ""]
     if reserved_block:
         parts += [reserved_block, ""]
-    parts += [free_block, "", additional_info, last_update]
+    parts += [free_block, "", additional_info]
 
     message = "\n".join(part for part in parts if part is not None)
     return message.strip()
@@ -138,5 +138,6 @@ def build_digest_message_v2(bookings: DateBookingsDTO, capacity: int, cal_date: 
 # ----------------------------------------------helpers----------------------------------------------
 def _get_updated_text() -> str:
     current_time = datetime.now(tz=ZoneInfo(s.MSC_TZ))
-    formatted_time = current_time.strftime("%d.%m.%Y в %H:%M")
-    return f"<blockquote><i>Обновлено {formatted_time}</i></blockquote>"
+    formatted_time = current_time.strftime("%H:%M")
+    return f"🔄 {formatted_time}"
+

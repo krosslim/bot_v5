@@ -81,7 +81,7 @@ POSTGRES_ECHO=
 POSTGRES_POOL_PRE_PING=
 POSTGRES_POOL_RECYCLE=
 
-# Чат для сотрудников
+# Чат для сотрудников (Бот должен иметь админ права!)
 TG_CHAT_ID=
 
 # Для состояний бота (FSM)
