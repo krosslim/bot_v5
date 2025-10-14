@@ -82,6 +82,7 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
     except BookingError as e:
         try:
             await call.message.edit_text(text=bot_menu_mess(), reply_markup=get_menu_kb())
+            await call.answer(text=str(e), show_alert=True)
         except TelegramBadRequest:
             await call.answer(text=str(e), show_alert=True)
     except DBError:

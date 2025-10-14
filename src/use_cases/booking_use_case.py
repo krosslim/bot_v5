@@ -84,8 +84,8 @@ class BookingUseCase:
             bookings = await self.booking.get_own_active_bookings(user_id)
 
             if not bookings:
-                raise NoActiveBooking("❗️В настоящий момент у вас нет активных записей\n\n"
-                                      "↓ Нажмите кнопку ↓\n\n🆕 Забронировать место\n\n ↑ для бронирования ↑")
+                raise NoActiveBooking("❗️Активных записей нет\n\n"
+                                      "↓ Для бронирования жми ↓\n\n🆕 Забронировать место")
 
             date_list = []
             wait_list_position = []
