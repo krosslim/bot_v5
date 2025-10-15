@@ -91,12 +91,17 @@ async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler) ->
                 bookings = bookings[0]
             capacity = await capacity_svc.get_weekday_capacity(weekday)
 
+            last_message = await sc_svc.last_message()
+
             message = await bot.send_message(
                 chat_id=settings.TG_CHAT_ID,
                 text=build_digest_message_v2(bookings, capacity, tomorrow),
                 reply_markup=confirm_kb(bookings, capacity, tomorrow),
                 disable_web_page_preview=True
             )
+            await bot.pin_chat_message(chat_id=settings.TG_CHAT_ID, message_id=message.message_id, disable_notification=True)
+            if last_message:
+                await _unpin_last_message(bot, last_message.message_id)
             # print(message.message_id)
             await sc_svc.upsert_chat_message_id(cal_date=tomorrow, message_id=message.message_id)
 
@@ -473,7 +478,10 @@ async def _send_cancel_message(bot: Bot, user_id: int, cal_date: date) -> None:
         logger.exception(f"Не удалось отправить сообщение {user_id} | {str(e_tg)}")
 
 
-
-
+async def _unpin_last_message(bot: Bot, last_message_id: int) -> None:
+    try:
+        await bot.unpin_chat_message(chat_id=settings.TG_CHAT_ID, message_id=last_message_id)
+    except TelegramBadRequest:
+        return
 
 
