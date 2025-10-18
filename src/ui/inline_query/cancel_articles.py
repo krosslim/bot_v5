@@ -107,7 +107,7 @@ def _make_article_multi_date(
     phrase = f"Коллеги, <b>{date_range_str}</b> не смогу прийти в офис."
 
     article_id = f"{cache_key}|{getattr(status, 'value', str(status))}"
-    msg = f"{phrase} {getattr(reason_text, 'value', str(reason_text))}\nВсе записи в боте отмены."
+    msg = f"{phrase} {getattr(reason_text, 'value', str(reason_text))}\nВсе мои записи в боте на этот период отмены."
     return InlineQueryResultArticle(
         id=article_id,
         title=title,

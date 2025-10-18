@@ -93,8 +93,6 @@ async def handle_cancel_reason(
     )
 
     if cancel_sub_status is None:
-        await _send_message(bot, user_id, error_text)
-        logger.exception("Не известные данные в article_id %s", result)
         return
 
     cancel_dates = await uc.dates_by_cache_key(cache_key)
