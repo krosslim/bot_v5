@@ -8,6 +8,7 @@ from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from src.dto.booking_dto import BookingStatus, OwnBookingDTO
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
 from src.utils.idk import gen_idk
+from config import settings as s
 
 WEEKDAY_ACCUSATIVE_WITH_PREP = {
     0: "в понедельник",
@@ -50,7 +51,7 @@ DEFAULT_REASONS: tuple[Reason, ...] = (
     Reason("👨‍👩‍👧 Семейные обстоятельства",
            BookingStatus.CANCELED_FAMILY,
            "Нажмите, чтобы подтвердить",
-           "По семейным обстоятельствам 👨‍👩‍👧"),
+           "Семейные обстоятельства 👨‍👩‍👧"),
     Reason("🌴 Отпуск",
            BookingStatus.CANCELED_VACATION,
            "Нажмите, чтобы подтвердить",
@@ -107,12 +108,14 @@ def _make_article_multi_date(
     phrase = f"Коллеги, <b>{date_range_str}</b> не смогу прийти в офис."
 
     article_id = f"{cache_key}|{getattr(status, 'value', str(status))}"
-    msg = f"{phrase} {getattr(reason_text, 'value', str(reason_text))}\nВсе мои записи в боте на этот период отмены."
+    contacts = f'<blockquote><b><a href="https://t.me/{s.BOT_USERNAME}?start=">Занять места ›</a></b></blockquote>'
+    msg = (f"{phrase} {getattr(reason_text, 'value', str(reason_text))}\n"
+           f"Все мои записи на этот период отмены.\n{contacts}")
     return InlineQueryResultArticle(
         id=article_id,
         title=title,
         description=description,
-        input_message_content=InputTextMessageContent(message_text=msg),
+        input_message_content=InputTextMessageContent(message_text=msg, disable_web_page_preview=True),
         reply_markup=None
     )
 

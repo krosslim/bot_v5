@@ -3,39 +3,196 @@ name: Deploy
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy-${{ github.ref_name }}-prod
+  cancel-in-progress: true
+
+env:
+  DEPLOYMENT_TIMEOUT: 15m
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    environment:
+      name: production
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # 🔔 Старт
+    - name: Send Telegram notification - Start
+      if: always()
+      continue-on-error: true
+      uses: appleboy/telegram-action@v1.0.1
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        format: markdown
+        message: |
+          🚀 *Deployment Started*
+          
+          📦 Repository: ${{ github.repository }}
+          🌿 Branch: ${{ github.ref_name }}
+          👤 Author: ${{ github.actor }}
+          💬 Commit: ${{ github.event.head_commit.message }}
+          🔗 [View Changes](${{ github.event.head_commit.url }})
+
     - name: Deploy to server
-      uses: appleboy/ssh-action@v1.0.3
+      id: deploy
+      uses: appleboy/ssh-action@v1
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: ${{ secrets.PORT }}
-        command_timeout: 30m
+        fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+        command_timeout: ${{ env.DEPLOYMENT_TIMEOUT }}
         script: |
-          echo "Starting deployment..."
-          
+          set -Eeuo pipefail
+          trap 'echo "Error on line $LINENO"; exit 1' ERR
+
+          echo "🚀 Starting deployment process..."
+          START_TIME=$(date +%s)
+
           cd bot_v5 || exit 1
-          echo "Changed to bot_v5 directory"
-          
-          echo "Stopping containers..."
+          echo "✅ Changed to bot_v5 directory"
+
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          echo "📌 Current commit: $CURRENT_COMMIT"
+
+          echo "1. Pulling latest changes..."
+          git fetch origin main
+          git reset --hard origin/main
+          NEW_COMMIT=$(git rev-parse HEAD)
+
+          echo "2. Stopping containers..."
           docker compose down
-          
-          echo "Pulling latest changes..."
-          git pull origin main
-          
-          echo "Building and starting containers..."
-          docker compose up --build -d
-          
-          echo "Checking container status..."
-          docker compose ps
-          
-          echo "Deployment completed successfully!"
+
+          echo "3. Cleaning up Docker..."
+          docker image prune -f
+
+          echo "4. Building and starting containers..."
+          if ! docker compose up --build -d; then
+            echo "❌ Build failed! Rolling back..."
+            git reset --hard "$CURRENT_COMMIT"
+            docker compose up -d
+            exit 1
+          fi
+
+          echo "5. Waiting for containers..."
+          sleep 20
+
+          echo "6. Health check..."
+          MAX_ATTEMPTS=10
+          ATTEMPT=1
+
+          SERVICES=$(docker compose config --services)
+
+          all_ok=false
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Health check attempt $ATTEMPT/$MAX_ATTEMPTS..."
+
+            all_ok=true
+            for s in $SERVICES; do
+              cid=$(docker compose ps -q "$s" || true)
+              if [ -z "$cid" ]; then
+                echo "Service: $s | container not found"
+                all_ok=false
+                continue
+              fi
+
+              state=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo "unknown")
+              health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo "none")
+
+              echo "Service: $s | state=$state | health=$health"
+
+              if [ "$state" != "running" ]; then all_ok=false; fi
+              if [ "$health" != "none" ] && [ "$health" != "healthy" ]; then all_ok=false; fi
+            done
+
+            if [ "$all_ok" = true ]; then
+          END_TIME=$(date +%s)
+                        DURATION=$((END_TIME - START_TIME))
+
+                        echo "✅ All services are up & healthy!"
+
+                        echo "DEPLOYMENT_SUCCESS=true" >> "$GITHUB_OUTPUT"
+                        echo "DEPLOYMENT_DURATION=${DURATION}s" >> "$GITHUB_OUTPUT"
+                        echo "CONTAINERS_COUNT=$(echo "$SERVICES" | wc -w)" >> "$GITHUB_OUTPUT"
+                        echo "OLD_COMMIT=$CURRENT_COMMIT" >> "$GITHUB_OUTPUT"
+                        echo "NEW_COMMIT=$NEW_COMMIT" >> "$GITHUB_OUTPUT"
+
+                        echo "🎉 Deployment completed in ${DURATION}s!"
+                        exit 0
+                      fi
+
+                      echo "⏳ Waiting 10s before retry..."
+                      sleep 10
+                      ATTEMPT=$((ATTEMPT + 1))
+                    done
+
+                    echo "❌ Health check failed! Rolling back..."
+                    git reset --hard "$CURRENT_COMMIT"
+                    docker compose down
+                    docker compose up -d
+                    exit 1
+
+              # 🔔 Успех
+              - name: Send Telegram notification - Success
+                if: success()
+                continue-on-error: true
+                uses: appleboy/telegram-action@v1.0.1
+                with:
+                  to: ${{ secrets.TELEGRAM_CHAT_ID }}
+                  token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+                  format: markdown
+                  message: |
+                    ✅ *Deployment Successful!*
+
+                    📦 Repository: ${{ github.repository }}
+                    🌿 Branch: ${{ github.ref_name }}
+                    👤 Author: ${{ github.actor }}
+                    ⏱ Duration: ${{ steps.deploy.outputs.DEPLOYMENT_DURATION }}
+                    🐳 Containers: ${{ steps.deploy.outputs.CONTAINERS_COUNT }}
+
+                    📝 Commit: ${{ github.event.head_commit.message }}
+                    🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+              # 🔔 Неуспех
+              - name: Send Telegram notification - Failure
+                if: failure()
+                continue-on-error: true
+                uses: appleboy/telegram-action@v1.0.1
+                with:
+                  to: ${{ secrets.TELEGRAM_CHAT_ID }}
+                  token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+                  format: markdown
+                  message: |
+                    ❌ *Deployment Failed!*
+
+                    📦 Repository: ${{ github.repository }}
+                    🌿 Branch: ${{ github.ref_name }}
+                    👤 Author: ${{ github.actor }}
+                    💬 Commit: ${{ github.event.head_commit.message }}
+
+                    ⚠️ Please check the logs!
+                    🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+              - name: Upload deployment logs
+                if: always()
+                continue-on-error: true
+                uses: actions/upload-artifact@v4
+                with:
+                  name: deployment-logs-${{ github.run_number }}
+                  path: |
+                    *.log
+                  retention-days: 7
