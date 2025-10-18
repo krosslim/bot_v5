@@ -151,36 +151,52 @@ jobs:
                 with:
                   to: ${{ secrets.TELEGRAM_CHAT_ID }}
                   token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-                  format: markdown
+                  format: markdownv2
+                  disable_web_page_preview: true
                   message: |
-                    ✅ *Deployment Successful!*
+                    ✅ *Deployment Successful\!*
+              
+                    📦 Repository:
+                   
+                    ${{ github.repository }}
+                          🌿 Branch:
+                   
+                    ${{ github.ref_name }}
+                          👤 Author:
+                   
+                    ${{ github.actor }}
+                          📝 Commit message:
+                   
+                    ${{ github.event.head_commit.message }}
+                          🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-                    📦 Repository: ${{ github.repository }}
-                    🌿 Branch: ${{ github.ref_name }}
-                    👤 Author: ${{ github.actor }}
-
-                    📝 Commit: ${{ github.event.head_commit.message }}
-                    🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-              # 🔔 Неуспех
+                # 🔔 Неуспех
               - name: Send Telegram notification - Failure
-                if: failure()
-                continue-on-error: true
-                uses: appleboy/telegram-action@v1.0.1
-                with:
-                  to: ${{ secrets.TELEGRAM_CHAT_ID }}
-                  token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-                  format: markdown
-                  message: |
-                    ❌ *Deployment Failed!*
-
-                    📦 Repository: ${{ github.repository }}
-                    🌿 Branch: ${{ github.ref_name }}
-                    👤 Author: ${{ github.actor }}
-                    💬 Commit: ${{ github.event.head_commit.message }}
-
-                    ⚠️ Please check the logs!
-                    🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+                  if: failure()
+                  continue-on-error: true
+                  uses: appleboy/telegram-action@v1.0.1
+                  with:
+                    to: ${{ secrets.TELEGRAM_CHAT_ID }}
+                    token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+                    format: markdownv2
+                    disable_web_page_preview: true
+                    message: |
+                      ❌ *Deployment Failed\!*
+                
+                      📦 Repository:
+                     
+                      ${{ github.repository }}
+                            🌿 Branch:
+                     
+                      ${{ github.ref_name }}
+                            👤 Author:
+                     
+                      ${{ github.actor }}
+                            💬 Commit message:
+                     
+                      ${{ github.event.head_commit.message }}
+                            ⚠️ Please check the logs\!
+                      🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
               - name: Upload deployment logs
                 if: always()
