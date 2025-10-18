@@ -124,13 +124,11 @@ jobs:
 
                         echo "✅ All services are up & healthy!"
 
-                        echo "DEPLOYMENT_SUCCESS=true" >> "$GITHUB_OUTPUT"
-                        echo "DEPLOYMENT_DURATION=${DURATION}s" >> "$GITHUB_OUTPUT"
-                        echo "CONTAINERS_COUNT=$(echo "$SERVICES" | wc -w)" >> "$GITHUB_OUTPUT"
-                        echo "OLD_COMMIT=$CURRENT_COMMIT" >> "$GITHUB_OUTPUT"
-                        echo "NEW_COMMIT=$NEW_COMMIT" >> "$GITHUB_OUTPUT"
-
                         echo "🎉 Deployment completed in ${DURATION}s!"
+                        echo "Containers running: $(echo "$SERVICES" | wc -w)"
+                        echo "Old commit: $CURRENT_COMMIT"
+                        echo "New commit: $NEW_COMMIT"
+          
                         exit 0
                       fi
 
@@ -160,8 +158,6 @@ jobs:
                     📦 Repository: ${{ github.repository }}
                     🌿 Branch: ${{ github.ref_name }}
                     👤 Author: ${{ github.actor }}
-                    ⏱ Duration: ${{ steps.deploy.outputs.DEPLOYMENT_DURATION }}
-                    🐳 Containers: ${{ steps.deploy.outputs.CONTAINERS_COUNT }}
 
                     📝 Commit: ${{ github.event.head_commit.message }}
                     🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
