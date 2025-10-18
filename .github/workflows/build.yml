@@ -46,6 +46,19 @@ jobs:
           💬 Commit: ${{ github.event.head_commit.message }}
           🔗 [View Changes](${{ github.event.head_commit.url }})
 
+    - name: Preflight - show host fingerprints (runner view)
+      run: |
+        set -e
+        echo "Host: ${{ secrets.HOST }}  Port: ${{ secrets.PORT }}"
+        echo "--- IPv4 ed25519 ---"
+        ssh-keyscan -4 -p "${{ secrets.PORT }}" -t ed25519 "${{ secrets.HOST }}" | ssh-keygen -lf - -E sha256 || true
+        echo "--- IPv4 rsa ---"
+        ssh-keyscan -4 -p "${{ secrets.PORT }}" -t rsa "${{ secrets.HOST }}" | ssh-keygen -lf - -E sha256 || true
+        echo "--- IPv6 ed25519 ---"
+        ssh-keyscan -6 -p "${{ secrets.PORT }}" -t ed25519 "${{ secrets.HOST }}" | ssh-keygen -lf - -E sha256 || true
+        echo "--- IPv6 rsa ---"
+        ssh-keyscan -6 -p "${{ secrets.PORT }}" -t rsa "${{ secrets.HOST }}" | ssh-keygen -lf - -E sha256 || true
+
     - name: Deploy to server
       id: deploy
       uses: appleboy/ssh-action@v1
