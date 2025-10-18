@@ -20,7 +20,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     environment:
       name: production
 
@@ -36,15 +35,28 @@ jobs:
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
         token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        format: markdown
+        format: markdownv2
+        disable_web_page_preview: true
         message: |
-          🚀 *Deployment Started*
+          🚀 *Deployment Started\!*
           
-          📦 Repository: ${{ github.repository }}
-          🌿 Branch: ${{ github.ref_name }}
-          👤 Author: ${{ github.actor }}
-          💬 Commit: ${{ github.event.head_commit.message }}
-          🔗 [View Changes](${{ github.event.head_commit.url }})
+          📦 Repository:
+          ```
+          ${{ github.repository }}
+          ```
+          🌿 Branch:
+          ```
+          ${{ github.ref_name }}
+          ```
+          👤 Author:
+          ```
+          ${{ github.actor }}
+          ```
+          💬 Commit message:
+          ```
+          ${{ github.event.head_commit.message }}
+          ```
+          🔗 [View Changes]( ${{ github.event.head_commit.url }} )
 
     - name: Deploy to server
       id: deploy
@@ -119,91 +131,97 @@ jobs:
             done
 
             if [ "$all_ok" = true ]; then
-          END_TIME=$(date +%s)
-                        DURATION=$((END_TIME - START_TIME))
+              END_TIME=$(date +%s)
+              DURATION=$((END_TIME - START_TIME))
 
-                        echo "✅ All services are up & healthy!"
+              echo "✅ All services are up & healthy!"
+              echo "🎉 Deployment completed in ${DURATION}s!"
+              echo "Containers running: $(echo "$SERVICES" | wc -w)"
+              echo "Old commit: $CURRENT_COMMIT"
+              echo "New commit: $NEW_COMMIT"
+              exit 0
+            fi
 
-                        echo "🎉 Deployment completed in ${DURATION}s!"
-                        echo "Containers running: $(echo "$SERVICES" | wc -w)"
-                        echo "Old commit: $CURRENT_COMMIT"
-                        echo "New commit: $NEW_COMMIT"
+            echo "⏳ Waiting 10s before retry..."
+            sleep 10
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          echo "❌ Health check failed! Rolling back..."
+          git reset --hard "$CURRENT_COMMIT"
+          docker compose down
+          docker compose up -d
+          exit 1
+
+    # 🔔 Успех
+    - name: Send Telegram notification - Success
+      if: success()
+      continue-on-error: true
+      uses: appleboy/telegram-action@v1.0.1
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        format: markdownv2
+        disable_web_page_preview: true
+        message: |
+          ✅ *Deployment Successful\!*
           
-                        exit 0
-                      fi
+          📦 Repository:
+          ```
+          ${{ github.repository }}
+          ```
+          🌿 Branch:
+          ```
+          ${{ github.ref_name }}
+          ```
+          👤 Author:
+          ```
+          ${{ github.actor }}
+          ```
+          📝 Commit message:
+          ```
+          ${{ github.event.head_commit.message }}
+          ```
+          🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-                      echo "⏳ Waiting 10s before retry..."
-                      sleep 10
-                      ATTEMPT=$((ATTEMPT + 1))
-                    done
+    # 🔔 Неуспех
+    - name: Send Telegram notification - Failure
+      if: failure()
+      continue-on-error: true
+      uses: appleboy/telegram-action@v1.0.1
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        format: markdownv2
+        disable_web_page_preview: true
+        message: |
+          ❌ *Deployment Failed\!*
+          
+          📦 Repository:
+          ```
+          ${{ github.repository }}
+          ```
+          🌿 Branch:
+          ```
+          ${{ github.ref_name }}
+          ```
+          👤 Author:
+          ```
+          ${{ github.actor }}
+          ```
+          💬 Commit message:
+          ```
+          ${{ github.event.head_commit.message }}
+          ```
+          ⚠️ Please check the logs\!
+          🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-                    echo "❌ Health check failed! Rolling back..."
-                    git reset --hard "$CURRENT_COMMIT"
-                    docker compose down
-                    docker compose up -d
-                    exit 1
-
-              # 🔔 Успех
-              - name: Send Telegram notification - Success
-                if: success()
-                continue-on-error: true
-                uses: appleboy/telegram-action@v1.0.1
-                with:
-                  to: ${{ secrets.TELEGRAM_CHAT_ID }}
-                  token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-                  format: markdownv2
-                  disable_web_page_preview: true
-                  message: |
-                    ✅ *Deployment Successful\!*
-              
-                    📦 Repository:
-                   
-                    ${{ github.repository }}
-                          🌿 Branch:
-                   
-                    ${{ github.ref_name }}
-                          👤 Author:
-                   
-                    ${{ github.actor }}
-                          📝 Commit message:
-                   
-                    ${{ github.event.head_commit.message }}
-                          🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-                # 🔔 Неуспех
-              - name: Send Telegram notification - Failure
-                  if: failure()
-                  continue-on-error: true
-                  uses: appleboy/telegram-action@v1.0.1
-                  with:
-                    to: ${{ secrets.TELEGRAM_CHAT_ID }}
-                    token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-                    format: markdownv2
-                    disable_web_page_preview: true
-                    message: |
-                      ❌ *Deployment Failed\!*
-                
-                      📦 Repository:
-                     
-                      ${{ github.repository }}
-                            🌿 Branch:
-                     
-                      ${{ github.ref_name }}
-                            👤 Author:
-                     
-                      ${{ github.actor }}
-                            💬 Commit message:
-                     
-                      ${{ github.event.head_commit.message }}
-                            ⚠️ Please check the logs\!
-                      🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-              - name: Upload deployment logs
-                if: always()
-                continue-on-error: true
-                uses: actions/upload-artifact@v4
-                with:
-                  name: deployment-logs-${{ github.run_number }}
-                  path: |
-                    *.log
-                  retention-days: 7
+    - name: Upload deployment logs
+      if: always()
+      continue-on-error: true
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: deployment-logs-${{ github.run_number }}
+        path: |
+          *.log
+        retention-days: 7
