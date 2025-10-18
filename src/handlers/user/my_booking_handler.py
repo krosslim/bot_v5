@@ -16,6 +16,7 @@ from src.ui.messages.my_booking_mess import render_my_booking_mess, render_book_
 from src.ui.messages.start_mess import bot_menu_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.db_exc_wrapper import DBError
+from src.utils.today import effective_today
 
 router = Router()
 
@@ -47,7 +48,8 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
             confirm_dt = _parse_iso_date(callback_data.extra)
             await uc.confirm_booking(user_id, confirm_dt)
 
-        bookings, waitlist = await uc.own_active_bookings(user_id)
+        today = effective_today()
+        bookings, waitlist = await uc.own_active_bookings(user_id, today)
 
         has_bookings_block = bool(bookings)
         has_waitlist_block = bool(waitlist)

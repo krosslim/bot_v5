@@ -1,6 +1,6 @@
 from collections import defaultdict
 from datetime import date
-from typing import Optional, List, Dict, Union, Sequence
+from typing import Optional, List, Dict, Union, Sequence, Tuple
 
 from sqlalchemy import select, update, and_, func, not_, or_, extract, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -16,7 +16,7 @@ from src.dto.user_dto import UserDTO, DictDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
                                          CalendarDate, BookingEvent, Profession, Product,
                                          DigestSchedule)
-from src.utils.db_exc_wrapper import with_db_errors
+from src.utils.db_exc_wrapper import with_db_errors, DBError
 
 
 @with_db_errors
@@ -102,17 +102,34 @@ class Repository:
             )
         return [DateBookingsDTO(cal_date=cd, users=grouped[cd]) for cd in sorted(grouped)]
 
-    async def own_active_bookings(self, user_id: int, start: date) -> List[OwnBookingDTO]:
+    async def own_active_bookings(
+            self,
+            user_id: int,
+            cal_date: Union[date, Tuple[date, date], List[date]],
+    ) -> List[OwnBookingDTO]:
 
         stmt = (
             select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status,Booking.sub_status)
-            .where(
-                Booking.cal_date >= start,
-                Booking.user_id == user_id,
-                Booking.status.in_([BookingStatus.BOOKED, BookingStatus.WAITLISTED])
-            )
-            .order_by(Booking.cal_date)
         )
+
+        if isinstance(cal_date, tuple):
+            if len(cal_date) == 2 and all(isinstance(d, date) for d in cal_date):
+                start, end = cal_date
+                stmt = stmt.where(Booking.cal_date.between(start, end))
+            else:
+                raise DBError("Кортеж должен содержать ровно 2 объекта date")
+        elif isinstance(cal_date, date):
+            stmt = stmt.where(Booking.cal_date >= cal_date)
+        elif isinstance(cal_date, list):
+            stmt = stmt.where(Booking.cal_date.in_(cal_date))
+        else:
+            raise DBError("Не корректный ввод дат %s", cal_date)
+
+        stmt = stmt.where(
+            Booking.user_id == user_id,
+            Booking.status.in_([BookingStatus.BOOKED, BookingStatus.WAITLISTED])
+        ).order_by(Booking.cal_date)
+
         result = await self.session.execute(stmt)
         bookings = result.all()
         return [OwnBookingDTO.model_validate(booking) for booking in bookings]

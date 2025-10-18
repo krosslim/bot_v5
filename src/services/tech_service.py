@@ -4,8 +4,10 @@ from typing import List, Optional
 
 from src.dto.calendar_dates_dto import DigestScheduleDTO
 from src.dto.user_dto import UserBookingSessionDTO
+from src.services.exceptions import CacheCalDate
 from src.storage.postgres.repository import Repository
 from src.storage.redis.store import RedisStore
+from src.utils.idk import gen_idk
 
 logger = logging.getLogger(__name__)
 
@@ -73,3 +75,16 @@ class TechService:
 
     async def last_message(self) -> Optional[DigestScheduleDTO]:
         return await self.repo.get_last_message()
+
+
+    async def cache_cal_dates(self, dates: List[str]) -> str:
+        key = gen_idk()
+        res = await self.store.lpush(key, *dates, ttl=120)
+        if not res:
+            raise CacheCalDate("Не удалось сформировать данные для отображения")
+        return key
+
+    async def dates_by_cache_key(self, key: str) -> List[date]:
+        dates_str = await self.store.lrange(key)
+        return [date.fromisoformat(ds) for ds in dates_str]
+

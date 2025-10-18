@@ -64,6 +64,7 @@ async def init_configure_bot_db(session: AsyncSession) -> None:
             {"slug": "CANCELED_NOT_CONFIRMED",         "parent_slug": "CANCELED", "display_name": "БРОНЬ НЕ БЫЛА ПОДТВЕРЖДЕНА", "is_hidden": True},
             {"slug": "CANCELED_ADMIN",                 "parent_slug": "CANCELED", "display_name": "ОТМЕНЕНО АДМИНИСТРАТОРОМ", "is_hidden": True},
             {"slug": "CANCELED_LEFT_CHAT",             "parent_slug": "CANCELED", "display_name": "ВЫШЕЛ ИЗ ЧАТА / УДАЛИЛИ ИЗ ЧАТА", "is_hidden": True},
+            {"slug": "CANCELED_VACATION",              "parent_slug": "CANCELED", "display_name": "В ОТПУСКЕ", "is_hidden": False},
 
             # WAITLISTED
             {"slug": "WAITLISTED_MANUAL",               "parent_slug": "WAITLISTED", "display_name": "ПОЛЬЗОВАТЕЛЬ ВСТАЛ В ОЧЕРЕДЬ", "is_hidden": True},

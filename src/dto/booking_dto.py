@@ -79,6 +79,7 @@ class BookingStatus(StrEnum):
     CANCELED_NOT_CONFIRMED = auto()
     CANCELED_ADMIN = auto()
     CANCELED_LEFT_CHAT = auto()
+    CANCELED_VACATION = auto()
 
     # Подстатусы для WAITLISTED
     WAITLISTED_MANUAL = auto()

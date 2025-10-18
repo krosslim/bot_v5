@@ -27,6 +27,10 @@ class Config(BaseSettings):
 
     MSC_TZ: str = "Europe/Moscow"
 
+    GOOGLE_SHEET_URL: str = "https://script.google.com/macros/s/abcd/exec"
+    GOOGLE_SHEET_TOKEN: str = "TOKEN"
+    GOOGLE_SHEET_USER_URL: str = "https://docs.google.com/spreadsheets"
+
     WORK_END_HOUR: int = 12             # Время, до которого можно бронировать место для текущего дня
     WORK_END_MINUTES: int = 00
 
@@ -47,11 +51,6 @@ class Config(BaseSettings):
 
     CANCEL_BOOKING_JOB_HOUR: int = 21           # Отмена не подтвержденных броней (часы запуска)
     CANCEL_BOOKING_JOB_MINUTES: int = 30        # Отмена не подтвержденных броней (минуты запуска)
-
-
-    GOOGLE_SHEET_URL: str = "https://script.google.com/macros/s/abcd/exec"
-    GOOGLE_SHEET_TOKEN: str = "TOKEN"
-    GOOGLE_SHEET_USER_URL: str = "https://docs.google.com/spreadsheets"
 
 
 settings = Config()

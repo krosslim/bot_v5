@@ -1,8 +1,9 @@
 import logging
 from datetime import date
+from typing import Optional
 
 from aiogram import Router, F, Bot
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
@@ -198,13 +199,13 @@ async def promote_user_after_cancel(
         bot: Bot | None = None,
         user_id: int | None = None,
         cancel_sub_status: str | None = None
-) -> None:
+) -> Optional[int]:
 
     if call:
         user_id = call.from_user.id
 
     if call is None and user_id is None:
-        return
+        return None
 
     promote_user_id = await uc.cancel_book_place(user_id, cal_date, cancel_sub_status)
     if promote_user_id:
@@ -224,6 +225,8 @@ async def promote_user_after_cancel(
                 )
             else:
                 logger.exception(f"Сообщение для user_id {promote_user_id} не отправлено. Аргументы функции заданы неверно")
-                return
-        except TelegramBadRequest as e_tg:
-            logger.exception(f"Не удалось отправить сообщение {promote_user_id} | {str(e_tg)}")
+                return None
+        except (TelegramBadRequest, TelegramForbiddenError):
+            logger.exception(f"Не удалось отправить сообщение {promote_user_id}")
+
+        return promote_user_id

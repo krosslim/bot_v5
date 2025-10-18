@@ -49,5 +49,7 @@ class NoActiveBooking(BookingError):
     """У пользователя нет активных бронирований"""
     pass
 
-
+class CacheCalDate(BookingError):
+    """Не удалось записать в Redis список дат"""
+    pass
 

@@ -1,5 +1,5 @@
 from datetime import date
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Tuple
 
 from src.dto.booking_dto import (DateBookingsDTO, BookingStatus, OwnBookingDTO,
                                  WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
@@ -7,7 +7,6 @@ from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
                                      CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
 from src.storage.postgres.repository import Repository
 from src.utils.month_first_last_by_offset import month_first_last
-from src.utils.today import effective_today
 
 
 class BookingService:
@@ -39,10 +38,13 @@ class BookingService:
 
         return await self.repo.bookings_by_range(start, end, status_list)
 
-    async def get_own_active_bookings(self, user_id: int) -> List[OwnBookingDTO]:
+    async def get_own_active_bookings(
+            self,
+            user_id: int,
+            cal_date: Union[date, Tuple[date, date], List[date]],
+    ) -> List[OwnBookingDTO]:
 
-        today = effective_today()
-        bookings = await self.repo.own_active_bookings(user_id, today)
+        bookings = await self.repo.own_active_bookings(user_id, cal_date)
         return bookings
 
     async def get_waitlist_position(self, user_id: int, date_list: list) -> List[WaitlistPositionDTO]:
