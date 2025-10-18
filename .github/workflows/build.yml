@@ -54,7 +54,6 @@ jobs:
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: ${{ secrets.PORT }}
-        fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
         command_timeout: ${{ env.DEPLOYMENT_TIMEOUT }}
         script: |
           set -Eeuo pipefail
