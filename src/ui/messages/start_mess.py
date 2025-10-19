@@ -19,7 +19,7 @@ def finish_start_reg_mess() -> str:
             f"Выбери пункт меню ⤵ ︎")
 
 def bot_menu_mess() -> str:
-    return "<b>Выбери пункт меню ⤵</b>"
+    return "<b> пункт меню ⤵</b>"
 
 
 def start_db_exc_mess() -> str:
