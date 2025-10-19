@@ -35,21 +35,21 @@ jobs:
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
         token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        format: markdownv2
+        format: html
         disable_web_page_preview: true
         message: |
-          🚀 *Deployment Started!*
-          ```          
-          📦 Repository:
-          ${{ github.repository }}
-          🌿 Branch:
-          ${{ github.ref_name }}
-          👤 Author:
-          ${{ github.actor }}
-          💬 Commit message:
-          ${{ github.event.head_commit.message }}
-          ```
-          🔗 [*Workflow*](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          🚀 <b>Deployment Started</b><br>
+          <blockquote><br>
+          📦 Repository:<br>
+          ${{ github.repository }}<br>
+          🌿 Branch:<br>
+          ${{ github.ref_name }}<br>
+          👤 Author:<br>
+          ${{ github.actor }}<br>
+          💬 Commit message:<br>
+          ${{ github.event.head_commit.message }}<br>
+          </blockquote><br>
+          🔗 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><b>Workflow</b></a>
 
     - name: Deploy to server
       id: deploy
@@ -154,21 +154,21 @@ jobs:
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
         token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        format: markdownv2
+        format: html
         disable_web_page_preview: true
         message: |
-          ✅ *Deployment Successful!*
-          ```          
-          📦 Repository:
-          ${{ github.repository }}
-          🌿 Branch:
-          ${{ github.ref_name }}
-          👤 Author:
-          ${{ github.actor }}
-          📝 Commit message:
-          ${{ github.event.head_commit.message }}
-          ```
-          🔗 [*Workflow*](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          ✅ <b>Deployment Successful</b><br>
+          <blockquote><br>
+          📦 Repository:<br>
+          ${{ github.repository }}<br>
+          🌿 Branch:<br>
+          ${{ github.ref_name }}<br>
+          👤 Author:<br>
+          ${{ github.actor }}<br>
+          💬 Commit message:<br>
+          ${{ github.event.head_commit.message }}<br>
+          </blockquote><br>
+          🔗 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><b>Workflow</b></a>
 
     # 🔔 Неуспех
     - name: Send Telegram notification - Failure
@@ -178,19 +178,18 @@ jobs:
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
         token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        format: markdownv2
+        format: html
         disable_web_page_preview: true
         message: |
-          ❌ *Deployment Failed!*
-          ```          
-          📦 Repository:
-          ${{ github.repository }}
-          🌿 Branch:
-          ${{ github.ref_name }}
-          👤 Author:
-          ${{ github.actor }}
-          💬 Commit message:
-          ${{ github.event.head_commit.message }}
-          ```
-          ⚠️ Please check the logs\!
-          🔗 [*Workflow*](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          ❌ <b>Deployment Failed</b><br>
+          <blockquote><br>
+          📦 Repository:<br>
+          ${{ github.repository }}<br>
+          🌿 Branch:<br>
+          ${{ github.ref_name }}<br>
+          👤 Author:<br>
+          ${{ github.actor }}<br>
+          💬 Commit message:<br>
+          ${{ github.event.head_commit.message }}<br>
+          </blockquote><br>
+          🔗 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><b>Workflow</b></a>
