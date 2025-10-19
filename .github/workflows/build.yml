@@ -27,7 +27,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 🔔 Старт
     - name: Send Telegram notification - Start
       if: always()
       continue-on-error: true
@@ -141,7 +140,6 @@ jobs:
           docker compose up -d
           exit 1
 
-    # 🔔 Успех
     - name: Send Telegram notification - Success
       if: success()
       continue-on-error: true
@@ -160,7 +158,6 @@ jobs:
           ${{ github.event.head_commit.message }}</blockquote>
           🔗 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><b>Workflow</b></a>
 
-    # 🔔 Неуспех
     - name: Send Telegram notification - Failure
       if: failure()
       continue-on-error: true
