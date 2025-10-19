@@ -12,9 +12,10 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 # -------- production stage --------
 FROM ${PY_IMAGE} AS prod
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
-WORKDIR /app
+
 
 RUN adduser --disabled-password --gecos "" --home /app botuser
+WORKDIR /app
 
 COPY --from=build /app/wheels /tmp/wheels
 RUN python -m pip install --no-cache-dir /tmp/wheels/* \
