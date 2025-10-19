@@ -5,7 +5,6 @@ __pycache__/
 
 # Virtualenvs
 env/
-../venv/
 .venv/
 
 # IDE & tooling
@@ -31,6 +30,13 @@ logs/
 dist/
 build/
 
+# Environment secrets
+.env
+.env.*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
 # Keep main build files
-!../Dockerfile
 !docker-compose.yml
