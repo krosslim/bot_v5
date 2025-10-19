@@ -38,24 +38,18 @@ jobs:
         format: markdownv2
         disable_web_page_preview: true
         message: |
-          🚀 *Deployment Started\!*
-          
+          🚀 *Deployment Started!*
+          ```          
           📦 Repository:
-          ```
           ${{ github.repository }}
-          ```
           🌿 Branch:
-          ```
           ${{ github.ref_name }}
-          ```
           👤 Author:
-          ```
           ${{ github.actor }}
-          ```
           💬 Commit message:
-          ```
           ${{ github.event.head_commit.message }}
           ```
+          🔗 [*Workflow*](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
     - name: Deploy to server
       id: deploy
@@ -163,25 +157,18 @@ jobs:
         format: markdownv2
         disable_web_page_preview: true
         message: |
-          ✅ *Deployment Successful\!*
-          
+          ✅ *Deployment Successful!*
+          ```          
           📦 Repository:
-          ```
           ${{ github.repository }}
-          ```
           🌿 Branch:
-          ```
           ${{ github.ref_name }}
-          ```
           👤 Author:
-          ```
           ${{ github.actor }}
-          ```
           📝 Commit message:
-          ```
           ${{ github.event.head_commit.message }}
           ```
-          🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          🔗 [*Workflow*](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
     # 🔔 Неуспех
     - name: Send Telegram notification - Failure
@@ -194,23 +181,16 @@ jobs:
         format: markdownv2
         disable_web_page_preview: true
         message: |
-          ❌ *Deployment Failed\!*
-          
+          ❌ *Deployment Failed!*
+          ```          
           📦 Repository:
-          ```
           ${{ github.repository }}
-          ```
           🌿 Branch:
-          ```
           ${{ github.ref_name }}
-          ```
           👤 Author:
-          ```
           ${{ github.actor }}
-          ```
           💬 Commit message:
-          ```
           ${{ github.event.head_commit.message }}
           ```
           ⚠️ Please check the logs\!
-          🔗 [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          🔗 [*Workflow*](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
