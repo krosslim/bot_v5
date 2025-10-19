@@ -39,12 +39,9 @@ jobs:
         disable_web_page_preview: true
         message: |
           🚀 <b>Deployment Started</b>
-          <blockquote>📦 Repository:
-          ${{ github.repository }}
-          🌿 Branch:
-          ${{ github.ref_name }}
-          👤 Author:
-          ${{ github.actor }}
+          <blockquote>📦 Repository: ${{ github.repository }}
+          🌿 Branch: ${{ github.ref_name }}
+          👤 Author: ${{ github.actor }}
           💬 Commit message:
           ${{ github.event.head_commit.message }}</blockquote>
           🔗 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><b>Workflow</b></a>
@@ -156,12 +153,9 @@ jobs:
         disable_web_page_preview: true
         message: |
           ✅ <b>Deployment Successful</b>
-          <blockquote>📦 Repository:
-          ${{ github.repository }}
-          🌿 Branch:
-          ${{ github.ref_name }}
-          👤 Author:
-          ${{ github.actor }}
+          <blockquote>📦 Repository: ${{ github.repository }}
+          🌿 Branch: ${{ github.ref_name }}
+          👤 Author: ${{ github.actor }}
           💬 Commit message:
           ${{ github.event.head_commit.message }}</blockquote>
           🔗 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><b>Workflow</b></a>
@@ -178,12 +172,9 @@ jobs:
         disable_web_page_preview: true
         message: |
           ❌ <b>Deployment Failed</b>
-          <blockquote>📦 Repository:
-          ${{ github.repository }}
-          🌿 Branch:
-          ${{ github.ref_name }}
-          👤 Author:
-          ${{ github.actor }}
+          <blockquote>📦 Repository: ${{ github.repository }}
+          🌿 Branch: ${{ github.ref_name }}
+          👤 Author: ${{ github.actor }}
           💬 Commit message:
           ${{ github.event.head_commit.message }}</blockquote>
           🔗 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><b>Workflow</b></a>
