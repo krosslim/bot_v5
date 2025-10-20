@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     UniqueConstraint,
     text,
+    Index,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -118,7 +119,13 @@ class OfficeCapacityWeekday(Base):
 # ---------------------------------------------------------------------------#
 class Booking(Base):
     __tablename__ = "bookings"
-    __table_args__ = (UniqueConstraint("user_id", "cal_date"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "cal_date"),
+        Index(
+            "ix_booking_cal_date_status_created",
+            "cal_date", "status", "created_at"
+        ),
+    )
 
     booking_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=False)
