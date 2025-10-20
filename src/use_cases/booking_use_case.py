@@ -39,11 +39,11 @@ class BookingUseCase:
 
     async def booking_page_data(self, start: date, end: date) -> tuple:
         async with self.session.begin():
-            st = time.time()
+            # st = time.time()
             active = await self.booking.get_active_bookings_by_range(start, end)
             capacity = await self.office_capacity.get_office_capacity()
             calendar = await self.calendar_dates.get_calendar_dates_by_range(start, end)
-            print(f"Время выполнения: {(time.time()-st)*1000:.2f} мс")
+            # print(f"Время выполнения: {(time.time()-st)*1000:.2f} мс")
             return active, capacity, calendar
 
     async def book_place(
