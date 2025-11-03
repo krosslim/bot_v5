@@ -25,7 +25,7 @@ def render_my_booking_mess(data) -> str:
 
     # --- Блок 1: Твои бронирования ---
     if booked:
-        parts.append("📅 <b>Твои бронирования</b>\n")
+        parts.append("🗓️ <b>Твои бронирования</b>\n")
         booked_sorted = sorted(booked, key=lambda x: x.cal_date)
 
         lines = []

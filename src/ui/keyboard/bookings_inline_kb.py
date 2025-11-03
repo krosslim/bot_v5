@@ -11,6 +11,7 @@ from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.utils.idk import gen_idk
 from src.utils.today import effective_today
 
+PAGINATION_NUMS = {0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉"}
 
 def render_booking_week_kb(
         days: List[DateBookingsDTO],
@@ -115,8 +116,9 @@ def _paginator_row(
         week_end: date,
 ) -> InlineKeyboardBuilder:
     row = InlineKeyboardBuilder()
+    left, right = _paginator_nums(offset)
     row.row(
-        InlineKeyboardButton(text="←", callback_data=BookingCB(
+        InlineKeyboardButton(text=left, callback_data=BookingCB(
             step=BookingStep.PAGE,
             extra=str(offset - 1),
             idk=gen_idk(),
@@ -129,13 +131,27 @@ def _paginator_row(
             idk=gen_idk(),
         ).pack(),
         ),
-        InlineKeyboardButton(text="→", callback_data=BookingCB(
+        InlineKeyboardButton(text=right, callback_data=BookingCB(
             step=BookingStep.PAGE,
             extra=str(offset + 1),
             idk=gen_idk()
         ).pack()),
     )
     return row
+
+
+def _paginator_nums(offset: int) -> tuple[str, str]:
+    if offset == 0:
+        return "←", "→"
+    elif offset > 0:
+        return "←", f"→ {_convert_number(offset)}"
+    else:
+        return f"{_convert_number(offset)} ←", "→"
+
+def _convert_number(num: int) -> str:
+    if num == 0:
+        return ""
+    return "".join(PAGINATION_NUMS[int(digit)] for digit in str(abs(num)))
 
 
 def _bottom_row(week_offset: int, weekday: int) -> InlineKeyboardBuilder:
