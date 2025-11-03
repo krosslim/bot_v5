@@ -2,7 +2,6 @@ from datetime import date
 from typing import Optional, List, Tuple, Union
 
 from sqlalchemy.ext.asyncio import AsyncSession
-# import time
 from src.dto.booking_dto import (
     OwnBookingDTO,
     BookingStatus,
@@ -39,11 +38,13 @@ class BookingUseCase:
 
     async def booking_page_data(self, start: date, end: date) -> tuple:
         async with self.session.begin():
+            # import time
             # st = time.time()
             active = await self.booking.get_active_bookings_by_range(start, end)
             capacity = await self.office_capacity.get_office_capacity()
             calendar = await self.calendar_dates.get_calendar_dates_by_range(start, end)
-            # print(f"Время выполнения: {(time.time()-st)*1000:.2f} мс")
+            # print(f"Время use case: {(time.time()-st)*1000:.2f} мс")
+            # print()
             return active, capacity, calendar
 
     async def book_place(
