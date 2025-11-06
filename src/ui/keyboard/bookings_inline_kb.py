@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -18,7 +18,8 @@ def render_booking_week_kb(
         capacities: List[OfficeCapacityDTO],
         calendar: List[CalendarDatesDTO],
         user_id: int,
-        week_offset: int
+        week_offset: int,
+        help_page: Optional[int] = None
 ) -> InlineKeyboardMarkup:
     cap_by_wd: Dict[int, OfficeCapacityDTO] = {c.weekday: c for c in capacities}
     holiday_map: Dict[date, bool] = {c.cal_date: c.is_holiday for c in calendar}
@@ -74,12 +75,13 @@ def render_booking_week_kb(
         if day_buttons:
             kb.row(*day_buttons, width=7)
 
+    week_start = week_end = None
     if sorted_calendar:
         week_start = sorted_calendar[0].cal_date
         week_end = sorted_calendar[-1].cal_date
-        kb.attach(_paginator_row(week_offset, week_start, week_end))
+        kb.attach(_paginator_row(week_offset, week_start, week_end, help_page))
 
-    kb.attach(_bottom_row(week_offset, today.weekday()))
+    kb.attach(_bottom_row(week_start, week_end))
 
     return kb.as_markup()
 
@@ -114,9 +116,13 @@ def _paginator_row(
         offset: int,
         week_start: date,
         week_end: date,
+        help_page: Optional[int] = None
 ) -> InlineKeyboardBuilder:
     row = InlineKeyboardBuilder()
     left, right = _paginator_nums(offset)
+    date_text = f"{week_start:%d.%m} - {week_end:%d.%m}"
+    if help_page:
+        date_text = f"• {week_start:%d.%m}-{week_end:%d.%m} •"
     row.row(
         InlineKeyboardButton(text=left, callback_data=BookingCB(
             step=BookingStep.PAGE,
@@ -124,7 +130,7 @@ def _paginator_row(
             idk=gen_idk(),
         ).pack()),
         InlineKeyboardButton(
-            text=f"{week_start:%d.%m} - {week_end:%d.%m}",
+            text=date_text,
             callback_data=BookingCB(
             step=BookingStep.WEEK_INFO,
             extra=f"{week_start:%d.%m} - {week_end:%d.%m}",
@@ -154,23 +160,22 @@ def _convert_number(num: int) -> str:
     return "".join(PAGINATION_NUMS[int(digit)] for digit in str(abs(num)))
 
 
-def _bottom_row(week_offset: int, weekday: int) -> InlineKeyboardBuilder:
+def _bottom_row(
+        week_start: date,
+        week_end: date
+) -> InlineKeyboardBuilder:
     row = InlineKeyboardBuilder()
-    row.add(
+
+    row.row(
         InlineKeyboardButton(
             text="« Выйти",
             callback_data=BookingCB(step=BookingStep.GET_BACK_MENU, idk=gen_idk()).pack(),
-        )
+        ),
+        InlineKeyboardButton(text="ℹ️ Инструкция", callback_data=BookingCB(
+            step=BookingStep.INFO,
+            extra=f"{week_start:%d.%m} - {week_end:%d.%m}",
+            idk=gen_idk()
+        ).pack())
     )
-    # if weekday >= 4 and week_offset == 0:
-    #     week_offset = -1
-    #
-    if week_offset > -1:
-        row.add(
-            InlineKeyboardButton(text="ℹ️ Инструкция", callback_data=BookingCB(
-                step=BookingStep.INFO,
-                idk=gen_idk()
-            ).pack()),
-        )
-    row.adjust(2 if week_offset > -1 else 1)
+
     return row

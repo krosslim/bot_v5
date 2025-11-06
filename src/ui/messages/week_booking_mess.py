@@ -43,7 +43,7 @@ def render_booking_week_mess(
 
         if c_day.is_holiday and not c_day.is_weekend:
             header = f"<b>🌴 {c_info.short_name} {day_str}</b>"
-            lines.append(f"{header}\n<blockquote expandable><i>ПРАЗДНИЧНЫЙ ДЕНЬ</i></blockquote>")
+            lines.append(f"{header}\n<blockquote expandable><i>Нерабочий день</i></blockquote>")
             continue
 
         if c_day.is_weekend and not c_day.is_workday:

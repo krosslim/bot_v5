@@ -14,7 +14,7 @@ from src.ui.keyboard.bookings_inline_kb import render_booking_week_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.menu_inline_kb import own_booking_kb
 from src.ui.messages.auto_book_mess import build_promote_message
-from src.ui.messages.help_booking_mess import render_help_booking_mess
+from src.ui.messages.help_booking_mess import render_help_booking_mess3
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_booking_mess import render_booking_week_mess
 from src.use_cases.booking_use_case import BookingUseCase
@@ -35,7 +35,11 @@ async def handle_booking_page(call: CallbackQuery,
     _, _, week_offset = week_range(int(callback_data.extra) if callback_data.extra else None)
 
     await state.update_data(week_offset=week_offset)
-    await _render_booking_page(call, week_offset, uc, state)
+
+    state_data = await state.get_data()
+    help_page = state_data.get('help_page', None)
+
+    await _render_booking_page(call, week_offset, uc, state, help_page)
 
 
 # действие "забронировать"
@@ -47,6 +51,7 @@ async def handle_book_action(call: CallbackQuery,
                              ):
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
+    help_page = state_data.get('help_page', None)
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
@@ -59,7 +64,7 @@ async def handle_book_action(call: CallbackQuery,
                           show_alert = True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state)
+    await _render_booking_page(call, week_offset, uc, state, help_page)
 
 # действие "отменить бронь"
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.UNBOOK})))
@@ -70,6 +75,7 @@ async def handle_book_cancel_action(call: CallbackQuery,
                                     ):
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
+    help_page = state_data.get('help_page', None)
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
@@ -83,7 +89,7 @@ async def handle_book_cancel_action(call: CallbackQuery,
                           show_alert=True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state)
+    await _render_booking_page(call, week_offset, uc, state, help_page)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.JOINQ})))
@@ -94,6 +100,7 @@ async def handle_queue_join(call: CallbackQuery,
                             ):
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
+    help_page = state_data.get('help_page', None)
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
@@ -108,7 +115,7 @@ async def handle_queue_join(call: CallbackQuery,
                           show_alert=True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state)
+    await _render_booking_page(call, week_offset, uc, state, help_page)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.LEAVEQ})))
@@ -119,6 +126,7 @@ async def handle_queue_leave(call: CallbackQuery,
                              ):
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
+    help_page = state_data.get('help_page', None)
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
@@ -131,51 +139,83 @@ async def handle_queue_leave(call: CallbackQuery,
                           show_alert=True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state)
+    await _render_booking_page(call, week_offset, uc, state, help_page)
 
 
-@router.callback_query(BookingCB.filter(F.step.in_({BookingStep.INFO})))
+@router.callback_query(BookingCB.filter(F.step.in_({BookingStep.WEEK_INFO})))
 async def handle_booking_help(call: CallbackQuery, uc: FromDishka[BookingUseCase], state: FSMContext):
 
     try:
         state_data = await state.get_data()
         week_offset = int(state_data.get('week_offset', 0))
-        start, end, _ = week_range(week_offset)
-        has_holiday, has_available = await uc.week_state(start, end)
+        help_page = state_data.get('help_page', None)
 
-        await call.answer(text=render_help_booking_mess(has_holiday, has_available), show_alert=True)
+        if not help_page:
+            help_page = 1
+        else:
+            help_page = None
+
+        await state.update_data(help_page=help_page)
+        await _render_booking_page(call, week_offset, uc, state, help_page)
+
     except DBError:
         await call.answer(text="⚠️ Ошибка: Не удалось получить инструкцию.\n"
                                "Немного подождите и попробуйте еще раз.",
-                          show_alert=True
-                          )
+                          show_alert=True)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.GET_BACK_MENU})))
 async def handle_back_menu_button(call: CallbackQuery, state: FSMContext):
-    if await state.get_state():
+    state_data = await state.get_data()
+    if state_data:
         await state.clear()
     await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
 
 
-@router.callback_query(BookingCB.filter(F.step.in_({BookingStep.WEEK_INFO})))
-async def handle_week_info(call: CallbackQuery, callback_data: BookingCB):
-    await call.answer(text=f"🗓️ Выбрано {callback_data.extra}\n\n"
-                           f"• Для записи: жми ПН–ПТ\n───────────\n"
-                           f"• Сменить неделю: ← →\n───────────\n"
-                           f"• Узнать статус дня:\n ℹ️ Инструкция",
-                      show_alert=True)
+@router.callback_query(BookingCB.filter(F.step.in_({BookingStep.INFO})))
+async def handle_week_info(call: CallbackQuery, callback_data: BookingCB, state: FSMContext):
+    state_data = await state.get_data()
+    week_offset = int(state_data.get('week_offset', 0))
+    help_page = state_data.get('help_page', None)
+    if help_page:
+        special_text = f"Вернуть обычный режим:\nжми •{callback_data.extra}•"
+    else:
+        special_text = f"• Узнать статус дня:\n{callback_data.extra}"
+
+    msg = (
+        "• Сменить неделю: ← →\n───────────\n"
+        f"{special_text}"
+    )
+
+    if week_offset < 0:
+        await call.answer(text=msg, show_alert=True)
+        return
+
+    await call.answer(text="• Записаться: жми ПН–ПТ\n───────────\n"+msg, show_alert=True)
 
 
 # ---------------------------------------------- helpers ----------------------------------------------
-async def _render_booking_page(call: CallbackQuery, week_offset: int, uc: BookingUseCase, state: FSMContext) -> None:
+async def _render_booking_page(
+        call: CallbackQuery,
+        week_offset: int,
+        uc: BookingUseCase,
+        state: FSMContext,
+        help_page: Optional[int] = None
+) -> None:
     try:
         monday, sunday, _ = week_range(week_offset)
         active, capacity, calendar = await uc.booking_page_data(start=monday, end=sunday)
-        await call.message.edit_text(
-            text=render_booking_week_mess(active, capacity, calendar, call.from_user.id),
-            reply_markup=render_booking_week_kb(active, capacity, calendar, call.from_user.id, week_offset)
-        )
+
+        if help_page:
+            await call.message.edit_text(
+                text=render_help_booking_mess3(active, capacity, calendar, call.from_user.id),
+                reply_markup=render_booking_week_kb(active, capacity, calendar, call.from_user.id, week_offset, help_page)
+            )
+        else:
+            await call.message.edit_text(
+                text=render_booking_week_mess(active, capacity, calendar, call.from_user.id),
+                reply_markup=render_booking_week_kb(active, capacity, calendar, call.from_user.id, week_offset, help_page)
+            )
     except DBError:
         await call.answer(text="ℹ️ Данные сохранены, но расписание получить не удалось.\n"
                                "Возвращаемся в меню.",
