@@ -47,23 +47,27 @@ def week_summary_mess(week_data: list[WeekVisitsDTO], max_visitors: list[UserBoo
     winner_block = ""
     if max_visitors:
         booking_count = max_visitors[0].booking_count
-        visit_word = pluralize_visit(booking_count)
 
-        names = [
-            f'<a href="tg://user?id={user.user_id}">{user.full_name}</a>'
-            for user in max_visitors
-        ]
-        names_str = ", ".join(names)
+        # чтоб не спамить: кол-во бронирований ОТ 2 и число людей ДО 3
+        if booking_count > 1 and len(max_visitors) < 4:
 
-        if len(max_visitors) == 1:
-            title = f"🏆 Победитель ({booking_count} {visit_word})"
-        else:
-            title = f"🏆 Победители (по {booking_count} {visit_word})"
+            visit_word = pluralize_visit(booking_count)
 
-        winner_block = (
-            f"<b>{title}</b>\n"
-            f"<tg-spoiler>{names_str}</tg-spoiler>\n\n"
-        )
+            names = [
+                f'<a href="tg://user?id={user.user_id}">{user.full_name}</a>'
+                for user in max_visitors
+            ]
+            names_str = ", ".join(names)
+
+            if len(max_visitors) == 1:
+                title = f"🏆 Победитель ({booking_count} {visit_word})"
+            else:
+                title = f"🏆 Победители (по {booking_count} {visit_word})"
+
+            winner_block = (
+                f"<b>{title}</b>\n"
+                f"<tg-spoiler>{names_str}</tg-spoiler>\n\n"
+            )
 
     result = (
         f"<b>✨ Итоги недели ({week_start:%d.%m}–{week_end:%d.%m})</b>\n"
