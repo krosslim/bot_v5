@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
 from config import settings as s
+from src.utils.app_configuration.tz_day import d_tz
 
 
 def effective_today() -> date:
@@ -15,7 +16,7 @@ def effective_today() -> date:
 
 def effective_datetime_range() -> tuple[datetime, datetime]:
 
-    today = datetime.combine(date=date.today(), time=time(s.REMIND_JOB_HOUR, s.REMIND_JOB_MINUTES + 1), tzinfo=ZoneInfo(s.MSC_TZ))
-    tomorrow = datetime.combine(date=today+timedelta(days=1), time=time(s.WORK_END_HOUR, 0), tzinfo=ZoneInfo(s.MSC_TZ))
+    today = datetime.combine(date=d_tz(), time=time(s.REMIND_JOB_HOUR, s.REMIND_JOB_MINUTES + 1), tzinfo=ZoneInfo(s.MSC_TZ))
+    tomorrow = datetime.combine(date=d_tz(delta=1), time=time(s.WORK_END_HOUR, 0), tzinfo=ZoneInfo(s.MSC_TZ))
 
     return today, tomorrow

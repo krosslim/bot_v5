@@ -105,7 +105,7 @@ async def handle_queue_join(call: CallbackQuery,
 
     try:
         await uc.waitlist_place(call.from_user.id, cal_date)
-        await call.answer(text="Записали тебя в очередь!\nОтправим пуш, если появится место",
+        await call.answer(text="Записали тебя в очередь!\n\nОтправим пуш, если появится место",
                           show_alert=True)
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)

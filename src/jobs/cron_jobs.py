@@ -29,6 +29,7 @@ from src.ui.messages.confirm_to_remind_mess import remind_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
 from src.use_cases.booking_use_case import BookingUseCase
+from src.utils.app_configuration.tz_day import d_tz
 from src.utils.db_exc_wrapper import DBError
 from src.utils.sheet_name import month_name
 from src.utils.today import effective_datetime_range
@@ -77,7 +78,7 @@ async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler) ->
         sc_svc: TechService = await req.get(TechService)
         cal_date_svc: CalendarDatesService = await req.get(CalendarDatesService)
 
-        tomorrow = date.today() + timedelta(days=1)
+        tomorrow = d_tz(delta=1)
         weekday = tomorrow.isoweekday()
 
         try:
@@ -256,9 +257,9 @@ async def week_result_job(container: AsyncContainer) -> None:
 
         # если суббота рабочий день (джоб чекает если рабочий день, то не запускается)
 
-        today = date.today()
+        today = d_tz()
         start = today - timedelta(days=today.weekday())
-        tomorrow = date.today() + timedelta(days=1)
+        tomorrow = d_tz(delta=1)
 
         if today.isoweekday() == 5:
             # Проверка для пятницы на то, что суббота рабочий день
@@ -320,7 +321,7 @@ async def remind_to_confirm_booking_job(container: AsyncContainer) -> None:
         bot: Bot = await req.get(Bot)
         svc: BookingService = await req.get(BookingService)
 
-        tomorrow = date.today() + timedelta(days=1)
+        tomorrow = d_tz(delta=1)
         # print(f"определяем завтрашний день: {tomorrow}")
 
         reserved_bookings = await svc.get_bookings_by_status(tomorrow, tomorrow, BookingStatus.BOOKED, BookingStatus.RESERVED)
@@ -373,7 +374,7 @@ async def cancel_waitlist_bookings_job(container: AsyncContainer) -> None:
         try:
             async with session.begin():
                 res = await svc.update_booking_status(
-                    date.today(),
+                    d_tz(),
                     BookingStatus.WAITLISTED,           # текущий
                     BookingStatus.WAITLISTED_MANUAL,
                     BookingStatus.CANCELED,             # Новый
@@ -393,7 +394,7 @@ async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
         uc: BookingUseCase = await req.get(BookingUseCase)
         bot: Bot = await req.get(Bot)
 
-        tomorrow = date.today() + timedelta(days=1)
+        tomorrow = d_tz(delta=1)
         # print(f"определяем завтрашний день: {tomorrow}")
 
         reserved = await uc.bookings_by_status(

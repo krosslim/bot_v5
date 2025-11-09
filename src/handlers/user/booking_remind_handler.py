@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from aiogram import Router, F
@@ -13,6 +13,7 @@ from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
 from src.ui.keyboard.menu_inline_kb import own_booking_kb, get_menu_kb
 from src.ui.messages.start_mess import bot_menu_mess
 from src.use_cases.booking_use_case import BookingUseCase
+from src.utils.app_configuration.tz_day import d_tz
 from src.utils.db_exc_wrapper import DBError
 from src.utils.tommorow import fmt_date_ru
 
@@ -28,7 +29,7 @@ async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingC
     step = callback_data.step
 
     cal_date = date.fromisoformat(callback_data.extra)
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = d_tz(delta=1)
     str_tomorrow = fmt_date_ru(tomorrow)
 
     if cal_date != tomorrow:

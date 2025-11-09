@@ -1,6 +1,6 @@
-from datetime import date
-
 from dateutil.relativedelta import relativedelta
+
+from src.utils.app_configuration.tz_day import d_tz
 
 MONTHS_RU = {
     1: "январь",
@@ -18,7 +18,7 @@ MONTHS_RU = {
 }
 
 def month_name(offset: int = 0) -> str:
-    """Вернёт строку вида 'сентябрь 2025' для текущего месяца + offset."""
-    today = date.today()
+    """Вернёт строку вида 'сентябрь 2025' для текущего месяца + offset"""
+    today = d_tz()
     target = today + relativedelta(months=offset)
     return f"{MONTHS_RU[target.month]} {target.year}"

@@ -1,6 +1,7 @@
-from datetime import date, timedelta, datetime
+from datetime import date, datetime
 
 from src.dto.booking_dto import BookingStatus
+from src.utils.app_configuration.tz_day import d_tz
 
 _WEEKDAYS_RU = ('пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс')
 
@@ -16,9 +17,9 @@ def render_my_booking_mess(data) -> str:
     if not booked and not waitlist:
         return "<b>В настоящий момент у вас нет активных записей</b>"
 
-    today = date.today()
-    tomorrow = today + timedelta(days=1)
-    after_tomorrow = today + timedelta(days=2)
+    today = d_tz()
+    tomorrow = d_tz(delta=1)
+    after_tomorrow = d_tz(delta=2)
 
     parts = []
     blocks_count = 0

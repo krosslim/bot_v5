@@ -5,10 +5,11 @@ from typing import Iterable, List
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 
+from config import settings as s
 from src.dto.booking_dto import BookingStatus, OwnBookingDTO
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
+from src.utils.app_configuration.tz_day import d_tz
 from src.utils.idk import gen_idk
-from config import settings as s
 
 WEEKDAY_ACCUSATIVE_WITH_PREP = {
     0: "в понедельник",
@@ -24,7 +25,7 @@ def _weekday_phrase(target: date) -> str:
     return WEEKDAY_ACCUSATIVE_WITH_PREP[target.weekday()]
 
 def human_phrase_one(target: date) -> str:
-    today = date.today()
+    today = d_tz()
     delta = (target - today).days
 
     if delta == 0:
