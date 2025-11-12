@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
+from src.dto.booking_dto import BookingStatus
 from src.services.exceptions import BookingError
 from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.ui.keyboard.bookings_inline_kb import render_booking_week_kb
@@ -38,8 +39,9 @@ async def handle_booking_page(call: CallbackQuery,
 
     state_data = await state.get_data()
     help_page = state_data.get('help_page', None)
+    user_id = state_data.get('user_id', call.from_user.id)
 
-    await _render_booking_page(call, week_offset, uc, state, help_page)
+    await render_booking_page(call, week_offset, uc, state, help_page, user_id)
 
 
 # действие "забронировать"
@@ -52,10 +54,11 @@ async def handle_book_action(call: CallbackQuery,
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
     help_page = state_data.get('help_page', None)
+    user_id = state_data.get('user_id', call.from_user.id)
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
-        await uc.book_place(user_id=call.from_user.id, cal_date=cal_date)
+        await uc.book_place(user_id=user_id, cal_date=cal_date)
     except BookingError as e:
         await call.answer(text = str(e), show_alert = True)
     except DBError:
@@ -64,7 +67,7 @@ async def handle_book_action(call: CallbackQuery,
                           show_alert = True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state, help_page)
+    await render_booking_page(call, week_offset, uc, state, help_page, user_id)
 
 # действие "отменить бронь"
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.UNBOOK})))
@@ -76,10 +79,15 @@ async def handle_book_cancel_action(call: CallbackQuery,
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
     help_page = state_data.get('help_page', None)
+    user_id = state_data.get('user_id', None)
+    cancel_sub_status = BookingStatus.CANCELED_ADMIN
+    if not user_id:
+        user_id = call.from_user.id
+        cancel_sub_status = BookingStatus.CANCELED_CHANGED_MIND
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
-        await promote_user_after_cancel(call, uc, cal_date)
+        await promote_user_after_cancel(call, uc, cal_date, None, user_id, cancel_sub_status)
     except BookingError as e:
         await call.answer(text = str(e), show_alert = True)
     except DBError:
@@ -89,7 +97,7 @@ async def handle_book_cancel_action(call: CallbackQuery,
                           show_alert=True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state, help_page)
+    await render_booking_page(call, week_offset, uc, state, help_page, user_id)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.JOINQ})))
@@ -101,10 +109,11 @@ async def handle_queue_join(call: CallbackQuery,
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
     help_page = state_data.get('help_page', None)
+    user_id = state_data.get('user_id', call.from_user.id)
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
-        await uc.waitlist_place(call.from_user.id, cal_date)
+        await uc.waitlist_place(user_id, cal_date)
         await call.answer(text="Записали тебя в очередь!\n\nОтправим пуш, если появится место",
                           show_alert=True)
     except BookingError as e:
@@ -115,7 +124,7 @@ async def handle_queue_join(call: CallbackQuery,
                           show_alert=True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state, help_page)
+    await render_booking_page(call, week_offset, uc, state, help_page, user_id)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.LEAVEQ})))
@@ -127,10 +136,11 @@ async def handle_queue_leave(call: CallbackQuery,
     state_data = await state.get_data()
     week_offset = int(state_data.get('week_offset', 0))
     help_page = state_data.get('help_page', None)
+    user_id = state_data.get('user_id', call.from_user.id)
     cal_date = date.fromisoformat(callback_data.extra)
 
     try:
-        await uc.cancel_waitlist_place(call.from_user.id, cal_date)
+        await uc.cancel_waitlist_place(user_id, cal_date)
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)
     except DBError:
@@ -139,7 +149,7 @@ async def handle_queue_leave(call: CallbackQuery,
                           show_alert=True
                           )
 
-    await _render_booking_page(call, week_offset, uc, state, help_page)
+    await render_booking_page(call, week_offset, uc, state, help_page, user_id)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.WEEK_INFO})))
@@ -149,6 +159,7 @@ async def handle_booking_help(call: CallbackQuery, uc: FromDishka[BookingUseCase
         state_data = await state.get_data()
         week_offset = int(state_data.get('week_offset', 0))
         help_page = state_data.get('help_page', None)
+        user_id = state_data.get('user_id', call.from_user.id)
 
         if not help_page:
             help_page = 1
@@ -156,7 +167,7 @@ async def handle_booking_help(call: CallbackQuery, uc: FromDishka[BookingUseCase
             help_page = None
 
         await state.update_data(help_page=help_page)
-        await _render_booking_page(call, week_offset, uc, state, help_page)
+        await render_booking_page(call, week_offset, uc, state, help_page, user_id)
 
     except DBError:
         await call.answer(text="⚠️ Ошибка: Не удалось получить инструкцию.\n"
@@ -166,8 +177,7 @@ async def handle_booking_help(call: CallbackQuery, uc: FromDishka[BookingUseCase
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.GET_BACK_MENU})))
 async def handle_back_menu_button(call: CallbackQuery, state: FSMContext):
-    state_data = await state.get_data()
-    if state_data:
+    if await state.get_data():
         await state.clear()
     await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
 
@@ -195,33 +205,35 @@ async def handle_week_info(call: CallbackQuery, callback_data: BookingCB, state:
 
 
 # ---------------------------------------------- helpers ----------------------------------------------
-async def _render_booking_page(
+async def render_booking_page(
         call: CallbackQuery,
         week_offset: int,
         uc: BookingUseCase,
         state: FSMContext,
-        help_page: Optional[int] = None
+        help_page: Optional[int] = None,
+        user_id: int = None
 ) -> None:
     try:
         monday, sunday, _ = week_range(week_offset)
         active, capacity, calendar = await uc.booking_page_data(start=monday, end=sunday)
+        user_id = call.from_user.id if not user_id else user_id
 
         if help_page:
             await call.message.edit_text(
-                text=render_help_booking_mess3(active, capacity, calendar, call.from_user.id),
-                reply_markup=render_booking_week_kb(active, capacity, calendar, call.from_user.id, week_offset, help_page)
+                text=render_help_booking_mess3(active, capacity, calendar, user_id),
+                reply_markup=render_booking_week_kb(active, capacity, calendar, user_id, week_offset, help_page)
             )
         else:
             await call.message.edit_text(
-                text=render_booking_week_mess(active, capacity, calendar, call.from_user.id),
-                reply_markup=render_booking_week_kb(active, capacity, calendar, call.from_user.id, week_offset, help_page)
+                text=render_booking_week_mess(active, capacity, calendar, user_id),
+                reply_markup=render_booking_week_kb(active, capacity, calendar, user_id, week_offset, help_page)
             )
     except DBError:
         await call.answer(text="ℹ️ Данные сохранены, но расписание получить не удалось.\n"
                                "Возвращаемся в меню.",
                           show_alert=True
                           )
-        if await state.get_state():
+        if await state.get_data():
             await state.clear()
         try:
             await call.message.edit_text(
@@ -242,7 +254,7 @@ async def promote_user_after_cancel(
 ) -> Optional[int]:
 
     if call:
-        user_id = call.from_user.id
+        user_id = call.from_user.id if not user_id else user_id
 
     if call is None and user_id is None:
         return None

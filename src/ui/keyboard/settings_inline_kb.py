@@ -1,25 +1,39 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from src.dto.user_dto import UserDTO
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.utils.idk import gen_idk
 
 
-def render_settings_menu_kb() -> InlineKeyboardMarkup:
+def render_settings_menu_kb(user: UserDTO = None) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    return kb.row(
+
+    kb.row(
         InlineKeyboardButton(
             text="🤖✅ Автоподтверждение брони",
             callback_data=SettingsCB(step=SettingsStep.AUTO_CONFIRM,
                                      idk=gen_idk()).pack()
-        ),
+        )
+    )
+    if user is not None and user.is_lead:
+        kb.row(
+        InlineKeyboardButton(
+            text="👤 Мои сотрудники",
+            callback_data=SettingsCB(step=SettingsStep.MY_EMPLOYEES,
+                                     extra=user.profession_id,
+                                     idk=gen_idk()).pack()
+            )
+        )
+    kb.row(
         InlineKeyboardButton(
             text="« Выйти",
             callback_data=SettingsCB(step=SettingsStep.GET_BACK_MENU,
                                      idk=gen_idk()).pack()
-        ),
-        width=1
-    ).as_markup()
+        )
+    )
+
+    return kb.as_markup()
 
 def render_settings_auto_confirm_kb(auto_confirm: bool) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()

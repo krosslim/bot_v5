@@ -20,7 +20,7 @@ router = Router()
 @router.message(CommandStart())
 async def handle_start(msg: Message, uc: FromDishka[UserUseCase], state: FSMContext):
 
-    if await state.get_state():
+    if await state.get_data():
         await state.clear()
 
     try:
@@ -39,7 +39,7 @@ async def handle_start(msg: Message, uc: FromDishka[UserUseCase], state: FSMCont
 @router.message(F.text == "/menu")
 async def handle_back_menu_command(msg: Message, uc: FromDishka[UserUseCase],  state: FSMContext):
 
-    if await state.get_state():
+    if await state.get_data():
         await state.clear()
 
     try:

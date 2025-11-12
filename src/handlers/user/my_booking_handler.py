@@ -95,7 +95,7 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
 
 @router.callback_query(MyBookingCB.filter(F.step.in_({MyBookingStep.GET_BACK_MENU})))
 async def handle_get_back_menu(call: CallbackQuery, state: FSMContext):
-    if await state.get_state():
+    if await state.get_data():
         await state.clear()
     await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
 

@@ -13,6 +13,9 @@ class UserDTO(BaseModel):
     auto_confirm: bool
     auto_join_queue: bool
     is_admin: bool
+    is_lead: bool
+    profession_id: int
+    product_id: int
     created_at: datetime
 
 

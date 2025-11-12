@@ -60,6 +60,22 @@ class Repository:
         res = await self.session.execute(stmt)
         return res.rowcount #type: ignore
 
+    async def get_employees(self,
+                            profession_id: int,
+                            is_lead: bool,
+                            limit: int,
+                            offset: int,
+                            ) -> List[UserDTO]:
+
+        result = await self.session.execute(
+            select(User).where(
+                User.profession_id == profession_id, User.is_lead == is_lead
+            ).limit(limit).offset(offset).order_by(User.full_name)
+        )
+        users = result.scalars().all()
+        return [UserDTO.model_validate(user) for user in users]
+
+
 
 # ---------------------------------------------------------------------------#
 #  BOOKINGS

@@ -17,6 +17,14 @@ class UserService:
             raise UserNotFound
         return user
 
+    async def get_users(self,
+                        profession_id: int,
+                        is_lead: bool,
+                        limit: int,
+                        offset: int
+                        ) -> List[UserDTO]:
+        return await self.repo.get_employees(profession_id, is_lead, limit, offset)
+
     async def create_user(self, user_id: int, full_name: str,
                           profession_id: int, product_id: int) -> None:
         user = await self.repo.get_user_by_id(user_id)

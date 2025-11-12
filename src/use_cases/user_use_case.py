@@ -20,6 +20,14 @@ class UserUseCase:
             except UserWarn:
                 return None
 
+    async def get_users(self,
+                        profession_id: int,
+                        is_lead: bool,
+                        limit: int,
+                        offset: int
+                        ) -> List[UserDTO]:
+        async with self.session.begin():
+            return await self.user.get_users(profession_id, is_lead, limit, offset)
 
     async def create_user(self, user_id: int, full_name: str,
                           profession_id: int, product_id: int) -> None:

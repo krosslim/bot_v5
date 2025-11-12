@@ -48,6 +48,9 @@ class SettingsStep(StrEnum):
     AUTO_CONFIRM_ON = auto()
     AUTO_CONFIRM_OFF = auto()
     GET_BACK_MENU = auto()
+    MY_EMPLOYEES = auto()
+    EMPLOYEES_PAGINATION = auto()
+    EMPLOYEE = auto()
 
 
 class ChatBookingStep(StrEnum):
