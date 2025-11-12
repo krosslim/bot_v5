@@ -18,12 +18,11 @@ class UserService:
         return user
 
     async def get_users(self,
-                        profession_id: int,
-                        is_lead: bool,
                         limit: int,
-                        offset: int
+                        offset: int,
+                        profession_id: int = None
                         ) -> List[UserDTO]:
-        return await self.repo.get_employees(profession_id, is_lead, limit, offset)
+        return await self.repo.get_employees(limit, offset, profession_id)
 
     async def create_user(self, user_id: int, full_name: str,
                           profession_id: int, product_id: int) -> None:

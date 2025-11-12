@@ -49,6 +49,7 @@ class SettingsStep(StrEnum):
     AUTO_CONFIRM_OFF = auto()
     GET_BACK_MENU = auto()
     MY_EMPLOYEES = auto()
+    ALL_EMPLOYEES = auto()
     EMPLOYEES_PAGINATION = auto()
     EMPLOYEE = auto()
 

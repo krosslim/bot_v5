@@ -19,10 +19,14 @@ router = Router()
 
 # меню настроек
 @router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.INIT_SETTINGS})))
-async def handle_settings_page(call: CallbackQuery, uc: FromDishka[UserUseCase]):
+async def handle_settings_page(call: CallbackQuery, uc: FromDishka[UserUseCase], state: FSMContext):
 
     try:
         user = await uc.check_exists(call.from_user.id)
+
+        # Чтобы profession_id сбрасывался при возврате в меню
+        await state.clear()
+
     except (DBError, UserWarn):
         user = None
 
@@ -97,7 +101,8 @@ async def handle_settings_auto_confirm_on(call: CallbackQuery,
 
 @router.callback_query(SettingsCB.filter(F.step.in_({
         SettingsStep.MY_EMPLOYEES,
-        SettingsStep.EMPLOYEES_PAGINATION
+        SettingsStep.EMPLOYEES_PAGINATION,
+        SettingsStep.ALL_EMPLOYEES
     })))
 async def handle_settings_my_employees(
         call: CallbackQuery,
@@ -109,10 +114,11 @@ async def handle_settings_my_employees(
         state_data = await state.get_data()
         profession_id = state_data.get("profession_id", None)
         if not profession_id:
-            profession_id = int(callback_data.extra)
-            await state.update_data(profession_id=profession_id)
+            if callback_data.step not in (SettingsStep.ALL_EMPLOYEES, SettingsStep.EMPLOYEES_PAGINATION):
+                profession_id = int(callback_data.extra)
+                await state.update_data(profession_id=profession_id)
         page = int(callback_data.extra) if callback_data.step == SettingsStep.EMPLOYEES_PAGINATION else 0
-        employees = await uc.get_users(profession_id, False, 100, 0)
+        employees = await uc.get_users(100, 0, profession_id)
 
         await call.message.edit_text(
             text="<b>Выберите доступного сотрудника ⤵︎</b>\n\n"

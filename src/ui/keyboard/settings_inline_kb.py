@@ -25,6 +25,14 @@ def render_settings_menu_kb(user: UserDTO = None) -> InlineKeyboardMarkup:
                                      idk=gen_idk()).pack()
             )
         )
+    if user is not None and user.is_admin:
+        kb.row(
+        InlineKeyboardButton(
+            text="👤 Все сотрудники",
+            callback_data=SettingsCB(step=SettingsStep.ALL_EMPLOYEES,
+                                     idk=gen_idk()).pack()
+            )
+        )
     kb.row(
         InlineKeyboardButton(
             text="« Выйти",

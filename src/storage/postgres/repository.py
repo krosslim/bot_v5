@@ -61,18 +61,19 @@ class Repository:
         return res.rowcount #type: ignore
 
     async def get_employees(self,
-                            profession_id: int,
-                            is_lead: bool,
                             limit: int,
                             offset: int,
+                            profession_id: int = None,
                             ) -> List[UserDTO]:
 
-        result = await self.session.execute(
-            select(User).where(
-                User.profession_id == profession_id, User.is_lead == is_lead
-            ).limit(limit).offset(offset).order_by(User.full_name)
-        )
-        users = result.scalars().all()
+        stmt = select(User)
+        if profession_id is not None:
+            stmt = stmt.where(User.profession_id == profession_id, User.is_lead == False)
+
+        stmt = stmt.limit(limit).offset(offset).order_by(User.full_name)
+
+        res = await self.session.execute(stmt)
+        users = res.scalars().all()
         return [UserDTO.model_validate(user) for user in users]
 
 
