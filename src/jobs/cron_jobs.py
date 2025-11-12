@@ -6,7 +6,7 @@ from functools import partial
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dishka import AsyncContainer
@@ -475,7 +475,7 @@ async def _send_cancel_message(bot: Bot, user_id: int, cal_date: date) -> None:
                  f"Если места еще остались, ты можешь попробовать занять.\nНовую запись подтверждать не придется</blockquote>",
             reply_markup=check_bookings_kb()
         )
-    except TelegramBadRequest as e_tg:
+    except (TelegramBadRequest, TelegramForbiddenError) as e_tg:
         logger.exception(f"Не удалось отправить сообщение {user_id} | {str(e_tg)}")
 
 
