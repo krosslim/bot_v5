@@ -1,3 +1,4 @@
+# from datetime import date, timedelta
 from datetime import date
 from typing import Dict, List, Optional
 
@@ -11,7 +12,9 @@ from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.utils.idk import gen_idk
 from src.utils.today import effective_today
 
-PAGINATION_NUMS = {0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉"}
+PAGINATION_NUMS = {0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉", ".": "․"}
+# PAGINATION_NUMS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+# PAGINATION_NUMS = "₀₁₂₃₄₅₆₇₈₉"
 
 def render_booking_week_kb(
         days: List[DateBookingsDTO],
@@ -22,9 +25,6 @@ def render_booking_week_kb(
         help_page: Optional[int] = None
 ) -> InlineKeyboardMarkup:
     cap_by_wd: Dict[int, OfficeCapacityDTO] = {c.weekday: c for c in capacities}
-    holiday_map: Dict[date, bool] = {c.cal_date: c.is_holiday for c in calendar}
-    workday_map: Dict[date, bool] = {c.cal_date: c.is_workday for c in calendar}
-    weekend_map: Dict[date, bool] = {c.cal_date: c.is_weekend for c in calendar}
     bookings_map: Dict[date, DateBookingsDTO] = {d.cal_date: d for d in days}
 
     today = effective_today()
@@ -42,9 +42,9 @@ def render_booking_week_kb(
                 continue
             if day < today:
                 continue
-            if holiday_map.get(day, False):
+            if cal.is_holiday:
                 continue
-            if weekend_map.get(day, False) and not workday_map.get(day, True):
+            if cal.is_weekend and not cal.is_workday:
                 continue
 
             booked_cnt = 0
@@ -77,8 +77,8 @@ def render_booking_week_kb(
 
     week_start = week_end = None
     if sorted_calendar:
-        week_start = sorted_calendar[0].cal_date
-        week_end = sorted_calendar[-1].cal_date
+        work_days = [day.cal_date for day in sorted_calendar if day.is_workday]
+        week_start, week_end = work_days[0], work_days[-1]
         kb.attach(_paginator_row(week_offset, week_start, week_end, help_page))
 
     kb.attach(_bottom_row(week_start, week_end))
@@ -150,14 +150,27 @@ def _paginator_nums(offset: int) -> tuple[str, str]:
     if offset == 0:
         return "←", "→"
     elif offset > 0:
-        return "←", f"→ {_convert_number(offset)}"
+        return "←", f"→ ₊{_convert_number(offset)}"
     else:
-        return f"{_convert_number(offset)} ←", "→"
+        return f"₋{_convert_number(offset)} ←", "→"
 
 def _convert_number(num: int) -> str:
     if num == 0:
         return ""
     return "".join(PAGINATION_NUMS[int(digit)] for digit in str(abs(num)))
+
+# def _paginator_nums(offset: int, today: date) -> tuple[str, str]:
+#     current_monday = today - timedelta(days=today.weekday())
+#     anchor_monday = current_monday + timedelta(days=offset * 7)
+#
+#     prev_monday = anchor_monday - timedelta(days=7)
+#     next_monday = anchor_monday + timedelta(days=7)
+#
+#     def to_subscript(d: date) -> str:
+#         text = f"{d.day:02d}.{d.month:02d}"
+#         return text.translate(str.maketrans("0123456789", PAGINATION_NUMS))
+#
+#     return f"{to_subscript(prev_monday)} ←", f"→ {to_subscript(next_monday)}"
 
 
 def _bottom_row(

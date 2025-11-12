@@ -4,6 +4,7 @@ from src.dto.booking_dto import DateBookingsDTO, BookingStatus
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
 from src.utils.today import effective_today
+from src.utils.tommorow import is_tomorrow
 
 
 def _plural_ru(n: int, form1: str, form2: str, form5: str) -> str:
@@ -75,21 +76,23 @@ def render_booking_week_mess(
         booked_count = len(booked_list)
         free_seats = max(c_info.capacity - booked_count, 0)
 
-        base_header = f"<b>{c_info.short_name} {day_str}</b>"
+        base_header = f"{c_info.short_name} {day_str}"
         if day < today:
             p_was = _plural_ru(booked_count, "был", "было", "было")
             p_people = _plural_ru(booked_count, "человек", "человека", "человек")
-            header = f"{base_header} <i>({p_was} {booked_count} {p_people})</i>"
+            header = f"<b>{base_header}</b> <i>({p_was} {booked_count} {p_people})</i>"
         else:
+            if is_tomorrow(day):
+                base_header += " (завтра)"
             if user_is_booked:
-                header = f"<b>🟢 {c_info.short_name} {day_str}</b>"
+                header = f"<b>🟢 {base_header}</b>"
             elif free_seats > 0:
                 p_seats = _plural_ru(free_seats, "место", "места", "мест")
-                header = f"<b>⚪️ {c_info.short_name} {day_str} → {free_seats} {p_seats}</b>"
+                header = f"<b>⚪️ {base_header} • {free_seats} {p_seats}</b>"
             elif user_waitlist_pos:
-                header = f"<b>🟡 {c_info.short_name} {day_str} → Ты №{user_waitlist_pos} в очереди</b>"
+                header = f"<b>🟡 {base_header} • №{user_waitlist_pos} в очереди</b>"
             else:
-                header = f"<b>🔴 {c_info.short_name} {day_str} → Нет мест</b>"
+                header = f"<b>🔴 {base_header} • Нет мест</b>"
 
         if booked_list:
             users_block = "\n".join(f"{i}. {u.full_name}" for i, u in enumerate(booked_list, 1))
