@@ -8,7 +8,7 @@ from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from config import settings as s
 from src.dto.booking_dto import BookingStatus, OwnBookingDTO
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
-from src.utils.app_configuration.tz_day import d_tz
+from src.utils.tz_day import d_tz
 from src.utils.idk import gen_idk
 
 WEEKDAY_ACCUSATIVE_WITH_PREP = {

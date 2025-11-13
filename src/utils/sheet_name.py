@@ -1,6 +1,6 @@
 from dateutil.relativedelta import relativedelta
 
-from src.utils.app_configuration.tz_day import d_tz
+from src.utils.tz_day import d_tz
 
 MONTHS_RU = {
     1: "январь",

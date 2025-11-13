@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
 from config import settings as s
-from src.utils.app_configuration.tz_day import d_tz
+from src.utils.tz_day import d_tz
 
 
 def effective_today() -> date:

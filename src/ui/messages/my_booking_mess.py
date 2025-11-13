@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
 from src.dto.booking_dto import BookingStatus
-from src.utils.app_configuration.tz_day import d_tz
+from src.utils.tz_day import d_tz
 
 _WEEKDAYS_RU = ('пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс')
 

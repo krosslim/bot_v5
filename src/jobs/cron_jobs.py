@@ -29,7 +29,7 @@ from src.ui.messages.confirm_to_remind_mess import remind_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
 from src.use_cases.booking_use_case import BookingUseCase
-from src.utils.app_configuration.tz_day import d_tz
+from src.utils.tz_day import d_tz
 from src.utils.db_exc_wrapper import DBError
 from src.utils.sheet_name import month_name
 from src.utils.today import effective_datetime_range
@@ -351,15 +351,22 @@ async def remind_to_confirm_booking_job(container: AsyncContainer) -> None:
                         current_hour)
             return
 
-        for users in reserved_bookings.users:
-            await bot.send_message(
-                chat_id=users.user_id,
-                text=message_text,
-                reply_markup=remind_kb(tomorrow)
-            )
+        success = fail = 0
 
-        logger.info("remind_to_confirm_booking_job | finished at %s | users count is %s",
-                    datetime.now(tz=ZoneInfo(settings.MSC_TZ)), len(reserved_bookings.users)
+        for users in reserved_bookings.users:
+            try:
+                await bot.send_message(
+                    chat_id=users.user_id,
+                    text=message_text,
+                    reply_markup=remind_kb(tomorrow)
+                )
+                success += 1
+            except (TelegramForbiddenError, TelegramBadRequest) as e:
+                logger.error(f"remind_to_confirm_booking_job | Failed to send to user {users.user_id}: {str(e)}")
+                fail += 1
+
+        logger.info("remind_to_confirm_booking_job | finished at %s | users count is %s | success %s | fail %s",
+                    datetime.now(tz=ZoneInfo(settings.MSC_TZ)), len(reserved_bookings.users), success, fail
                     )
 
 

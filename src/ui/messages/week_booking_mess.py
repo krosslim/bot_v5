@@ -5,6 +5,7 @@ from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
 from src.utils.today import effective_today
 from src.utils.tommorow import is_tomorrow
+from src.utils.tz_day import d_tz
 
 
 def _plural_ru(n: int, form1: str, form2: str, form5: str) -> str:
@@ -29,7 +30,8 @@ def render_booking_week_mess(
     bookings_by_date = {d.cal_date: d for d in dates}
 
     lines: List[str] = []
-    today = effective_today()
+    today = d_tz()
+    effective = effective_today()
 
     for c_day in sorted(calendar, key=lambda x: x.cal_date):
         day = c_day.cal_date
@@ -84,7 +86,9 @@ def render_booking_week_mess(
         else:
             if is_tomorrow(day):
                 base_header += " (завтра)"
-            if user_is_booked:
+            if day == today and today != effective:
+                header = f"<b>{base_header}</b>"
+            elif user_is_booked:
                 header = f"<b>🟢 {base_header}</b>"
             elif free_seats > 0:
                 p_seats = _plural_ru(free_seats, "место", "места", "мест")
