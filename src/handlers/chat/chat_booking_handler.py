@@ -1,9 +1,11 @@
+import asyncio
 from datetime import date
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
+from src.dto.booking_dto import DateBookingsDTO
 from src.services.exceptions import BookingError
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
 from src.ui.keyboard.booking_remind_kb import confirm_kb
@@ -12,8 +14,10 @@ from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.today import effective_today
 
+
 router = Router()
 
+_pending_updates: dict[tuple[int, int], asyncio.Task] = {}
 
 # Действия в чате по бронированию
 @router.callback_query(
@@ -76,10 +80,13 @@ async def handle_chat_booking(
 
     try:
         bookings, capacity = await uc.chat_booking_data(cal_date=cal_date)
-        await call.message.edit_text(
-            text=build_digest_message_v2(bookings, capacity, cal_date),
-            reply_markup=confirm_kb(bookings, capacity, cal_date),
-            disable_web_page_preview=True,
+        schedule_digest_update(
+            bot=call.bot,
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            cal_date=cal_date,
+            bookings=bookings,
+            capacity=capacity,
         )
     except DBError:
         await call.answer(
@@ -140,3 +147,53 @@ async def _user_not_registration_alert(call: CallbackQuery) -> None:
         "который указан в сообщении",
         show_alert=True,
     )
+
+
+def schedule_digest_update(
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    cal_date: date,
+    bookings: DateBookingsDTO,
+    capacity: int
+):
+    key = (chat_id, message_id)
+
+    old = _pending_updates.get(key)
+
+    if old and not old.done():
+        old.cancel()
+
+    task = asyncio.create_task(
+        _debounced_update(key, bot, chat_id, message_id, cal_date, bookings, capacity)
+    )
+
+    _pending_updates[key] = task
+
+
+async def _debounced_update(
+    key: tuple[int, int],
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    cal_date: date,
+    bookings: DateBookingsDTO,
+    capacity: int
+):
+    try:
+
+        await asyncio.sleep(0.5)
+
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=build_digest_message_v2(bookings, capacity, cal_date),
+            reply_markup=confirm_kb(bookings, capacity, cal_date),
+            disable_web_page_preview=True,
+        )
+    except asyncio.CancelledError:
+        return
+    finally:
+        current = _pending_updates.get(key)
+        if current is asyncio.current_task():
+            del _pending_updates[key]
