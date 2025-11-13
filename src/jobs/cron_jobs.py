@@ -60,7 +60,7 @@ async def cleanup_booking_session_job(container: AsyncContainer) -> None:
                 )
                 await svc.finish_booking_session(f"{session.user_id}:{session.message_id}")
             except TelegramBadRequest as e:
-                logger.exception(str(e))
+                logger.error(str(e))
                 await svc.finish_booking_session(f"{session.user_id}:{session.message_id}")
             except Exception as e:
                 logger.exception(f"ERROR: cleanup_booking_session_job | {str(e)}")
@@ -180,7 +180,7 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                 return
             except TelegramBadRequest as e:
                 # print('Сообщение в базе есть, но не удалось его отредактировать')
-                logger.exception(f"ERROR: check_chat_remind_job | {str(e)}")
+                logger.error(f"ERROR: check_chat_remind_job | {str(e)}")
                 if "message to edit not found" in e.message:
                     # print('Сообщение в базе есть, но админ удалил его. Поэтому создаем новое')
                     message = await bot.send_message(
@@ -476,7 +476,7 @@ async def _send_cancel_message(bot: Bot, user_id: int, cal_date: date) -> None:
             reply_markup=check_bookings_kb()
         )
     except (TelegramBadRequest, TelegramForbiddenError) as e_tg:
-        logger.exception(f"Не удалось отправить сообщение {user_id} | {str(e_tg)}")
+        logger.error(f"Не удалось отправить сообщение {user_id} | {str(e_tg)}")
 
 
 async def _unpin_last_message(bot: Bot, last_message_id: int) -> None:

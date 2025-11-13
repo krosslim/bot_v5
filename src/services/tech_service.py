@@ -53,7 +53,7 @@ class TechService:
             ]
             return result
         except (ValueError, IndexError):
-            logger.exception(f"no valid data: {res}")
+            logger.warning(f"no valid data: {res}")
             return []
 
 

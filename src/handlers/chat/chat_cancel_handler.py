@@ -214,7 +214,7 @@ async def _send_message(bot: Bot, user_id: int, text: str) -> None:
     try:
         await bot.send_message(user_id, text)
     except (TelegramBadRequest, TelegramForbiddenError):
-        logger.exception("Не удалось отправить сообщение пользователю %s", user_id)
+        logger.error("Не удалось отправить сообщение пользователю %s", user_id)
         return
 
 

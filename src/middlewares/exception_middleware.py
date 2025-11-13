@@ -20,7 +20,7 @@ class ExceptionMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         except TelegramBadRequest as e:
-            logger.exception("Telegram API exception: %s", e, exc_info=False)
+            logger.error("Telegram API exception: %s", e, exc_info=False)
 
         except Exception as e:
             logger.exception("Unhandled exception: %s", e)

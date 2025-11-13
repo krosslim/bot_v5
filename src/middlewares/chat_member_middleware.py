@@ -45,7 +45,7 @@ class ChatMembershipMiddleware(BaseMiddleware):
                 if not ok:
                     return await self._deny(event)
         except (TelegramBadRequest, TelegramForbiddenError):
-            logger.exception("Bot is not a chat member | chat_id: %s", self.chat_id)
+            logger.error("Bot is not a chat member | chat_id: %s", self.chat_id)
             return None
 
         return await handler(event, data)

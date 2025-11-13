@@ -64,11 +64,14 @@ class Repository:
                             limit: int,
                             offset: int,
                             profession_id: int = None,
+                            is_active: bool = True
                             ) -> List[UserDTO]:
 
         stmt = select(User)
         if profession_id is not None:
             stmt = stmt.where(User.profession_id == profession_id, User.is_lead == False)
+
+        stmt = stmt.where(User.is_active == is_active)
 
         stmt = stmt.limit(limit).offset(offset).order_by(User.full_name)
 

@@ -276,9 +276,9 @@ async def promote_user_after_cancel(
                     reply_markup=own_booking_kb()
                 )
             else:
-                logger.exception(f"Сообщение для user_id {promote_user_id} не отправлено. Аргументы функции заданы неверно")
+                logger.error(f"Сообщение для user_id {promote_user_id} не отправлено. Аргументы функции заданы неверно")
                 return None
         except (TelegramBadRequest, TelegramForbiddenError):
-            logger.exception(f"Не удалось отправить сообщение {promote_user_id}")
+            logger.error(f"Не удалось отправить сообщение {promote_user_id}")
 
         return promote_user_id
