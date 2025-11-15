@@ -18,7 +18,7 @@ def render_my_booking_kb(data, back_btn, back_btn_text) -> InlineKeyboardMarkup:
     if booked and waitlist:
         builder.row(
             InlineKeyboardButton(
-                text="📅 Мои бронирования",
+                text="🗓 Мои бронирования",
                 callback_data=MyBookingCB(
                     step=MyBookingStep.BOOKINGS,
                     idk=gen_idk()

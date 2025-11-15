@@ -254,6 +254,12 @@ async def check_chat_remind_reserve_job(container: AsyncContainer, sched: AsyncI
                             now, message.cal_date)
                 return
 
+            if end_dt < start_dt:
+                logger.info("check_chat_remind_reserve_job | removed cause end_dt (%s) < start_dt (%s)"
+                            " for cal_date %s", start_dt, end_dt, message.cal_date)
+                return
+
+
             _add_job_checker(sched, container, start_dt, end_dt)
 
         except DBError as e:
