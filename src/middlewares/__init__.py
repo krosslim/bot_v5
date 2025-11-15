@@ -1,12 +1,14 @@
 from aiogram import Dispatcher
 from aiogram.utils.callback_answer import CallbackAnswerMiddleware
 
+from src.middlewares.callback_stats_middleware import CallbackStatsMiddleware
 from src.middlewares.chat_member_middleware import ChatMembershipMiddleware
 from src.middlewares.exception_middleware import ExceptionMiddleware
 from src.middlewares.throttling_middleware import ThrottlingMiddleware
 
 
 def setup_outer_middlewares(dp: Dispatcher) -> None:
+    dp.callback_query.outer_middleware(CallbackStatsMiddleware())
     dp.update.outer_middleware(ExceptionMiddleware())
 
 
