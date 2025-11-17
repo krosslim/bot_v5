@@ -1,10 +1,9 @@
+from datetime import date
 from typing import List
 
 from src.dto.booking_dto import DateBookingsDTO, BookingStatus
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
-from src.utils.today import effective_today
-from src.utils.tommorow import is_tomorrow
 from src.utils.tz_day import d_tz
 
 
@@ -31,7 +30,7 @@ def render_booking_week_mess(
 
     lines: List[str] = []
     today = d_tz()
-    effective = effective_today()
+    today_weekday = today.weekday()
 
     for c_day in sorted(calendar, key=lambda x: x.cal_date):
         day = c_day.cal_date
@@ -83,12 +82,12 @@ def render_booking_week_mess(
             p_was = _plural_ru(booked_count, "был", "было", "было")
             p_people = _plural_ru(booked_count, "человек", "человека", "человек")
             header = f"<b>{base_header}</b> <i>({p_was} {booked_count} {p_people})</i>"
+        elif day == today:
+            p_people = _plural_ru(booked_count, "человек", "человека", "человек")
+            header = f"<b>{base_header}</b> <i>({booked_count} {p_people})</i>"
         else:
-            if is_tomorrow(day):
-                base_header += " (завтра)"
-            if day == today and today != effective:
-                header = f"<b>{base_header}</b>"
-            elif user_is_booked:
+            base_header += _day_delta_str(day, today_weekday)
+            if user_is_booked:
                 header = f"<b>🟢 {base_header}</b>"
             elif free_seats > 0:
                 p_seats = _plural_ru(free_seats, "место", "места", "мест")
@@ -106,3 +105,15 @@ def render_booking_week_mess(
         lines.append(f"{header}\n<blockquote expandable>{users_block}</blockquote>")
 
     return "\n\n".join(lines)
+
+
+def _day_delta_str(d: date, today_weekday: int) -> str:
+
+    if d == d_tz(delta=1):
+        return " (завтра)"
+    elif today_weekday == 5 and d == d_tz(delta=2):
+        return " (послезавтра)"
+    elif today_weekday == 4 and d == d_tz(delta=3):
+        return " (через 3 дня)"
+    else:
+        return ""

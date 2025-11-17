@@ -190,7 +190,7 @@ async def handle_week_info(call: CallbackQuery, callback_data: BookingCB, state:
     if help_page:
         special_text = f"Вернуть обычный режим:\nжми •{callback_data.extra}•"
     else:
-        special_text = f"• Узнать статус дня:\n{callback_data.extra}"
+        special_text = f"• Подробная инструкция:\n{callback_data.extra}"
 
     msg = (
         "• Сменить неделю: ← →\n───────────\n"

@@ -4,7 +4,8 @@ from src.dto.booking_dto import DateBookingsDTO, BookingStatus
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
 from src.utils.today import effective_today
-
+from src.utils.tz_day import d_tz
+from config import settings as s
 
 def render_help_booking_mess(has_holiday: bool, has_available: bool) -> str:
 
@@ -54,7 +55,7 @@ def render_help_booking_mess3(
     bookings_by_date = {d.cal_date: d for d in dates}
 
     lines: List[str] = []
-    today = effective_today()
+    today = d_tz()
 
     for c_day in sorted(calendar, key=lambda x: x.cal_date):
         day = c_day.cal_date
@@ -104,6 +105,10 @@ def render_help_booking_mess3(
         if day < today:
             header = f"<b>{c_info.short_name} {day_str}</b>"
             info = "День прошел.\nЗапись недоступна"
+        elif day == today:
+            header = f"<b>{c_info.short_name} {day_str}</b>"
+            info = (f"Сегодняшний день.\n"
+                    f"Занять или освободить слот можно до {s.WORK_END_HOUR}:{s.WORK_END_MINUTES:02d}")
         else:
             if user_is_booked:
                 header = f"<b>🟢 {c_info.short_name} {day_str}</b>"

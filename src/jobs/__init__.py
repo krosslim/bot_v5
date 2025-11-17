@@ -38,7 +38,7 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
 
 
     sched.add_job(
-        partial(chat_remind_job, container, sched),
+        partial(chat_remind_job, container, sched, False),
         trigger=CronTrigger(
             hour=s.REMIND_JOB_HOUR,
             minute=s.REMIND_JOB_MINUTES,

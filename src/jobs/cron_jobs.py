@@ -67,9 +67,16 @@ async def cleanup_booking_session_job(container: AsyncContainer) -> None:
 
 
 # -------------------------------- Дайджест в чате --------------------------------
-async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler) -> None:
+async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler, postponed: bool = False) -> None:
 
     logger.info("chat_remind_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
+    # Для воскресенья переносим уведомление на 2:30ч вперед. Люди отдыхают
+    today_weekday = d_tz().weekday()
+    if today_weekday == 6 and not postponed:
+        logger.info("chat_remind_job | postponed")
+        _add_postponed_sunday_chat_remind_job(container, sched)
+        return
 
     async with container() as req:
         bot: Bot = await req.get(Bot)
@@ -207,6 +214,14 @@ async def check_chat_remind_reserve_job(container: AsyncContainer, sched: AsyncI
     now = datetime.now(tz=ZoneInfo(settings.MSC_TZ))
     today_date = now.date()
     tomorrow_date = today_date + timedelta(days=1)
+
+    # Если перезапустим приложение в воскресенье, то актуализировать нужно еще одну задачу
+    # Так как у нас стоит настройка replace_existing=True, то не важно в какое время мы перезапускаем
+    # Задача все равно перезапишется и не будет дубля
+    if today_date.weekday() == 6:
+        _add_postponed_sunday_chat_remind_job(container, sched)
+
+
     if settings.WORK_END_HOUR <= now.hour < settings.REMIND_JOB_HOUR:
         logger.info("check_chat_remind_reserve_job | removed cause not in work hour")
         return
@@ -315,7 +330,15 @@ async def sheet_update_job(container: AsyncContainer) -> None:
 # -------------------------------- Напоминание о подтверждении брони --------------------------------
 async def remind_to_confirm_booking_job(container: AsyncContainer) -> None:
 
-    logger.info("remind_to_confirm_booking_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+    now = datetime.now(tz=ZoneInfo(settings.MSC_TZ))
+    logger.info("remind_to_confirm_booking_job | started at %s", now)
+
+    today_weekday = now.weekday()
+    # Если сегодня воскресенье, то первое уведомление в 18:30 не отправляем
+    if today_weekday == 6 and now.hour == settings.CONFIRM_REMIND_JOB_HOUR:
+        logger.info("remind_to_confirm_booking_job | skipped cause today is sunday")
+        return
+
 
     async with container() as req:
         bot: Bot = await req.get(Bot)
@@ -493,3 +516,36 @@ async def _unpin_last_message(bot: Bot, last_message_id: int) -> None:
         return
 
 
+def _add_postponed_sunday_chat_remind_job(
+        container: AsyncContainer,
+        sched: AsyncIOScheduler
+) -> None:
+    run_dt = (datetime.now(ZoneInfo(settings.MSC_TZ)).replace(
+        hour=settings.REMIND_JOB_HOUR,
+        minute=settings.REMIND_JOB_MINUTES,
+        second=0,
+        microsecond=0
+    ) + timedelta(hours=2, minutes=31))
+
+    now = datetime.now(tz=ZoneInfo(settings.MSC_TZ))
+
+    # Если время планируемого запуска меньше текущего,
+    # то задачу ставить не нужно, так как она скорее всего уже выполнилась
+    # Например: сегодня воскресенье, я перезапускаю апп после 16:00 (задачу ставим)
+    # Я перезапускаю до 12:00 (задачу ставим). Я перезапускаю после 19:00 (НЕ ставим)
+    # - так как время запуска должно быть 18:30
+    if run_dt < now:
+        logger.info("chat_remind_job | will not run cause run_dt (%s) < now (%s)", run_dt, now)
+        return
+
+    sched.add_job(
+        partial(chat_remind_job, container, sched, True),
+        trigger='date',
+        id="chat_remind_sunday_job",
+        run_date=run_dt,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+        replace_existing=True
+    )
+    logger.info("chat_remind_job | will run at %s", run_dt)

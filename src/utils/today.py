@@ -15,8 +15,8 @@ def effective_today() -> date:
 
 
 def effective_datetime_range() -> tuple[datetime, datetime]:
-
-    today = datetime.combine(date=d_tz(), time=time(s.REMIND_JOB_HOUR, s.REMIND_JOB_MINUTES + 1), tzinfo=ZoneInfo(s.MSC_TZ))
+    now = datetime.now(ZoneInfo(s.MSC_TZ))
+    today = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
     tomorrow = datetime.combine(date=d_tz(delta=1), time=time(s.WORK_END_HOUR, 0), tzinfo=ZoneInfo(s.MSC_TZ))
 
     return today, tomorrow
