@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Any, Awaitable, Callable, Dict
 
@@ -8,6 +9,7 @@ from redis.asyncio import Redis
 from src.utils.data import ContainerMiddlewareData
 from src.utils.tz_day import d_tz
 
+logger = logging.getLogger(__name__)
 
 class CallbackStatsMiddleware(BaseMiddleware):
 
@@ -18,7 +20,13 @@ class CallbackStatsMiddleware(BaseMiddleware):
             data: ContainerMiddlewareData
     ) -> Any:
         user_id = event.from_user.id
-        step = re.search(r":([^:]*):", event.data).group(1)
+
+        try:
+            step = re.search(r":([^:]*):", event.data).group(1)
+        except AttributeError:
+            step = event.data
+            logger.warning("Unable to parse callback stats data | data %s", step)
+
         today = d_tz().isoformat()
         global_key = f"cb_stat:step:{today}"
         ttl_seconds = 31 * 24 * 60 * 60
