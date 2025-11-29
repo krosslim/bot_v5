@@ -10,6 +10,8 @@ class CalendarDatesDTO(BaseModel):
     is_holiday: bool
     is_weekend: bool
     is_workday: bool
+    visit_count: int
+    updated_at: datetime
 
 
 class DigestScheduleDTO(BaseModel):

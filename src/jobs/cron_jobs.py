@@ -276,22 +276,26 @@ async def week_result_job(container: AsyncContainer) -> None:
         svc: BookingService = await req.get(BookingService)
         cal_date_svc: CalendarDatesService = await req.get(CalendarDatesService)
 
-        # если суббота рабочий день (джоб чекает если рабочий день, то не запускается)
-
         today = d_tz()
         start = today - timedelta(days=today.weekday())
         tomorrow = d_tz(delta=1)
 
         if today.isoweekday() == 5:
-            # Проверка для пятницы на то, что суббота рабочий день
-            is_workday = await cal_date_svc.is_workday(tomorrow)
-            if is_workday:
+            # Проверка для пятницы:
+            # 1. суббота рабочий день
+            # 2. сегодня не рабочий день
+            today_is_workday = await cal_date_svc.is_workday(today)
+            tomorrow_is_workday = await cal_date_svc.is_workday(tomorrow)
+            if tomorrow_is_workday or not today_is_workday:
+                logger.info("week_result_job | skipped | tomorrow_is_workday - %s, today_is_workday - %s",
+                            tomorrow_is_workday, today_is_workday)
                 return
             end = start + timedelta(days=4)
         else:
             # Проверка для субботы поэтому today (в else тк в расписании fri, sat)
-            is_workday = await cal_date_svc.is_workday(today)
-            if not is_workday:
+            today_is_workday = await cal_date_svc.is_workday(today)
+            if not today_is_workday:
+                logger.info("week_result_job | skipped | today_is_workday - %s",today_is_workday)
                 return
             end = start + timedelta(days=5)
 

@@ -21,7 +21,10 @@ class BookingService:
 
     async def get_bookings_for_remind(self, tomorrow: date) -> List[DateBookingsDTO]:
         data = await self.repo.bookings_by_range(
-            tomorrow, tomorrow, [BookingStatus.BOOKED]
+            tomorrow,
+            tomorrow,
+            [BookingStatus.BOOKED, BookingStatus.CANCELED],
+            [BookingStatus.CONFIRMED, BookingStatus.RESERVED, BookingStatus.CANCELED_NOT_CONFIRMED]
         )
         return data
 

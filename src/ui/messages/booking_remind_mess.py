@@ -69,9 +69,11 @@ def build_digest_message_v2(bookings: DateBookingsDTO, capacity: int, cal_date: 
     # --- BODY ---
     confirmed_title_default = "<blockquote><b>✅ Подтвердили присутствие</b></blockquote>"
     reserved_title  = f"<blockquote><b>🕒 Ожидаем подтверждение до {s.CANCEL_BOOKING_JOB_HOUR}:{s.CANCEL_BOOKING_JOB_MINUTES}</b></blockquote>"
+    not_confirmed_title = f"<blockquote><b>⛔️ Записались и не подтвердили</b></blockquote>"
 
     confirmed_lines: list[str] = []
     reserved_lines: list[str] = []
+    not_confirmed_lines: list[str] = []
 
     users = getattr(bookings, "users", None) or []
 
@@ -80,34 +82,43 @@ def build_digest_message_v2(bookings: DateBookingsDTO, capacity: int, cal_date: 
         key=lambda u: (u.sub_status != BookingStatus.CONFIRMED, escape(u.full_name or "").lower())
     )
 
+    visit_count = 0
     for idx, u in enumerate(users_sorted, start=1):
         full_name_safe = escape(u.full_name or "—")
         if u.sub_status == BookingStatus.CONFIRMED:
             confirmed_lines.append(f"{idx}. {full_name_safe}")
-        else:
+            visit_count += 1
+        elif u.sub_status == BookingStatus.RESERVED:
             reserved_lines.append(f'{idx}. <a href="tg://user?id={u.user_id}">{full_name_safe}</a>')
+            visit_count += 1
+        elif u.sub_status == BookingStatus.CANCELED_NOT_CONFIRMED:
+            not_confirmed_lines.append(f'<a href="tg://user?id={u.user_id}">{full_name_safe}</a>')
+        else:
+            continue
 
     # --- Блок подтвержденных ---
     confirmed_block = ""
     if confirmed_lines:
         if len(confirmed_lines) == capacity:
-            confirmed_title = "<blockquote><b>✅ Все подтвердили присутствие</b></blockquote>"
+            confirmed_title = "<blockquote><b>✅ Все места подтверждены</b></blockquote>"
         else:
             confirmed_title = confirmed_title_default
         confirmed_block = f"{confirmed_title}\n" + "\n".join(confirmed_lines)
 
     # --- Блок ожидающих подтверждение ---
-    reserved_block  = f"{reserved_title}\n"  + "\n".join(reserved_lines)  if reserved_lines  else ""
+    reserved_block  = f"{reserved_title}\n" + "\n".join(reserved_lines)  if reserved_lines  else ""
+
+    # --- Блок НЕ подтвердивших бронирование ---
+    not_confirmed_block = f"{not_confirmed_title}\n" + "\n".join(not_confirmed_lines) if not_confirmed_lines else ""
 
     # --- Свободные места ---
-    filled = len(users_sorted)
     free_block: str
     if capacity <= 0:
         free_block = "<i>Емкость не задана.</i>"
-    elif filled >= capacity:
+    elif visit_count >= capacity:
         free_block = "<i>Свободных мест нет.</i>"
     else:
-        start = filled + 1
+        start = visit_count + 1
         end = capacity
         if start == end:
             free_block = f"{start}. <i>Свободно…</i>"
@@ -129,7 +140,12 @@ def build_digest_message_v2(bookings: DateBookingsDTO, capacity: int, cal_date: 
         parts += [confirmed_block, ""]
     if reserved_block:
         parts += [reserved_block, ""]
-    parts += [free_block, "", additional_info]
+    parts += [free_block, ""]
+
+    if not_confirmed_block:
+        parts += [not_confirmed_block, "", additional_info]
+    else:
+        parts += [additional_info]
 
     message = "\n".join(part for part in parts if part is not None)
     return message.strip()

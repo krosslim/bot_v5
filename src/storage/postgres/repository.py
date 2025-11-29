@@ -616,17 +616,14 @@ class Repository:
 # ---------------------------------------------------------------------------#
     async def get_calendar_dates_by_range(self, cal_date_start: date,
                                    cal_date_end: date) -> List[CalendarDatesDTO]:
-        stmt = select(
-            CalendarDate.cal_date,
-            CalendarDate.is_holiday,
-            CalendarDate.is_weekend,
-            CalendarDate.is_workday
-        ).where(
+        stmt = select(CalendarDate).where(
             CalendarDate.cal_date.between(cal_date_start, cal_date_end),
         ).order_by(CalendarDate.cal_date)
 
         result = await self.session.execute(stmt)
-        return [CalendarDatesDTO(**m) for m in result.mappings()]
+        dates = result.scalars().all()
+        return [CalendarDatesDTO.model_validate(cal_date) for cal_date in dates]
+        # return [CalendarDatesDTO(**m) for m in result.scalars().all()]
 
     async def get_workday(self, cal_date: date) -> bool:
         result = await self.session.execute(
@@ -635,7 +632,17 @@ class Repository:
         return result.scalar_one()
 
 
-# ---------------------------------------------------------------------------#
+    async def get_cal_date(self, cal_date: date) -> Optional[CalendarDatesDTO]:
+
+        res = await self.session.execute(
+            select(CalendarDate).where(CalendarDate.cal_date == cal_date)
+        )
+        date_info = res.scalar_one_or_none()
+        if date_info is None:
+            return None
+        return CalendarDatesDTO.model_validate(date_info)
+
+    # ---------------------------------------------------------------------------#
 #  PROFESSIONS & PRODUCTS
 # ---------------------------------------------------------------------------#
     async def get_dict_data(self, dict_type: str) -> List[DictDTO]:

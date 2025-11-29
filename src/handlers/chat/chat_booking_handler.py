@@ -5,6 +5,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
+from config import settings as s
 from src.dto.booking_dto import DateBookingsDTO
 from src.services.exceptions import BookingError
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
@@ -13,7 +14,6 @@ from src.ui.messages.booking_remind_mess import build_digest_message_v2
 from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.today import effective_today
-
 
 router = Router()
 
@@ -138,7 +138,8 @@ async def handle_chat_inline_booking(
 
 # ----------------------------------------------helpers----------------------------------------------
 async def _day_left_alert(call: CallbackQuery) -> None:
-    await call.answer(text="⚠️ День прошел. Бронирование невозможно", show_alert=True)
+    await call.answer(text=f"⚠️ Бронь возможна только до {s.WORK_END_HOUR}:{s.WORK_END_MINUTES:02d}",
+                      show_alert=True)
 
 
 async def _user_not_registration_alert(call: CallbackQuery) -> None:

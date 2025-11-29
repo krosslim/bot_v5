@@ -48,8 +48,8 @@ def week_summary_mess(week_data: list[WeekVisitsDTO], max_visitors: list[UserBoo
     if max_visitors:
         booking_count = max_visitors[0].booking_count
 
-        # чтоб не спамить: кол-во бронирований ОТ 2 и число людей ДО 3
-        if booking_count > 1 and len(max_visitors) < 4:
+        # чтоб не спамить: кол-во бронирований ОТ 3
+        if booking_count > 2:
 
             visit_word = pluralize_visit(booking_count)
 

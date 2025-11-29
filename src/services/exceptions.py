@@ -53,3 +53,7 @@ class CacheCalDate(BookingError):
     """Не удалось записать в Redis список дат"""
     pass
 
+class CalDateIsNotFound(BookingError):
+    """Не удалось получить данные по дате"""
+    pass
+

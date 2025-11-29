@@ -7,6 +7,7 @@ from aiocache.serializers import PickleSerializer
 
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.storage.postgres.repository import Repository
+from src.services.exceptions import CalDateIsNotFound
 
 
 class CalendarDatesService:
@@ -30,3 +31,15 @@ class CalendarDatesService:
 
     async def is_workday(self, cal_date: date) -> bool:
         return await self.repo.get_workday(cal_date)
+
+    async def get_cal_date(self, cal_date: date) -> CalendarDatesDTO:
+
+        date_info = await self.repo.get_cal_date(cal_date)
+
+        if date_info is None:
+            raise CalDateIsNotFound("Не удалось получить данные по дате %s", cal_date)
+        return date_info
+
+
+
+
