@@ -12,7 +12,14 @@ from src.utils.idk import gen_idk
 def confirm_kb(bookings: DateBookingsDTO, capacity: int, cal_date: date) -> Optional[InlineKeyboardMarkup]:
 
     if bookings:
-        free_left = max(0, capacity - len(bookings.users))
+        booked_cnt = canceled_cnt = 0
+        for i in bookings.users:
+            if i.status == BookingStatus.BOOKED:
+                booked_cnt += 1
+            elif i.status == BookingStatus.CANCELED:
+                canceled_cnt += 1
+
+        free_left = max(0, capacity - booked_cnt)
         has_free = free_left > 0
 
         has_unconfirmed = any(

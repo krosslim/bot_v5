@@ -78,7 +78,7 @@ def render_booking_week_kb(
     week_start = week_end = None
     if sorted_calendar:
         work_days = [day.cal_date for day in sorted_calendar if day.is_workday]
-        if work_days:
+        if len(work_days) > 1:
             week_start, week_end = work_days[0], work_days[-1]
         else:
             week_start, week_end = sorted_calendar[0].cal_date, sorted_calendar[-1].cal_date
