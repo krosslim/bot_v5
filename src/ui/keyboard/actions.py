@@ -21,6 +21,10 @@ class BookingStep(StrEnum):
     INFO = auto()
     GET_BACK_MENU = auto()
 
+    MISSED_NOT_CHOOSEN = auto()
+    MISSED_CHOOSEN = auto()
+    MISSED_CONFIRM = auto()
+
 
 class MyBookingStep(StrEnum):
     INIT_MY_BOOKING = auto()

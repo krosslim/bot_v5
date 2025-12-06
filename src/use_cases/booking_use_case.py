@@ -8,6 +8,7 @@ from src.dto.booking_dto import (
     WaitlistPositionDTO,
     DateBookingsDTO,
 )
+from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.user_dto import UserDTO
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
@@ -197,3 +198,22 @@ class BookingUseCase:
 
     async def dates_by_cache_key(self, key: str) -> List[date]:
         return await self.tech.dates_by_cache_key(key)
+
+
+    async def cal_date_without_bookings(
+            self,
+            user_id: int,
+            prev_month: bool
+    ) -> List[CalendarDatesDTO]:
+        async with self.session.begin():
+            return await self.calendar_dates.cal_date_without_bookings(user_id, prev_month)
+
+
+    async def book_missed_days(
+            self,
+            user_id: int,
+            cal_dates: List[date]
+    ) -> None:
+        async with self.session.begin():
+            for i in cal_dates:
+                await self.booking.book_missed(user_id, i)

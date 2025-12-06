@@ -441,6 +441,47 @@ class Repository:
         return len(events_payload)
 
 
+    # -------------------- ЗАБРОНИРОВАТЬ (ПОСТФАКТУМ) --------------------
+    async def book_missed(
+            self,
+            user_id: int,
+            cal_date: date
+    ) -> None:
+
+        # Статус и субстатус для установки
+        status = BookingStatus.BOOKED
+        sub_status = BookingStatus.CONFIRMED
+
+        # Создать запись в таблице bookings
+        stmt_booking = (
+            pg_insert(Booking)
+            .values(
+                user_id=user_id,
+                cal_date=cal_date,
+                status=status,
+                sub_status=sub_status)
+            .on_conflict_do_update(
+                index_elements=[Booking.user_id, Booking.cal_date],
+                set_=dict(status=status, sub_status=sub_status, updated_at=func.now()),
+                where=Booking.status != status
+            )
+        ).returning(Booking.booking_id)
+
+        res = await self.session.execute(stmt_booking)
+        booking_id = res.scalar_one()
+
+        # Создать запись в таблице booking_events
+        await self.insert_event(booking_id, status, sub_status, user_id)
+
+        # Апдейтнуть инкремент в calendar_dates
+        stmt_cal_date = (
+            update(CalendarDate)
+            .where(CalendarDate.cal_date == cal_date)
+            .values(visit_count=CalendarDate.visit_count + 1, updated_at=func.now())
+        )
+        await self.session.execute(stmt_cal_date)
+
+
     # -------------------- ВСТАТЬ В ОЧЕРЕДЬ --------------------
     async def upsert_waitlisted(self, user_id: int, cal_date: date) -> Optional[int]:
         stmt = (
@@ -482,20 +523,13 @@ class Repository:
 
 
     # -------------------- ПРОВЕРКА АПДЕЙТОВ ПО БРОНИРОВАНИЯ --------------------
-    async def has_booking_changes(self, month_offset: int = 0) -> bool:
-        month_shift = func.make_interval(0, month_offset)
-        month_shift_next = func.make_interval(0, month_offset + 1)
+    async def has_booking_changes(self, start: date, end: date) -> bool:
 
         subq = (
             select(1)
             .where(
                 Booking.updated_at >= func.now() - text("interval '60 seconds'"),
-                Booking.cal_date >= func.date_trunc(
-                    "month", func.current_date() + month_shift
-                ),
-                Booking.cal_date < func.date_trunc(
-                    "month", func.current_date() + month_shift_next
-                ),
+                Booking.cal_date.between(start, end),
             )
         )
 
@@ -642,7 +676,33 @@ class Repository:
             return None
         return CalendarDatesDTO.model_validate(date_info)
 
-    # ---------------------------------------------------------------------------#
+
+    async def cal_date_without_bookings(
+            self,
+            start: date,
+            end: date,
+            user_id: int
+    ) -> List[CalendarDatesDTO]:
+
+        subquery = select(1).where(
+            Booking.cal_date == CalendarDate.cal_date,
+            Booking.user_id == user_id,
+            Booking.status == BookingStatus.BOOKED
+        ).exists()
+
+        res = await self.session.execute(
+            select(CalendarDate).where(
+                CalendarDate.cal_date < end,
+                CalendarDate.cal_date >= start,
+                CalendarDate.is_workday == True,
+                ~subquery
+            ).order_by(CalendarDate.cal_date)
+        )
+        dates = res.scalars().all()
+        return [CalendarDatesDTO.model_validate(cal_date) for cal_date in dates]
+
+
+# ---------------------------------------------------------------------------#
 #  PROFESSIONS & PRODUCTS
 # ---------------------------------------------------------------------------#
     async def get_dict_data(self, dict_type: str) -> List[DictDTO]:

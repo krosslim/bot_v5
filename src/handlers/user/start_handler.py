@@ -1,16 +1,22 @@
+import time
+
 from aiogram import Router, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from aiogram.types import Message
 from dishka import FromDishka
 
 from src.fsm.states import CreateUserState
-from src.services.exceptions import UserWarn
+from src.services.exceptions import UserWarn, BookingError
+from src.services.tech_service import TechService
 from src.ui.keyboard.form_data_kb import get_dict_kb, get_confirmation_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
+from src.ui.keyboard.missed_days_booking_kb import render_missed_booking_kb
+from src.ui.messages.missed_days_booking_mess import render_missed_booking_mess
 from src.ui.messages.start_mess import (start_db_exc_mess, bot_init_mess,
                                         bot_menu_mess, finish_start_reg_mess, incorrect_full_name_mess, form_data_mess)
+from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.utils.db_exc_wrapper import DBError
 
@@ -164,7 +170,41 @@ async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], 
         )
 
 
+@router.message(Command("missed"))
+async def handle_last(
+        msg: Message,
+        uc: FromDishka[BookingUseCase],
+        tech_svc: FromDishka[TechService],
+        state: FSMContext
+):
 
+    try:
+        if await state.get_data():
+            await state.clear()
+
+        user_id = msg.from_user.id
+
+        prev_month = False
+        if msg.text == "/missed -1":
+            prev_month = True
+
+        data = await uc.cal_date_without_bookings(user_id, prev_month)
+
+        m = await msg.answer(
+            text=render_missed_booking_mess([]),
+            reply_markup=render_missed_booking_kb(data, [])
+        )
+
+        await state.update_data(prev_month=prev_month)
+
+        # Для сессии букинга (как в BookingSessionMiddleware)
+        current_timestamp = int(time.time())
+        msg_id = m.message_id
+        await tech_svc.start_booking_session(user_data=f"{user_id}:{msg_id}", session_limit=current_timestamp)
+
+
+    except (DBError, BookingError) as e:
+        await msg.answer(text=str(e))
 
 
 

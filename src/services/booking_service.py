@@ -126,7 +126,9 @@ class BookingService:
 
 
     async def get_booking_changes(self, month_offset: int = 0) -> bool:
-        return await self.repo.has_booking_changes(month_offset)
+
+        start, end = month_first_last(month_offset)
+        return await self.repo.has_booking_changes(start, end)
 
 
     async def get_users_month_bookings(self, month_offset: int = 0) -> List[Dict[str, Any]]:
@@ -173,8 +175,9 @@ class BookingService:
         return await self.repo.get_users_max_bookings(start, end)
 
 
-
-
-
-
-
+    async def book_missed(
+            self,
+            user_id: int,
+            cal_date: date
+    ) -> None:
+        return await self.repo.book_missed(user_id, cal_date)

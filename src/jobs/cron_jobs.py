@@ -318,7 +318,7 @@ async def sheet_update_job(container: AsyncContainer) -> None:
         svc: BookingService = await req.get(BookingService)
 
         try:
-            for offset in range(3):
+            for offset in range(-1, 3):
                 has_changes = await svc.get_booking_changes(offset)
                 # print(f"Наличие изменений: {has_changes}")
                 if has_changes:

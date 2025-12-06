@@ -7,7 +7,9 @@ from aiocache.serializers import PickleSerializer
 
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.storage.postgres.repository import Repository
-from src.services.exceptions import CalDateIsNotFound
+from src.services.exceptions import CalDateIsNotFound, NoDataForMissedBooking
+from src.utils.month_first_last_by_offset import month_first_last
+from src.utils.today import effective_today
 
 
 class CalendarDatesService:
@@ -41,5 +43,44 @@ class CalendarDatesService:
         return date_info
 
 
+    async def cal_date_without_bookings(
+            self,
+            user_id: int,
+            prev_month: bool
+    ) -> List[CalendarDatesDTO]:
 
+        if prev_month:
+            start, end = month_first_last(-1)
+        else:
+            end = effective_today()
+            start = date(end.year, end.month, 1)
 
+        if start == end:
+            month_str = self.get_month_name(end.month)
+            raise NoDataForMissedBooking(
+                f"Отметиться за прошедшие дни <b>{month_str}</b> пока нельзя.\n"
+                "Если вы хотите отметиться за дни предыдущего месяца, введите: <code>/missed -1</code>\n\n"
+                "Для выхода в меню: <b>/menu</b>"
+            )
+
+        data = await self.repo.cal_date_without_bookings(start, end, user_id)
+
+        if not data:
+            month_str = self.get_month_name(end.month)
+            raise NoDataForMissedBooking(
+                f"Отметиться за прошедшие дни <b>{month_str}</b> нельзя.\nНет доступных дней\n\n"
+                f"Для выхода в меню: <b>/menu</b>"
+            )
+        return data
+
+    @staticmethod
+    def get_month_name(month_num: int) -> str:
+        if not 1 <= month_num <= 12:
+            raise ValueError("Номер месяца должен быть от 1 до 12")
+
+        months = [
+            "января", "февраля", "марта", "апреля",
+            "мая", "июня", "июля", "августа",
+            "сентября", "октября", "ноября", "декабря"
+        ]
+        return months[month_num - 1]

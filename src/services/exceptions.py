@@ -57,3 +57,6 @@ class CalDateIsNotFound(BookingError):
     """Не удалось получить данные по дате"""
     pass
 
+class NoDataForMissedBooking(BookingError):
+    """Нет дат для указанного месяца, чтобы отметиться за предыдущие дни"""
+    pass

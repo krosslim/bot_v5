@@ -3,6 +3,7 @@ import logging
 
 from aiogram import Dispatcher, Bot
 from aiogram.methods import DeleteWebhook
+from aiogram.types import BotCommandScopeAllPrivateChats
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dishka.integrations.aiogram import setup_dishka
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +33,7 @@ async def main() -> None:
     setup_inner_middlewares(dp, settings.TG_CHAT_ID)
 
     dp.include_router(bot_combined_router)
-    await bot.set_my_commands(get_commands_list())
+    await bot.set_my_commands(get_commands_list(), scope=BotCommandScopeAllPrivateChats())
 
     scheduler: AsyncIOScheduler = await container.get(AsyncIOScheduler)
     scheduler.start()

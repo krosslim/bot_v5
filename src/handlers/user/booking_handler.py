@@ -1,6 +1,6 @@
 import logging
 from datetime import date
-from typing import Optional
+from typing import Optional, List
 
 from aiogram import Router, F, Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -10,12 +10,15 @@ from dishka import FromDishka
 
 from src.dto.booking_dto import BookingStatus
 from src.services.exceptions import BookingError
+from src.services.tech_service import TechService
 from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.ui.keyboard.bookings_inline_kb import render_booking_week_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.menu_inline_kb import own_booking_kb
+from src.ui.keyboard.missed_days_booking_kb import render_missed_booking_kb
 from src.ui.messages.auto_book_mess import build_promote_message
 from src.ui.messages.help_booking_mess import render_help_booking_mess3
+from src.ui.messages.missed_days_booking_mess import render_missed_booking_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_booking_mess import render_booking_week_mess
 from src.use_cases.booking_use_case import BookingUseCase
@@ -204,6 +207,71 @@ async def handle_week_info(call: CallbackQuery, callback_data: BookingCB, state:
     await call.answer(text="• Записаться: жми ПН–ПТ\n───────────\n"+msg, show_alert=True)
 
 
+@router.callback_query(BookingCB.filter(F.step.in_({BookingStep.MISSED_NOT_CHOOSEN, BookingStep.MISSED_CHOOSEN})))
+async def handle_missed_booking_choose(
+        call: CallbackQuery,
+        callback_data: BookingCB,
+        uc: FromDishka[BookingUseCase],
+        state: FSMContext
+):
+    state_data = await state.get_data()
+    choosen_dates_str = state_data.get('choosen_dates', [])
+    prev_month = state_data.get('prev_month', False)
+
+    cal_date = callback_data.extra
+
+    if callback_data.step == BookingStep.MISSED_NOT_CHOOSEN:
+        choosen_dates_str.append(cal_date)
+    else:
+        try:
+            choosen_dates_str.remove(cal_date)
+        except ValueError:
+            logger.warning("Не известные данные для удаления из списка | исходный список: %s | Значение из callback: %s",
+                           choosen_dates_str, cal_date)
+            pass
+
+    await state.update_data(choosen_dates=choosen_dates_str)
+
+    await _render_missed_booking(call, uc, choosen_dates_str, prev_month)
+
+
+@router.callback_query(BookingCB.filter(F.step.in_({BookingStep.MISSED_CONFIRM})))
+async def handle_missed_booking_confirmation(
+        call: CallbackQuery,
+        uc: FromDishka[BookingUseCase],
+        tech_svc: FromDishka[TechService],
+        state: FSMContext
+):
+    state_data = await state.get_data()
+    choosen_dates_str = state_data.get('choosen_dates', [])
+
+    # На случай если юзер создал несколько сообщений
+    if not choosen_dates_str:
+        await call.message.edit_text(
+            text=bot_menu_mess(),
+            reply_markup=get_menu_kb(),
+        )
+        await call.answer("⚠️ Не удалось добавить записи.\nПопробуйте еще раз", show_alert=True)
+        return
+
+    try:
+        user_id = call.from_user.id
+        call_msg_id = call.message.message_id
+        choosen_dates = _parse_dates_from_iso(choosen_dates_str)
+
+        await uc.book_missed_days(user_id, choosen_dates)
+        await call.message.edit_text(text=render_missed_booking_mess(choosen_dates, True))
+        await call.answer("✅ Записи успешно добавлены!", show_alert=True)
+
+
+        # Завершение сессии
+        await state.clear()
+        await tech_svc.finish_booking_session(user_data=f"{user_id}:{call_msg_id}")
+
+    except (DBError, BookingError) as e:
+        await call.answer(text=str(e), show_alert=True)
+
+
 # ---------------------------------------------- helpers ----------------------------------------------
 async def render_booking_page(
         call: CallbackQuery,
@@ -282,3 +350,29 @@ async def promote_user_after_cancel(
             logger.error(f"Не удалось отправить сообщение {promote_user_id}")
 
         return promote_user_id
+
+
+async def _render_missed_booking(
+        call: CallbackQuery,
+        uc: BookingUseCase,
+        choosen_dates_str: List[str],
+        prev_month: bool
+) -> None:
+
+    try:
+        data = await uc.cal_date_without_bookings(call.from_user.id, prev_month)
+        choosen_dates = _parse_dates_from_iso(choosen_dates_str)
+
+        await call.message.edit_text(
+            text=render_missed_booking_mess(choosen_dates),
+            reply_markup=render_missed_booking_kb(data, choosen_dates)
+        )
+
+    except (DBError, BookingError) as e:
+        await call.answer(text=str(e), show_alert=True)
+
+
+def _parse_dates_from_iso(
+        choosen_dates_str: List[str]
+) -> List[date]:
+    return list(map(date.fromisoformat, choosen_dates_str))
