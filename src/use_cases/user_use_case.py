@@ -1,8 +1,9 @@
+from datetime import date
 from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.dto.user_dto import UserDTO, DictDTO
+from src.dto.user_dto import UserDTO, DictDTO, UserStatisticsDTO
 from src.services.exceptions import UserWarn
 from src.services.user_service import UserService
 
@@ -56,4 +57,15 @@ class UserUseCase:
     async def get_products(self) -> List[DictDTO]:
         return await self.user.get_dict_data('products')
 
+    async def set_visit_plan(self, user_id: int, week_visit_plan: int = None) -> None:
+        async with self.session.begin():
+            await self.user.set_visit_plan(user_id, week_visit_plan)
 
+    async def visit_plan_report(
+            self,
+            start: date,
+            end: date,
+            profession_id: int = None
+    ) -> List[UserStatisticsDTO]:
+        async with self.session.begin():
+            return await self.user.visit_plan_report(start, end, profession_id)

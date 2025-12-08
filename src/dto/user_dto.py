@@ -16,7 +16,12 @@ class UserDTO(BaseModel):
     is_lead: bool
     profession_id: int
     product_id: int
+    week_visit_plan: int | None
     created_at: datetime
+
+
+class UserStatisticsDTO(UserDTO):
+    visit_count: int
 
 
 class UserBookingSessionDTO(BaseModel):
@@ -24,6 +29,7 @@ class UserBookingSessionDTO(BaseModel):
 
     user_id: int
     message_id: int
+
 
 class DictDTO(BaseModel):
     model_config = ConfigDict(frozen=True, from_attributes=True)

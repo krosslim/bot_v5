@@ -42,6 +42,7 @@ class User(Base):
     is_lead: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false())
     profession_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("professions.id"), nullable=False)
     product_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("products.id"), nullable=False)
+    week_visit_plan: Mapped[int] = mapped_column(SmallInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships

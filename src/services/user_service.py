@@ -1,7 +1,8 @@
 import re
+from datetime import date
 from typing import List
 
-from src.dto.user_dto import UserDTO, DictDTO
+from src.dto.user_dto import UserDTO, DictDTO, UserStatisticsDTO
 from src.services.exceptions import UserNotFound, FullNameIsIncorrect
 from src.storage.postgres.repository import Repository
 
@@ -53,6 +54,13 @@ class UserService:
     async def update_is_active(self, user_id: int, is_active: bool) -> int:
         return await self.repo.update_is_active(user_id, is_active)
 
+    async def set_visit_plan(self, user_id: int, week_visit_plan: int = None) -> None:
+        return await self.repo.set_visit_plan(user_id, week_visit_plan)
 
-
-
+    async def visit_plan_report(
+            self,
+            start: date,
+            end: date,
+            profession_id: int = None
+    ) -> List[UserStatisticsDTO]:
+        return await self.repo.get_visit_plan_report(start, end, profession_id)

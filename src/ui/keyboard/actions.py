@@ -52,10 +52,19 @@ class SettingsStep(StrEnum):
     AUTO_CONFIRM_ON = auto()
     AUTO_CONFIRM_OFF = auto()
     GET_BACK_MENU = auto()
-    MY_EMPLOYEES = auto()
-    ALL_EMPLOYEES = auto()
+    LEAD_BLOCK = auto()
+    ADMIN_BLOCK = auto()
+    VISITS_PLAN = auto()
+    VISIT_GROUP = auto()
+    EMPLOYEE_LIST = auto()
     EMPLOYEES_PAGINATION = auto()
+    EMPLOYEES_PAGINATION_FOR_GROUP = auto()
+    ADD_EMPLOYEE_TO_GROUP = auto()
+    DEL_EMPLOYEE_FROM_GROUP = auto()
     EMPLOYEE = auto()
+    EMPLOYEE_STATISTICS = auto()
+    EMPLOYEE_STATISTICS_INFO = auto()
+    EMPLOYEE_STATISTICS_PAGE = auto()
 
 
 class ChatBookingStep(StrEnum):

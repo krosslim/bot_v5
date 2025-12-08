@@ -19,8 +19,8 @@ def render_settings_menu_kb(user: UserDTO = None) -> InlineKeyboardMarkup:
     if user is not None and user.is_lead:
         kb.row(
         InlineKeyboardButton(
-            text="👤 Мои сотрудники",
-            callback_data=SettingsCB(step=SettingsStep.MY_EMPLOYEES,
+            text="🔓 Меню лида",
+            callback_data=SettingsCB(step=SettingsStep.LEAD_BLOCK,
                                      extra=user.profession_id,
                                      idk=gen_idk()).pack()
             )
@@ -28,8 +28,8 @@ def render_settings_menu_kb(user: UserDTO = None) -> InlineKeyboardMarkup:
     if user is not None and user.is_admin:
         kb.row(
         InlineKeyboardButton(
-            text="👤 Все сотрудники",
-            callback_data=SettingsCB(step=SettingsStep.ALL_EMPLOYEES,
+            text="🔓 Меню админа",
+            callback_data=SettingsCB(step=SettingsStep.ADMIN_BLOCK,
                                      idk=gen_idk()).pack()
             )
         )
@@ -71,3 +71,57 @@ def render_settings_auto_confirm_kb(auto_confirm: bool) -> InlineKeyboardMarkup:
 
     return kb.as_markup()
 
+
+def render_lead_admin_menu_kb(profession_id: int = None) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    kb.row(
+        InlineKeyboardButton(
+            text="👤 Управление записями",
+            callback_data=SettingsCB(step=SettingsStep.EMPLOYEE_LIST,
+                                     extra=profession_id,
+                                     idk=gen_idk()).pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="📝 Управление посещениями",
+            callback_data=SettingsCB(step=SettingsStep.VISITS_PLAN,
+                                     extra=profession_id,
+                                     idk=gen_idk()).pack()
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="📊 Статистика по посещениям",
+            callback_data=SettingsCB(step=SettingsStep.EMPLOYEE_STATISTICS,
+                                     extra=profession_id,
+                                     idk=gen_idk()).pack()
+        )
+    )
+
+    kb.row(
+        InlineKeyboardButton(text="« Меню настроек",
+                             callback_data=SettingsCB(step=SettingsStep.INIT_SETTINGS, idk=gen_idk()).pack()
+                             )
+    )
+
+    return kb.as_markup()
+
+
+def render_week_visits_count_kb(profession_id: int = None) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    step = SettingsStep.VISIT_GROUP
+    back_step = SettingsStep.LEAD_BLOCK if profession_id else SettingsStep.ADMIN_BLOCK
+
+    adjust_num = 0
+    for i in range(1, 6):
+        adjust_num += 1
+        kb.row(InlineKeyboardButton(text=f"{i}", callback_data=SettingsCB(step=step, extra=i, idk=gen_idk()).pack()))
+
+    kb.adjust(adjust_num)
+
+    kb.row(InlineKeyboardButton(text="« Назад",
+                                callback_data=SettingsCB(step=back_step, idk=gen_idk()).pack()))
+    return kb.as_markup()

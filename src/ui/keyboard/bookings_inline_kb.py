@@ -122,7 +122,7 @@ def _paginator_row(
         help_page: Optional[int] = None
 ) -> InlineKeyboardBuilder:
     row = InlineKeyboardBuilder()
-    left, right = _paginator_nums(offset)
+    left, right = paginator_nums(offset)
     date_text = f"{week_start:%d.%m} - {week_end:%d.%m}"
     if help_page:
         date_text = f"• {week_start:%d.%m}-{week_end:%d.%m} •"
@@ -148,8 +148,8 @@ def _paginator_row(
     )
     return row
 
-
-def _paginator_nums(offset: int) -> tuple[str, str]:
+# Используется еще в settings_employee_kb.py
+def paginator_nums(offset: int) -> tuple[str, str]:
     if offset == 0:
         return "←", "→"
     elif offset > 0:

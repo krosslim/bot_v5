@@ -12,7 +12,7 @@ from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
                                  WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
 from src.dto.calendar_dates_dto import CalendarDatesDTO, DigestScheduleDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
-from src.dto.user_dto import UserDTO, DictDTO
+from src.dto.user_dto import UserDTO, DictDTO, UserStatisticsDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
                                          CalendarDate, BookingEvent, Profession, Product,
                                          DigestSchedule)
@@ -79,6 +79,51 @@ class Repository:
         users = res.scalars().all()
         return [UserDTO.model_validate(user) for user in users]
 
+
+    async def get_visit_plan_report(
+            self,
+            start: date,
+            end: date,
+            profession_id: int = None,
+    ) -> List[UserStatisticsDTO]:
+        stmt = (
+            select(
+                User,
+                func.count(Booking.booking_id).label('visit_count')
+            )
+            .outerjoin(Booking,
+                       and_(
+                           User.user_id == Booking.user_id,
+                           Booking.cal_date.between(start, end),
+                           Booking.status == BookingStatus.BOOKED
+                       ))
+            .where(
+                User.week_visit_plan.isnot(None)
+            )
+        )
+
+        if profession_id is not None:
+            stmt = stmt.where(User.profession_id == profession_id)
+
+        stmt = stmt.group_by(User.user_id).order_by(User.week_visit_plan.asc())
+
+        res = await self.session.execute(stmt)
+
+        return [
+            UserStatisticsDTO(
+                **UserDTO.model_validate(user).model_dump(),
+                visit_count=visit_count
+            )
+            for user, visit_count in res.all()
+        ]
+
+    async def set_visit_plan(
+            self,
+            user_id: int,
+            week_visit_plan: int = None
+    ) -> None:
+        stmt = update(User).where(User.user_id == user_id).values(week_visit_plan=week_visit_plan)
+        await self.session.execute(stmt)
 
 
 # ---------------------------------------------------------------------------#
