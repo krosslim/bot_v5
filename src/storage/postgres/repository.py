@@ -97,9 +97,9 @@ class Repository:
                            Booking.cal_date.between(start, end),
                            Booking.status == BookingStatus.BOOKED
                        ))
-            .where(
-                User.week_visit_plan.isnot(None)
-            )
+            # .where(
+            #     User.week_visit_plan.isnot(None)
+            # )
         )
 
         if profession_id is not None:

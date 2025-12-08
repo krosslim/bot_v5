@@ -51,6 +51,9 @@ def visit_plan_report_mess(employees: List[UserStatisticsDTO], start_date: date,
         return header + "\n" + "Нет данных за выбранный период"
 
     # Категоризация пользователей
+    no_plan = []
+    no_plan_title = "<blockquote><b>ℹ️ План не задан</b></blockquote>"
+    no_plan_cnt = 0
     done = []
     done_title = "<blockquote><b>✅ По плану</b></blockquote>"
     partial = []
@@ -65,8 +68,12 @@ def visit_plan_report_mess(employees: List[UserStatisticsDTO], start_date: date,
         # Формируем строку один раз
         user_info = f"[{visit_count}/{week_visit_plan}]"
 
+        if week_visit_plan == 0:
+            # Нет данных по плану
+            no_plan_cnt += 1
+            continue
         if visit_count >= week_visit_plan:
-            # План выполнен - без ссылки
+            # План выполнен
             done.append(f"• {u.full_name} {user_info}")
         elif 0 < visit_count < week_visit_plan:
             # Частично выполнен - со ссылкой
@@ -94,7 +101,12 @@ def visit_plan_report_mess(employees: List[UserStatisticsDTO], start_date: date,
     # Секция "Ни разу не посетили"
     if none:
         none_block = f"{none_title}\n" + "\n".join(none)
-        sections += [none_block]
+        sections += [none_block, ""]
+
+    if no_plan_cnt > 0:
+        no_plan.append(f"• Количество сотрудников: {no_plan_cnt}")
+        no_plan_block = f"{no_plan_title}\n" + "\n".join(no_plan)
+        sections += [no_plan_block]
 
     message = "\n".join(part for part in sections if part is not None)
     return message.strip()
