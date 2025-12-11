@@ -32,8 +32,7 @@ async def handle_new_chat_member(msg: Message, uc: FromDishka[UserUseCase]):
         name = _link(user.id, user.first_name)
         await msg.reply(
             "<b>В нашей команде пополнение 🎉</b>\n\n"
-            f"<b>{name}</b>, добро пожаловать!\n"
-            "Расскажи, пожалуйста, о себе — в какой команде и на какую позицию 😊\n\n"
+            f"<b>{name}</b>, добро пожаловать!\n\n"
             "<blockquote>Если ты из Москвы, зарегистрируйся в боте "
             f"<b>@{s.BOT_USERNAME}</b>, чтобы бронировать места в офисе.</blockquote>"
         )
