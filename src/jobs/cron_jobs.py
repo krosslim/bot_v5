@@ -26,10 +26,13 @@ from src.ui.keyboard.menu_inline_kb import get_menu_kb, check_bookings_kb
 from src.ui.keyboard.week_result_kb import week_summary_kb
 from src.ui.messages.booking_remind_mess import build_digest_message_v2
 from src.ui.messages.confirm_to_remind_mess import remind_mess
+from src.ui.messages.settings_mess import visit_plan_report_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
 from src.use_cases.booking_use_case import BookingUseCase
-from src.utils.tz_day import d_tz
+from src.use_cases.user_use_case import UserUseCase
+from src.utils.get_week_range import week_range
+from src.utils.tz_day import d_tz, dt_tz
 from src.utils.db_exc_wrapper import DBError
 from src.utils.sheet_name import month_name
 from src.utils.today import effective_datetime_range
@@ -267,7 +270,7 @@ async def check_chat_remind_reserve_job(container: AsyncContainer, sched: AsyncI
 
 
 # -------------------------------- Пятничное/субботнее подведение итогов --------------------------------
-async def week_result_job(container: AsyncContainer) -> None:
+async def week_result_job(container: AsyncContainer, sched: AsyncIOScheduler) -> None:
 
     logger.info("week_result_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
 
@@ -308,6 +311,11 @@ async def week_result_job(container: AsyncContainer) -> None:
                 reply_markup=week_summary_kb(),
                 disable_web_page_preview=True
             )
+
+            _add_head_report(sched, container)
+
+            logger.info("week_result_job | finished at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
         except DBError as e:
             logger.exception(f"ERROR: week_result_job | {str(e)}")
 
@@ -476,6 +484,39 @@ async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
         logger.info("cancel_not_confirmed_booking_job | total_count=%s", len(reserved.users))
 
 
+# -------------------------------- Рассылка статистики лиду --------------------------------
+async def head_report_job(container: AsyncContainer) -> None:
+
+    logger.info("head_report_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
+    async with container() as req:
+        uc: UserUseCase = await req.get(UserUseCase)
+        bot: Bot = await req.get(Bot)
+
+        try:
+            success = fail = 0
+            lead_list = await uc.get_users(100, 0, None, True)
+            monday, sunday, _ = week_range(0, False)
+
+            for lead in lead_list:
+                try:
+                    employee_list = await uc.visit_plan_report(monday, sunday, lead.profession_id)
+                    await bot.send_message(
+                        chat_id=lead.user_id,
+                        text=visit_plan_report_mess(employee_list, monday, sunday, False)
+                    )
+                    success += 1
+                except (TelegramForbiddenError, TelegramBadRequest, DBError) as e:
+                    logger.error(f"head_report_job | Failed to send to user {lead.user_id}: {str(e)}")
+                    fail += 1
+
+            logger.info("head_report_job | finished at %s | success %s | fail %s",
+                        datetime.now(tz=ZoneInfo(settings.MSC_TZ)), success, fail)
+        except DBError as e:
+            logger.info("head_report_job | finished at %s | fail all cause %s",
+                        datetime.now(tz=ZoneInfo(settings.MSC_TZ)), str(e))
+
+
 # -------------------------------- helpers --------------------------------
 def _add_job_checker(
         sched: AsyncIOScheduler,
@@ -559,3 +600,23 @@ def _add_postponed_sunday_chat_remind_job(
         replace_existing=True
     )
     logger.info("chat_remind_job | will run at %s", run_dt)
+
+
+def _add_head_report(
+        sched: AsyncIOScheduler,
+        container: AsyncContainer
+) -> None:
+
+    run_dt = dt_tz() + timedelta(minutes=1)
+
+    sched.add_job(
+        partial(head_report_job, container),
+        trigger='date',
+        id="head_report_job",
+        run_date=run_dt,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+        replace_existing=True
+    )
+    logger.info("head_report_job | will run at %s", run_dt)

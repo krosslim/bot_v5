@@ -151,8 +151,13 @@ async def handle_settings_my_employees(
         state_data = await state.get_data()
         profession_id = state_data.get("profession_id", None)
 
+        is_lead = None
+        if profession_id is not None:
+            # В списке не должно быть самого лида
+            is_lead = False
+
         page = int(callback_data.extra) if callback_data.step == SettingsStep.EMPLOYEES_PAGINATION else 0
-        employees = await uc.get_users(200, 0, profession_id)
+        employees = await uc.get_users(200, 0, profession_id, is_lead)
 
         await call.message.edit_text(
             text="<b>Выберите доступного сотрудника ⤵︎</b>\n\n"

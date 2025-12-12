@@ -67,7 +67,7 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
 
 
     sched.add_job(
-        partial(week_result_job, container),
+        partial(week_result_job, container, sched),
         trigger=CronTrigger(
             day_of_week="fri,sat",
             hour=s.FRIDAY_JOB_HOUR,

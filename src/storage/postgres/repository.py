@@ -64,14 +64,17 @@ class Repository:
                             limit: int,
                             offset: int,
                             profession_id: int = None,
-                            is_active: bool = True
+                            is_lead: bool = None
                             ) -> List[UserDTO]:
 
         stmt = select(User)
         if profession_id is not None:
-            stmt = stmt.where(User.profession_id == profession_id, User.is_lead == False)
+            stmt = stmt.where(User.profession_id == profession_id)
 
-        stmt = stmt.where(User.is_active == is_active)
+        if is_lead is not None:
+            stmt = stmt.where(User.is_lead == is_lead)
+
+        stmt = stmt.where(User.is_active == True)
 
         stmt = stmt.limit(limit).offset(offset).order_by(User.full_name)
 
@@ -493,7 +496,7 @@ class Repository:
             cal_date: date
     ) -> None:
 
-        # Статус и субстатус для установки
+        # Статус и суб статус для установки
         status = BookingStatus.BOOKED
         sub_status = BookingStatus.CONFIRMED
 
@@ -518,7 +521,7 @@ class Repository:
         # Создать запись в таблице booking_events
         await self.insert_event(booking_id, status, sub_status, user_id)
 
-        # Апдейтнуть инкремент в calendar_dates
+        # update инкремент в calendar_dates
         stmt_cal_date = (
             update(CalendarDate)
             .where(CalendarDate.cal_date == cal_date)
@@ -805,5 +808,3 @@ class Repository:
             return None
 
         return DigestScheduleDTO.model_validate(message)
-
-

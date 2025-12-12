@@ -32,7 +32,12 @@ def render_employee_group_mess(employees: List[UserDTO], group_id: int) -> str:
     return msg
 
 
-def visit_plan_report_mess(employees: List[UserStatisticsDTO], start_date: date, end_date: date) -> str:
+def visit_plan_report_mess(
+        employees: List[UserStatisticsDTO],
+        start_date: date,
+        end_date: date,
+        only_no_count: bool = True,
+) -> str:
     """
     Формирует HTML-строку с отчетом по посещаемости.
 
@@ -40,6 +45,7 @@ def visit_plan_report_mess(employees: List[UserStatisticsDTO], start_date: date,
         employees: Итерируемый объект с данными о посещаемости
         start_date: Начальная дата периода
         end_date: Конечная дата периода
+        only_no_count: Если указан, то для блока no_plan возвращается только количество пользователей
 
     Returns:
         HTML-строка с отчетом или сообщение об отсутствии данных
@@ -68,9 +74,15 @@ def visit_plan_report_mess(employees: List[UserStatisticsDTO], start_date: date,
         # Формируем строку один раз
         user_info = f"[{visit_count}/{week_visit_plan}]"
 
-        if week_visit_plan == 0:
+        if week_visit_plan == 0 and only_no_count:
             # Нет данных по плану
             no_plan_cnt += 1
+            continue
+        if week_visit_plan == 0 and not only_no_count:
+            # Нет данных по плану
+            no_plan.append(
+                f'• <a href="tg://user?id={u.user_id}">{u.full_name}</a> - {visit_count} посещ.'
+            )
             continue
         if visit_count >= week_visit_plan:
             # План выполнен
@@ -103,8 +115,14 @@ def visit_plan_report_mess(employees: List[UserStatisticsDTO], start_date: date,
         none_block = f"{none_title}\n" + "\n".join(none)
         sections += [none_block, ""]
 
-    if no_plan_cnt > 0:
+    # Секция "Нет данных", где нужно только количество пользователей
+    if only_no_count:
         no_plan.append(f"• Количество сотрудников: {no_plan_cnt}")
+        no_plan_block = f"{no_plan_title}\n" + "\n".join(no_plan)
+        sections += [no_plan_block]
+
+    # Секция "Нет данных"
+    if not only_no_count:
         no_plan_block = f"{no_plan_title}\n" + "\n".join(no_plan)
         sections += [no_plan_block]
 
