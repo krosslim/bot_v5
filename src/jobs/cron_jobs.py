@@ -94,7 +94,7 @@ async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler, po
         try:
             is_workday = await cal_date_svc.is_workday(tomorrow)
             if not is_workday:
-                # print("hui")
+                logger.info("chat_remind_job | tomorrow is not workday")
                 return
 
             bookings = await booking_svc.get_bookings_for_remind(tomorrow)
