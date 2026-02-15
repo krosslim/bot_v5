@@ -10,25 +10,29 @@ def get_menu_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.row(
         InlineKeyboardButton(
-            text="🆕 Забронировать место",
+            text="Забронировать место",
+            icon_custom_emoji_id="6039758482524081695",
             callback_data=BookingCB(step=BookingStep.INIT_BOOKING, idk=gen_idk()).pack()
         ),
         width=1
     )
     kb.row(
         InlineKeyboardButton(
-            text="📋 Мои брони",
+            text="Мои брони",
+            icon_custom_emoji_id="5972158252790582632",
             callback_data=MyBookingCB(step=MyBookingStep.INIT_MY_BOOKING, idk=gen_idk()).pack()
         ),
         width=1
     )
     kb.row(
         InlineKeyboardButton(
-            text="📗 Таблица",
+            text="Таблица",
+            icon_custom_emoji_id="5974308936189218317",
             url=settings.GOOGLE_SHEET_USER_URL
         ),
         InlineKeyboardButton(
-            text="⚙️ Настройки",
+            text="Настройки",
+            icon_custom_emoji_id="5974104203688152439",
             callback_data=SettingsCB(step=SettingsStep.INIT_SETTINGS, idk=gen_idk()).pack()
         ),
         width=2

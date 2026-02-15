@@ -1,7 +1,7 @@
 import asyncio
 from datetime import date
 
-from aiogram import Router, F, Bot
+from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
