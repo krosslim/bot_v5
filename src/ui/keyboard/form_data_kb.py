@@ -12,6 +12,11 @@ def get_dict_kb(dict_data: List[DictDTO]) -> InlineKeyboardMarkup:
     ])
     return kb
 
+def get_skip_birthday_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Пропустить", callback_data="SKIP_BIRTHDAY")]
+    ])
+
 def get_confirmation_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Сохранить", callback_data="SAVE")],

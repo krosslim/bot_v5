@@ -30,7 +30,6 @@ async def update_sheet_data(
         Ответ от API или None в случае ошибки
     """
 
-    # Валидация входных данных
     if not sheet_name or not isinstance(sheet_name, str):
         logger.error("Невалидное имя листа")
         return None

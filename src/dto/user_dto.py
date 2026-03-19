@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,6 +17,7 @@ class UserDTO(BaseModel):
     profession_id: int
     product_id: int
     week_visit_plan: int | None
+    birth_date: date | None
     created_at: datetime
 
 

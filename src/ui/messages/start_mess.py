@@ -30,12 +30,18 @@ def incorrect_full_name_mess() -> str:
     return ("<blockquote><b>⚠️ Ошибка: Некорректный формат данных</b>\nВведите имя и фамилию корректно\nНапример: Иванов Иван</blockquote>\n\n"
             "Введите <b>фамилию и имя</b> ещё раз ⤵︎︎")
 
-def form_data_mess(full_name: str, profession: str | None, product: str | None) -> str:
+def incorrect_birthday_mess() -> str:
+    return ("<blockquote><b>⚠️ Ошибка: Некорректный формат данных</b>\nВведите дату рождения корректно</blockquote>\n\n"
+            "Введите <b>дату рождения</b> ещё раз ⤵︎︎")
+
+def form_data_mess(full_name: str, profession: str | None, product: str | None, birthday: str | None) -> str:
 
     if profession is None:
         data = "Укажите <b>должность</b> ⤵︎"
     elif product is None:
         data = "Укажите <b>команду</b> ⤵︎"
+    elif birthday is None:
+        data = "Бот умеет поздравлять!)\nДопустимые форматы даты:\n• 01.12\n• 01.12.1995\n\nВведите <b>дату рождения</b> ⤵︎"
     else:
         data = ""
 
@@ -43,6 +49,7 @@ def form_data_mess(full_name: str, profession: str | None, product: str | None) 
             "<blockquote>"
             f"• Имя: {full_name}\n"
             f"• Должность: {'...' if profession is None else profession}\n"
-            f"• Команда: {'...' if product is None else product}"
+            f"• Команда: {'...' if product is None else product}\n"
+            f"• Дата рождения: {'...' if birthday is None else birthday}"
             "</blockquote>\n\n"
             f"{data}")

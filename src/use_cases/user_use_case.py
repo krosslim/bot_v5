@@ -31,9 +31,9 @@ class UserUseCase:
             return await self.user.get_users(limit, offset, profession_id, is_lead)
 
     async def create_user(self, user_id: int, full_name: str,
-                          profession_id: int, product_id: int) -> None:
+                          profession_id: int, product_id: int, birth_date: date | None = None) -> None:
         async with self.session.begin():
-            await self.user.create_user(user_id, full_name, profession_id, product_id)
+            await self.user.create_user(user_id, full_name, profession_id, product_id, birth_date)
 
 
     def check_full_name(self, full_name: str) -> Optional[bool]:

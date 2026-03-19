@@ -95,7 +95,7 @@ class BookingService:
 
         booking_id = await self.repo.upsert_waitlisted(user_id, cal_date)
         if not booking_id:
-            raise UserIsAlreadyInWaitingList(f"ℹ️ Ты уже в очереди!\nЧтобы выйти, нажми кнопку с 🚪")
+            raise UserIsAlreadyInWaitingList("ℹ️ Ты уже в очереди!\nЧтобы выйти, нажми кнопку с 🚪")
         await self.repo.insert_event(booking_id, BookingStatus.WAITLISTED, BookingStatus.WAITLISTED_MANUAL, user_id)
         return True
 
@@ -163,8 +163,8 @@ class BookingService:
         return await self.repo.has_booking_changes_for_day(cal_date)
 
 
-    async def get_user_booking_for_day(self, user_id: int, cal_date: date) -> Optional[OwnBookingDTO]:
-        return await self.repo.get_user_booking_for_date(user_id, cal_date)
+    async def get_user_booking_for_day(self, user_id: int, cal_date: date, for_update: bool = False) -> Optional[OwnBookingDTO]:
+        return await self.repo.get_user_booking_for_date(user_id, cal_date, for_update)
 
 
     async def week_visits(self, start: date, end: date) -> List[WeekVisitsDTO]:

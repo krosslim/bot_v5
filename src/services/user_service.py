@@ -27,10 +27,10 @@ class UserService:
         return await self.repo.get_employees(limit, offset, profession_id, is_lead)
 
     async def create_user(self, user_id: int, full_name: str,
-                          profession_id: int, product_id: int) -> None:
+                          profession_id: int, product_id: int, birth_date: date | None = None) -> None:
         user = await self.repo.get_user_by_id(user_id)
         if user is None:
-            await self.repo.create_user(user_id, full_name, profession_id, product_id)
+            await self.repo.create_user(user_id, full_name, profession_id, product_id, birth_date)
         else:
             await self.repo.update_full_name(user_id, full_name)
 

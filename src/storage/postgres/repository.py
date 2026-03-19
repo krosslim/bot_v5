@@ -28,8 +28,8 @@ class Repository:
 #  USERS
 # ---------------------------------------------------------------------------#
     async def create_user(self, user_id: int, full_name: str,
-                          profession_id: int, product_id: int) -> None:
-        new_user = User(user_id=user_id, full_name=full_name, profession_id=profession_id, product_id=product_id)
+                          profession_id: int, product_id: int, birth_date: date | None = None) -> None:
+        new_user = User(user_id=user_id, full_name=full_name, profession_id=profession_id, product_id=product_id, birth_date=birth_date)
         self.session.add(new_user)
 
     async def get_user_by_id(self, user_id: int) -> Optional[UserDTO]:
@@ -252,7 +252,7 @@ class Repository:
         return int(row[0]) if row else None
 
 
-    async def get_user_booking_for_date(self, user_id: int, cal_date: date) -> Optional[OwnBookingDTO]:
+    async def get_user_booking_for_date(self, user_id: int, cal_date: date, for_update: bool = False) -> Optional[OwnBookingDTO]:
         stmt = (
             select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status,Booking.sub_status)
             .where(
@@ -262,6 +262,10 @@ class Repository:
             )
             .limit(1)
         )
+
+        if for_update:
+            stmt = stmt.with_for_update()
+
         res = await self.session.execute(stmt)
         booking = res.first()
         if booking is None:

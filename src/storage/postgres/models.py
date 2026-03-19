@@ -43,6 +43,7 @@ class User(Base):
     profession_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("professions.id"), nullable=False)
     product_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("products.id"), nullable=False)
     week_visit_plan: Mapped[int] = mapped_column(SmallInteger, nullable=True)
+    birth_date: Mapped[date] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships

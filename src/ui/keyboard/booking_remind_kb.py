@@ -30,26 +30,26 @@ def confirm_kb(bookings: DateBookingsDTO, capacity: int, cal_date: date) -> Opti
         has_free = True
         has_unconfirmed = False
 
-    buttons = []
-    if has_unconfirmed:
-        buttons.append(InlineKeyboardButton(
-            text="Подтвердить",
-            callback_data=ChatBookingCB(
-                step=ChatBookingStep.CONFIRM_BOOKING,
-                extra=f"{cal_date}",
-                idk=gen_idk()).pack()
-        ))
-    if has_free:
-        buttons.append(InlineKeyboardButton(
-            text="Занять место",
-            callback_data=ChatBookingCB(
-                step=ChatBookingStep.ADD_BOOKING,
-                extra=f"{cal_date}",
-                idk=gen_idk()).pack()
-        ))
-    if not buttons:
+
+    if has_free and has_unconfirmed:
+        button_text = "Забронировать / Подтвердить"
+    elif has_free and not has_unconfirmed:
+        button_text = "Забронировать"
+    elif not has_free and has_unconfirmed:
+        button_text = "Подтвердить"
+    else: 
         return None
 
+
     kb = InlineKeyboardBuilder()
-    kb.row(*buttons, width=2)
+    kb.add(
+        InlineKeyboardButton(
+            text=button_text,
+            stype="success",
+            callback_data=ChatBookingCB(
+                step=ChatBookingStep.ADD_OR_CONFIRM_BOOKING,
+                extra=f"{cal_date}",
+                idk=gen_idk()).pack()
+        )
+    )
     return kb.as_markup()

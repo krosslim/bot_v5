@@ -162,9 +162,10 @@ class BookingUseCase:
                 return None
 
     async def user_booking_for_date(
-        self, user_id: int, cal_date: date
+        self, user_id: int, cal_date: date, for_update: bool = False
     ) -> Optional[OwnBookingDTO]:
-        return await self.booking.get_user_booking_for_day(user_id, cal_date)
+        async with self.session.begin():
+            return await self.booking.get_user_booking_for_day(user_id, cal_date, for_update)
 
     async def bookings_by_status(
         self,

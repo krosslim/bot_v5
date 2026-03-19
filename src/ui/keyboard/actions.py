@@ -70,6 +70,7 @@ class SettingsStep(StrEnum):
 class ChatBookingStep(StrEnum):
     CONFIRM_BOOKING = auto()
     ADD_BOOKING = auto()
+    ADD_OR_CONFIRM_BOOKING = auto()
     CONFIRM_BOOKING_IN_REMINDER = auto()
     CANCEL_BOOKING_IN_REMINDER = auto()
     ADD_BOOKING_INLINE_CANCEL = auto()

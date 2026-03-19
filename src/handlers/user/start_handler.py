@@ -1,4 +1,6 @@
 import time
+import re
+from datetime import datetime, date
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
@@ -10,17 +12,53 @@ from dishka import FromDishka
 from src.fsm.states import CreateUserState
 from src.services.exceptions import UserWarn, BookingError
 from src.services.tech_service import TechService
-from src.ui.keyboard.form_data_kb import get_dict_kb, get_confirmation_kb
+from src.ui.keyboard.form_data_kb import get_dict_kb, get_confirmation_kb, get_skip_birthday_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.missed_days_booking_kb import render_missed_booking_kb
 from src.ui.messages.missed_days_booking_mess import render_missed_booking_mess
 from src.ui.messages.start_mess import (start_db_exc_mess, bot_init_mess,
-                                        bot_menu_mess, finish_start_reg_mess, incorrect_full_name_mess, form_data_mess)
+                                        bot_menu_mess, finish_start_reg_mess, incorrect_full_name_mess, form_data_mess,
+                                        incorrect_birthday_mess)
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.utils.db_exc_wrapper import DBError
 
 router = Router()
+
+
+def _validate_birthday(value: str) -> str | None:
+    value = value.strip()
+
+    if re.fullmatch(r"\d{2}\.\d{2}", value):
+        day, month = map(int, value.split("."))
+        try:
+            date(2000, month, day)
+            return value
+        except ValueError:
+            return None
+
+    if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", value):
+        try:
+            birthday = datetime.strptime(value, "%d.%m.%Y").date()
+            if birthday > date.today():
+                return None
+            return value
+        except ValueError:
+            return None
+
+    return None
+
+
+def _birthday_str_to_date(value: str) -> date | None:
+    try:
+        value = value.strip()
+        if re.fullmatch(r"\d{2}\.\d{2}", value):
+            return datetime.strptime(f"{value}.1900", "%d.%m.%Y").date()
+
+        if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", value):
+            return datetime.strptime(value, "%d.%m.%Y").date()
+    except ValueError:
+        return None
 
 
 @router.message(CommandStart())
@@ -70,7 +108,7 @@ async def handle_full_name(msg: Message, uc: FromDishka[UserUseCase], state: FSM
 
             await state.set_state(CreateUserState.profession)
             await state.update_data(full_name=msg.text)
-            await msg.answer(text=form_data_mess(msg.text, None, None),
+            await msg.answer(text=form_data_mess(msg.text, None, None, None),
                              reply_markup=get_dict_kb(professions_list))
 
     except UserWarn:
@@ -102,13 +140,13 @@ async def handle_profession(call: CallbackQuery, uc: FromDishka[UserUseCase], st
 
         full_name = await state.get_value(key="full_name")
         await call.message.edit_text(
-            text=form_data_mess(full_name, profession_name, None),
+            text=form_data_mess(full_name, profession_name, None, None),
             reply_markup=get_dict_kb(products_list)
         )
 
     except DBError:
         bot_msg_id = await state.get_value(key="bot_msg_id")
-        await call.bot.delete_message(chat_id=call.from_user.id, message_id=call.message_id)
+        await call.bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
         await state.clear()
         await call.bot.edit_message_text(
             chat_id=call.from_user.id,
@@ -125,17 +163,63 @@ async def handle_product(call: CallbackQuery, state: FSMContext):
     else:
         product_id, product_name = "1", "Веб КЦ (общее)"
 
-    await state.set_state(CreateUserState.confirmation)
+    await state.set_state(CreateUserState.birthday)
     await state.update_data(product_id=product_id, product_name=product_name)
 
     state_data = await state.get_data()
     full_name = state_data.get("full_name")
     profession_name = state_data.get("profession_name")
 
-    await call.message.edit_text(
-        text=form_data_mess(full_name, profession_name, product_name),
+    form_msg = await call.message.edit_text(
+        text=form_data_mess(full_name, profession_name, product_name, None),
+        reply_markup=get_skip_birthday_kb()
+    )
+    await state.update_data(bot_form_msg_id=form_msg.message_id)
+
+
+
+@router.message(CreateUserState.birthday)
+async def handle_birthday(msg: Message, state: FSMContext):
+    birthday = _validate_birthday(msg.text or "")
+    bot_form_msg_id = await state.get_value(key="bot_form_msg_id")
+    if birthday is None:
+        await msg.bot.delete_message(chat_id=msg.from_user.id, message_id=msg.message_id)
+        await msg.bot.edit_message_text(chat_id=msg.from_user.id, message_id=bot_form_msg_id,
+                                        text=incorrect_birthday_mess(), reply_markup=get_skip_birthday_kb())
+        return
+
+    await state.set_state(CreateUserState.confirmation)
+    await state.update_data(birthday=birthday)
+
+    state_data = await state.get_data()
+    full_name = state_data.get("full_name")
+    profession_name = state_data.get("profession_name")
+    product_name = state_data.get("product_name")
+
+    await msg.bot.edit_message_text(
+        chat_id=msg.from_user.id,
+        message_id=bot_form_msg_id,
+        text=form_data_mess(full_name, profession_name, product_name, birthday),
         reply_markup=get_confirmation_kb()
     )
+    await msg.bot.delete_message(chat_id=msg.from_user.id, message_id=msg.message_id)
+
+
+@router.callback_query(CreateUserState.birthday, F.data == "SKIP_BIRTHDAY")
+async def handle_skip_birthday(call: CallbackQuery, state: FSMContext):
+    await state.set_state(CreateUserState.confirmation)
+    await state.update_data(birthday="")
+
+    state_data = await state.get_data()
+    full_name = state_data.get("full_name")
+    profession_name = state_data.get("profession_name")
+    product_name = state_data.get("product_name")
+
+    await call.message.edit_text(
+        text=form_data_mess(full_name, profession_name, product_name, "-"),
+        reply_markup=get_confirmation_kb()
+    )
+
 
 @router.callback_query(CreateUserState.confirmation)
 async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], state: FSMContext):
@@ -144,11 +228,12 @@ async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], 
         full_name = state_data.get("full_name")
         profession_id = int(state_data.get("profession_id"))
         product_id = int(state_data.get("product_id"))
+        birthday = _birthday_str_to_date(state_data.get("birthday"))
 
         if call.data == "SAVE":
 
             await uc.create_user(user_id=call.from_user.id, full_name=full_name,
-                                 profession_id=profession_id, product_id=product_id)
+                                 profession_id=profession_id, product_id=product_id, birth_date=birthday)
 
             await call.message.edit_text(text= finish_start_reg_mess(), reply_markup=get_menu_kb())
             await state.clear()
@@ -161,7 +246,7 @@ async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], 
 
     except DBError:
         bot_msg_id = await state.get_value(key="bot_msg_id")
-        await call.bot.delete_message(chat_id=call.from_user.id, message_id=call.message_id)
+        await call.bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
         await state.clear()
         await call.bot.edit_message_text(
             chat_id=call.from_user.id,
@@ -205,6 +290,4 @@ async def handle_last(
 
     except (DBError, BookingError) as e:
         await msg.answer(text=str(e))
-
-
 
