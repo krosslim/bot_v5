@@ -52,6 +52,9 @@ class Config(BaseSettings):
     CANCEL_BOOKING_JOB_HOUR: int = 21           # Отмена не подтвержденных броней (часы запуска)
     CANCEL_BOOKING_JOB_MINUTES: int = 30        # Отмена не подтвержденных броней (минуты запуска)
 
+    BIRTHDAY_JOB_HOUR: int = 9           # Поздравление с ДР (часы запуска)
+    BIRTHDAY_JOB_MINUTES: int = 00       # Поздравление с ДР (минуты запуска)
+
 
 settings = Config()
 

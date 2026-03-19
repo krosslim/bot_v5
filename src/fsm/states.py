@@ -7,3 +7,6 @@ class CreateUserState(StatesGroup):
     product = State()
     birthday = State()
     confirmation = State()
+
+class UpdateProfileState(StatesGroup):
+    birthday = State()

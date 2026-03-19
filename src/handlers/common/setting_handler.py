@@ -1,8 +1,10 @@
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from dishka import FromDishka
 
+from fsm.states import UpdateProfileState
+from src.utils.birthday import validate_birthday, birthday_str_to_date
 from src.handlers.user.booking_handler import render_booking_page
 from src.services.exceptions import UserWarn
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
@@ -11,13 +13,15 @@ from src.ui.keyboard.settings_employee_kb import render_employees_keyboard, visi
 from src.ui.keyboard.settings_inline_kb import (render_settings_menu_kb,
                                                 render_settings_auto_confirm_kb,
                                                 render_lead_admin_menu_kb,
-                                                render_week_visits_count_kb)
+                                                render_week_visits_count_kb,
+                                                render_profile_settings_kb, get_dict_with_back_kb)
 from src.ui.messages.settings_mess import render_auto_confirm_mess, render_employee_group_mess, visit_plan_report_mess
-from src.ui.messages.start_mess import bot_menu_mess
+from src.ui.messages.start_mess import bot_menu_mess, incorrect_birthday_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.get_week_range import week_range
+from utils.date_to_str import format_date_ru
 
 router = Router()
 
@@ -80,7 +84,7 @@ async def handle_settings_auto_confirm_on(call: CallbackQuery,
         return
 
     try:
-        await uc.update_auto_confirm(call.from_user.id, True)
+        await uc.update_user(call.from_user.id, True)
         await call.message.edit_text(
             text=render_auto_confirm_mess(),
             reply_markup=render_settings_auto_confirm_kb(True)
@@ -101,7 +105,7 @@ async def handle_settings_auto_confirm_on(call: CallbackQuery,
         return
 
     try:
-        await uc.update_auto_confirm(call.from_user.id, False)
+        await uc.update_user(call.from_user.id, False)
         await call.message.edit_text(
             text=render_auto_confirm_mess(),
             reply_markup=render_settings_auto_confirm_kb(False)
@@ -111,6 +115,109 @@ async def handle_settings_auto_confirm_on(call: CallbackQuery,
                           show_alert=True
                           )
 
+
+@router.callback_query(SettingsCB.filter(F.step.in_(SettingsStep.MY_PROFILE)))
+async def handle_settings_my_profile(call: CallbackQuery, uc: FromDishka[UserUseCase]):
+
+    try:
+        text = await _get_profile(call.from_user.id, uc)
+        await call.message.edit_text(
+            text=text,
+            reply_markup=render_profile_settings_kb()
+        )
+
+    except DBError:
+        await call.answer(text="❌ Не удалось открыть профиль.\nПопробуйте ещё раз позже.",
+                          show_alert=True
+                          )
+
+
+@router.callback_query(SettingsCB.filter(F.step.in_(
+    {SettingsStep.UPDATE_PROFESSION, SettingsStep.UPDATE_PRODUCT, SettingsStep.UPDATE_BIRTHDATE}
+)))
+async def handle_profile_update(
+        call: CallbackQuery, callback_data: SettingsCB, uc: FromDishka[UserUseCase], state: FSMContext
+):
+    try:
+        match callback_data.step:
+            case SettingsStep.UPDATE_PROFESSION:
+                dict_list = await uc.get_professions()
+                dict_type = "profession"
+                text = "Укажите <b>должность</b> ⤵︎"
+            case SettingsStep.UPDATE_PRODUCT:
+                dict_list = await uc.get_products()
+                dict_type = "product"
+                text = "Укажите <b>команду</b> ⤵︎"
+            case SettingsStep.UPDATE_BIRTHDATE:
+                dict_list = []
+                dict_type = "product"
+                text = "Допустимые форматы даты:\n• 31.12\n• 31.12.1995\n\nВведите <b>дату рождения</b> ⤵︎"
+                await state.set_state(UpdateProfileState.birthday)
+            case _:
+                await call.answer(text="❌ Неизвестный параметр настройки",
+                                  show_alert=True
+                                  )
+                return
+
+        bot_msg_id = await call.message.edit_text(
+            text=text,
+            reply_markup=get_dict_with_back_kb(dict_list, dict_type)
+        )
+
+        await state.update_data(bot_msg_id=bot_msg_id.message_id)
+
+    except DBError:
+        await call.answer(text="❌ Не удалось получить данные.\nПопробуйте ещё раз позже.",
+                          show_alert=True
+                          )
+
+
+@router.callback_query(SettingsCB.filter(F.step.in_(
+    {SettingsStep.UPDATE_PROFESSION_CHOOSE, SettingsStep.UPDATE_PRODUCT_CHOOSE}
+)))
+async def handle_profile_choose(call: CallbackQuery, callback_data: SettingsCB, uc: FromDishka[UserUseCase]):
+    try:
+        match callback_data.step:
+            case SettingsStep.UPDATE_PROFESSION_CHOOSE:
+                await uc.update_user(user_id=call.from_user.id,profession_id=int(callback_data.extra))
+            case SettingsStep.UPDATE_PRODUCT_CHOOSE:
+                await uc.update_user(user_id=call.from_user.id, product_id=int(callback_data.extra))
+            case _:
+                ...
+
+        await handle_settings_my_profile(call, uc)
+
+    except DBError:
+        await call.answer(text="❌ Не удалось обновить данные.\nПопробуйте ещё раз позже.",
+                          show_alert=True
+                          )
+
+
+@router.message(UpdateProfileState.birthday)
+async def handle_birthday(msg: Message, uc: FromDishka[UserUseCase], state: FSMContext):
+    try:
+        birthday = validate_birthday(msg.text or "")
+        bot_msg_id = await state.get_value(key="bot_msg_id")
+        if birthday is None:
+            await msg.bot.delete_message(chat_id=msg.from_user.id, message_id=msg.message_id)
+            await msg.bot.edit_message_text(chat_id=msg.from_user.id, message_id=bot_msg_id,
+                                            text=incorrect_birthday_mess(),
+                                            reply_markup=get_dict_with_back_kb([], ""))
+            return
+
+        await uc.update_user(user_id=msg.from_user.id, birth_date=birthday_str_to_date(birthday))
+        await msg.bot.delete_message(chat_id=msg.from_user.id, message_id=msg.message_id)
+
+        text = await _get_profile(msg.from_user.id, uc)
+        await msg.bot.edit_message_text(
+            chat_id=msg.from_user.id,
+            message_id=bot_msg_id,
+            text=text,
+            reply_markup=render_profile_settings_kb()
+        )
+        await state.clear()
+    except DBError:
+        await msg.bot.delete_message(chat_id=msg.from_user.id, message_id=msg.message_id)
 
 @router.callback_query(SettingsCB.filter(F.step.in_({
     SettingsStep.LEAD_BLOCK,
@@ -351,3 +458,25 @@ async def handle_settings_employee_statistics(
         await call.answer(text="❌ Не удалось получить данные.\nПопробуйте ещё раз позже.",
                           show_alert=True
                           )
+
+
+async def _get_profile(
+        user_id: int,
+        uc: UserUseCase
+) -> str:
+    user = await uc.check_exists(user_id)
+    professions = await uc.get_professions()
+    products = await uc.get_products()
+
+    professions_map = {p.id: p.name for p in professions}
+    products_map = {pr.id: pr.name for pr in products}
+
+    return (
+        "<blockquote>"
+        f"• Имя: {user.full_name}\n"
+        f"• Должность: {professions_map.get(user.profession_id) if user.profession_id else '...'}\n"
+        f"• Команда: {products_map.get(user.product_id) if user.product_id else '...'}\n"
+        f"• Дата рождения: {'...' if user.birth_date is None else format_date_ru(user.birth_date)}"
+        "</blockquote>\n\n"
+        "Доступно к обновлению ⤵︎"
+    )

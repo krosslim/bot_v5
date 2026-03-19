@@ -26,9 +26,10 @@ class UserUseCase:
                         offset: int,
                         profession_id: int = None,
                         is_lead: bool = None,
+                        birth_date: date = None
                         ) -> List[UserDTO]:
         async with self.session.begin():
-            return await self.user.get_users(limit, offset, profession_id, is_lead)
+            return await self.user.get_users(limit, offset, profession_id, is_lead, birth_date)
 
     async def create_user(self, user_id: int, full_name: str,
                           profession_id: int, product_id: int, birth_date: date | None = None) -> None:
@@ -44,9 +45,18 @@ class UserUseCase:
         async with self.session.begin():
             return await self.user.get_user_auto_confirm(user_id)
 
-    async def update_auto_confirm(self, user_id: int, auto_confirm: bool) -> None:
+    async def update_user(
+            self,
+            user_id: int,
+            auto_confirm: bool = None,
+            profession_id: int = None,
+            product_id: int = None,
+            birth_date: date = None
+    ) -> None:
         async with self.session.begin():
-            await self.user.update_auto_confirm(user_id, auto_confirm)
+            await self.user.update_user(
+                user_id, auto_confirm, profession_id, product_id, birth_date
+            )
 
     async def update_is_active(self, user_id: int, is_active: bool) -> int:
         async with self.session.begin():

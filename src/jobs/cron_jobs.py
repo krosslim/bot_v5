@@ -517,6 +517,42 @@ async def head_report_job(container: AsyncContainer) -> None:
                         datetime.now(tz=ZoneInfo(settings.MSC_TZ)), str(e))
 
 
+# -------------------------------- Поздравление с днем рождения --------------------------------
+async def birthday_job(container: AsyncContainer) -> None:
+
+    logger.info("birthday_job | started at %s", datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
+    async with container() as req:
+        uc: UserUseCase = await req.get(UserUseCase)
+        bot: Bot = await req.get(Bot)
+
+        try:
+            today = d_tz(delta=0)
+            employee_list = await uc.get_users(100, 0, None, None, today)
+
+            if not employee_list:
+                logger.info("birthday_job | no data for %s", today)
+                return
+
+            mentions = [
+                f'<a href="tg://user?id={u.user_id}">{u.full_name}</a>'
+                for u in employee_list
+            ]
+            names_str = ", ".join(mentions)
+
+            await bot.send_message(
+                chat_id=settings.TG_CHAT_ID,
+                text=f"<b>{names_str}, С днем рождения! 🎁</b>"
+            )
+
+            logger.info("birthday_job | finished at %s",
+                        datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
+
+        except (TelegramForbiddenError, TelegramBadRequest, DBError) as e:
+            logger.info("birthday_job | finished at %s | fail all cause %s",
+                        datetime.now(tz=ZoneInfo(settings.MSC_TZ)), str(e))
+
+
 # -------------------------------- helpers --------------------------------
 def _add_job_checker(
         sched: AsyncIOScheduler,

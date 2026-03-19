@@ -1,6 +1,4 @@
 import time
-import re
-from datetime import datetime, date
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
@@ -21,44 +19,10 @@ from src.ui.messages.start_mess import (start_db_exc_mess, bot_init_mess,
                                         incorrect_birthday_mess)
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
+from src.utils.birthday import validate_birthday, birthday_str_to_date
 from src.utils.db_exc_wrapper import DBError
 
 router = Router()
-
-
-def _validate_birthday(value: str) -> str | None:
-    value = value.strip()
-
-    if re.fullmatch(r"\d{2}\.\d{2}", value):
-        day, month = map(int, value.split("."))
-        try:
-            date(2000, month, day)
-            return value
-        except ValueError:
-            return None
-
-    if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", value):
-        try:
-            birthday = datetime.strptime(value, "%d.%m.%Y").date()
-            if birthday > date.today():
-                return None
-            return value
-        except ValueError:
-            return None
-
-    return None
-
-
-def _birthday_str_to_date(value: str) -> date | None:
-    try:
-        value = value.strip()
-        if re.fullmatch(r"\d{2}\.\d{2}", value):
-            return datetime.strptime(f"{value}.1900", "%d.%m.%Y").date()
-
-        if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", value):
-            return datetime.strptime(value, "%d.%m.%Y").date()
-    except ValueError:
-        return None
 
 
 @router.message(CommandStart())
@@ -180,7 +144,7 @@ async def handle_product(call: CallbackQuery, state: FSMContext):
 
 @router.message(CreateUserState.birthday)
 async def handle_birthday(msg: Message, state: FSMContext):
-    birthday = _validate_birthday(msg.text or "")
+    birthday = validate_birthday(msg.text or "")
     bot_form_msg_id = await state.get_value(key="bot_form_msg_id")
     if birthday is None:
         await msg.bot.delete_message(chat_id=msg.from_user.id, message_id=msg.message_id)
@@ -228,7 +192,7 @@ async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], 
         full_name = state_data.get("full_name")
         profession_id = int(state_data.get("profession_id"))
         product_id = int(state_data.get("product_id"))
-        birthday = _birthday_str_to_date(state_data.get("birthday"))
+        birthday = birthday_str_to_date(state_data.get("birthday"))
 
         if call.data == "SAVE":
 

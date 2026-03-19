@@ -41,7 +41,7 @@ def form_data_mess(full_name: str, profession: str | None, product: str | None, 
     elif product is None:
         data = "Укажите <b>команду</b> ⤵︎"
     elif birthday is None:
-        data = "Бот умеет поздравлять!)\nДопустимые форматы даты:\n• 01.12\n• 01.12.1995\n\nВведите <b>дату рождения</b> ⤵︎"
+        data = "Бот умеет поздравлять!)\nДопустимые форматы даты:\n• 31.12\n• 31.12.1995\n\nВведите <b>дату рождения</b> ⤵︎"
     else:
         data = ""
 

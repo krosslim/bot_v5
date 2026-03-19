@@ -22,9 +22,10 @@ class UserService:
                         limit: int,
                         offset: int,
                         profession_id: int = None,
-                        is_lead: bool = None
+                        is_lead: bool = None,
+                        birth_date: date = None
                         ) -> List[UserDTO]:
-        return await self.repo.get_employees(limit, offset, profession_id, is_lead)
+        return await self.repo.get_employees(limit, offset, profession_id, is_lead, birth_date)
 
     async def create_user(self, user_id: int, full_name: str,
                           profession_id: int, product_id: int, birth_date: date | None = None) -> None:
@@ -37,8 +38,17 @@ class UserService:
     async def get_user_auto_confirm(self, user_id: int) -> bool:
         return await self.repo.user_auto_confirm(user_id)
 
-    async def update_auto_confirm(self, user_id: int, auto_confirm: bool) -> None:
-        return await self.repo.update_auto_confirm(user_id, auto_confirm)
+    async def update_user(
+            self,
+            user_id: int,
+            auto_confirm: bool = None,
+            profession_id: int = None,
+            product_id: int = None,
+            birth_date: date = None
+    ) -> None:
+        return await self.repo.update_user(
+            user_id, auto_confirm, profession_id, product_id, birth_date
+        )
 
     @staticmethod
     def check_full_name(full_name: str) -> bool:

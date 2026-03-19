@@ -51,9 +51,31 @@ class Repository:
         stmt = (update(User).where(User.user_id == user_id).values(full_name=full_name))
         await self.session.execute(stmt)
 
-    async def update_auto_confirm(self, user_id: int, auto_confirm: bool) -> None:
-        stmt = (update(User).where(User.user_id == user_id).values(auto_confirm=auto_confirm))
+    async def update_user(
+            self,
+            user_id: int,
+            auto_confirm: bool = None,
+            profession_id: int = None,
+            product_id: int = None,
+            birth_date: date = None
+    ) -> None:
+        stmt = (update(User).where(User.user_id == user_id))
+
+        if not (auto_confirm, profession_id, product_id, birth_date):
+            return None
+
+        if auto_confirm is not None:
+            stmt = stmt.values(auto_confirm=auto_confirm)
+        if profession_id is not None:
+            stmt = stmt.values(profession_id=profession_id)
+        if product_id is not None:
+            stmt = stmt.values(product_id=product_id)
+        if birth_date is not None:
+            stmt = stmt.values(birth_date=birth_date)
+
         await self.session.execute(stmt)
+
+        return None
 
     async def update_is_active(self, user_id: int, is_active: bool) -> int:
         stmt = (update(User).where(User.user_id == user_id).values(is_active=is_active))
@@ -64,7 +86,8 @@ class Repository:
                             limit: int,
                             offset: int,
                             profession_id: int = None,
-                            is_lead: bool = None
+                            is_lead: bool = None,
+                            birth_date: date = None
                             ) -> List[UserDTO]:
 
         stmt = select(User)
@@ -73,6 +96,12 @@ class Repository:
 
         if is_lead is not None:
             stmt = stmt.where(User.is_lead == is_lead)
+
+        if birth_date is not None:
+            stmt = stmt.where(
+                (extract('month', User.birth_date) == birth_date.month) &
+                (extract('day', User.birth_date) == birth_date.day)
+            )
 
         stmt = stmt.where(User.is_active == True)
 
