@@ -21,7 +21,7 @@ from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.get_week_range import week_range
-from utils.date_to_str import format_date_ru
+from src.utils.date_to_str import format_date_ru
 
 router = Router()
 
