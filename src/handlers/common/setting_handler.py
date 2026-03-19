@@ -472,6 +472,7 @@ async def _get_profile(
     products_map = {pr.id: pr.name for pr in products}
 
     return (
+        "<b>Профиль</b>\n"
         "<blockquote>"
         f"• Имя: {user.full_name}\n"
         f"• Должность: {professions_map.get(user.profession_id) if user.profession_id else '...'}\n"
