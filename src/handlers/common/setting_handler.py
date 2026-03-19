@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from dishka import FromDishka
 
-from fsm.states import UpdateProfileState
+from src.fsm.states import UpdateProfileState
 from src.utils.birthday import validate_birthday, birthday_str_to_date
 from src.handlers.user.booking_handler import render_booking_page
 from src.services.exceptions import UserWarn
