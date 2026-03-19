@@ -140,6 +140,8 @@ jobs:
 
           echo "❌ Health check failed! Rolling back..."
           git reset --hard "$CURRENT_COMMIT"
+          echo "==> Bot logs"
+          docker compose logs --no-color --tail=200 bot || true
           docker compose down
           docker compose up -d
           exit 1
