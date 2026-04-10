@@ -18,7 +18,7 @@ def render_help_booking_mess(has_holiday: bool, has_available: bool) -> str:
                 "🟡️ — Ты в очереди\nВыйти из очереди: жми кнопку с 🚪\n")
     if has_holiday:
         message +=("───────────\n"
-                  "🌴 — Праздничный день")
+                  "🌴 — Праздничный/Выходной день")
 
     return message
 
