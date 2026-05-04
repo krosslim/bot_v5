@@ -104,7 +104,3 @@ class ChatBookingCB(CallbackData, prefix="chat"):
     step: ChatBookingStep
     extra: Union[str, int] | None = None
     idk: str | None = None
-
-
-
-
