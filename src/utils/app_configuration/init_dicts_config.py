@@ -14,6 +14,9 @@ async def init_configure_bot_db(session: AsyncSession) -> None:
 
     async with session.begin():
         # 1) OfficeCapacityWeekday
+        # capacity — лимит броней на день. С виджетами — не больше числа мест на схеме зала (SEATS
+        # в src/ui/widgets/layout.py, сейчас 10); без виджетов можно больше: лишние брони будут без номера места.
+        # Сид выполняется один раз на новой базе; в существующей лимит меняется SQL-запросом
         weekdays_payload = [
             {"weekday": 1, "short_name": "ПН", "name": "Понедельник", "capacity": 10},
             {"weekday": 2, "short_name": "ВТ", "name": "Вторник",      "capacity": 10},

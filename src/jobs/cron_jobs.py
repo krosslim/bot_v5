@@ -6,7 +6,7 @@ from functools import partial
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dishka import AsyncContainer
@@ -163,8 +163,8 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                 # print('Изменений нет. Останавливаемся')
                 return
 
-            if settings.DIGEST_WIDGET_ENABLED:
-                await _refresh_digest_widget(req, sc_svc, target_date)
+            # False — дайджест на эту дату ушёл текстом (виджет не отправился): обновляем текст как раньше
+            if settings.DIGEST_WIDGET_ENABLED and await _refresh_digest_widget(req, sc_svc, target_date):
                 return
 
             weekday = target_date.isoweekday()
@@ -588,28 +588,38 @@ async def birthday_job(container: AsyncContainer) -> None:
 
 
 # -------------------------------- helpers --------------------------------
-async def _refresh_digest_widget(req: AsyncContainer, sc_svc: TechService, target_date: date) -> None:
-    """Дайджест-виджет: правим chat_data, а если сообщения нет — отправляем заново"""
+async def _refresh_digest_widget(req: AsyncContainer, sc_svc: TechService, target_date: date) -> bool:
+    """Дайджест-виджет: правим chat_data, а если сообщение удалили — отправляем заново.
+
+    True — обработано (или временная ошибка, повторим на следующем запуске).
+    False — виджетом дайджест не обновить: сообщение текстовое (в 16:00 виджет не отправился и ушёл текст),
+    Bot API не знает виджетов или новый виджет не отправился. Вызывающий обновляет текстовый дайджест."""
     widgets: WidgetUseCase = await req.get(WidgetUseCase)
     message_id = await sc_svc.get_chat_message_id(cal_date=target_date)
 
     if message_id:
         try:
             await widgets.edit_digest_now(target_date, message_id)
-            return
+            return True
+        except (TelegramBadRequest, TelegramNotFound) as e:
+            # 400 — сообщение не виджет, 404 — на этом адресе Bot API нет методов виджетов
+            if not (isinstance(e, TelegramBadRequest) and "message to edit not found" in (e.message or "").lower()):
+                logger.info("check_chat_remind_job | дайджест на %s не виджет, обновляем текст | %s",
+                            target_date, e.message)
+                return False
+            logger.warning("check_chat_remind_job | дайджест-виджет на %s удалён, отправляем заново", target_date)
         except TelegramAPIError as e:
+            # 429, сеть, 5xx: текст тут не поможет, повторим на следующем запуске
             logger.error(f"ERROR: check_chat_remind_job | widget | {str(e)}")
-            # Пересылаем заново только если сообщение удалили; в остальных случаях (например, это текстовый
-            # дайджест, отправленный вместо виджета) ничего не делаем
-            if not isinstance(e, TelegramBadRequest) or "message to edit not found" not in (e.message or "").lower():
-                return
+            return True
 
     try:
         message = await widgets.send_digest(target_date)
     except TelegramAPIError as e:
-        logger.error(f"ERROR: check_chat_remind_job | widget send | {str(e)}")
-        return
+        logger.error(f"ERROR: check_chat_remind_job | widget send, шлём текст | {str(e)}")
+        return False
     await sc_svc.upsert_chat_message_id(cal_date=target_date, message_id=message.message_id)
+    return True
 
 
 def _add_job_checker(

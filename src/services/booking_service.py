@@ -63,8 +63,13 @@ class BookingService:
             raise FreePlaceIsNotFound("⏳ Мест уже нет, но вы можете встать в очередь.")
         return check
 
-    async def pick_seat(self, cal_date: date, preferred: Optional[int] = None) -> int:
-        """Свободное место на день. Вызывать после блокировки дня (take_capacity_slot / lock_cal_date)."""
+    async def pick_seat(self, cal_date: date, preferred: Optional[int] = None) -> Optional[int]:
+        """Свободное место на день. Вызывать после блокировки дня (take_capacity_slot / lock_cal_date).
+
+        preferred — место, выбранное в виджете: если его нет на схеме или оно занято, бронь не создаётся.
+        Без preferred — первое свободное место, а если все места схемы заняты — None: бронь без номера места.
+        Число броней ограничивает лимит дня (take_capacity_slot), схема зала его не урезает,
+        поэтому capacity может быть больше len(SEATS)."""
         taken = await self.repo.taken_seats(cal_date)
         if preferred:
             if preferred not in SEATS:
@@ -72,10 +77,7 @@ class BookingService:
             if preferred in taken:
                 raise SeatIsTaken("Это место только что заняли")
             return preferred
-        for seat in SEATS:
-            if seat not in taken:
-                return seat
-        raise FreePlaceIsNotFound("⏳ Мест уже нет, но вы можете встать в очередь.")
+        return next((seat for seat in SEATS if seat not in taken), None)
 
     async def day_seat_rows(self, cal_date: date) -> List[DaySeatRowDTO]:
         return await self.repo.day_seat_rows(cal_date)
@@ -122,14 +124,12 @@ class BookingService:
             raise CancelIsAlreadyExist("✅ У вас больше нет брони на этот день! "
                                        "Повторная отмена не требуется.")
 
-        # У старой брони могло не быть места — тогда повышенному выдаём первое свободное
+        # У отменённой брони могло не быть места — тогда повышенному выдаём первое свободное, если оно есть
         if cancel_promote.promoted_user_id and cancel_promote.seat_no is None:
-            try:
-                seat = await self.pick_seat(cal_date)
+            seat = await self.pick_seat(cal_date)
+            if seat:
                 await self.repo.set_seat(cancel_promote.promoted_user_id, cal_date, seat)
                 cancel_promote = cancel_promote.model_copy(update={"seat_no": seat})
-            except FreePlaceIsNotFound:
-                pass
         return cancel_promote
 
 

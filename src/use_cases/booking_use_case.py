@@ -53,8 +53,9 @@ class BookingUseCase:
 
     async def book_place(
         self, user_id: int, cal_date: date, auto_confirm: bool | None = None, seat_no: int | None = None
-    ) -> int:
-        """Бронь на день. seat_no=None — первое свободное место. Возвращает номер места."""
+    ) -> Optional[int]:
+        """Бронь на день. seat_no=None — первое свободное место.
+        Возвращает номер места или None, если все места схемы заняты, а лимит дня позволяет бронь."""
         async with self.session.begin():
             if auto_confirm is None:
                 if not is_in_autoconfirm_period(cal_date):

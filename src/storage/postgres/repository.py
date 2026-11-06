@@ -619,17 +619,19 @@ class Repository:
         status = BookingStatus.BOOKED
         sub_status = BookingStatus.CONFIRMED
 
-        # Создать запись в таблице bookings
+        # Создать запись в таблице bookings. Отметка за прошедший день — без номера места: у отменённой брони
+        # мог остаться seat_no, а это место за тот день уже мог занять другой (ux_bookings_date_seat_booked)
         stmt_booking = (
             pg_insert(Booking)
             .values(
                 user_id=user_id,
                 cal_date=cal_date,
                 status=status,
-                sub_status=sub_status)
+                sub_status=sub_status,
+                seat_no=None)
             .on_conflict_do_update(
                 index_elements=[Booking.user_id, Booking.cal_date],
-                set_=dict(status=status, sub_status=sub_status, updated_at=func.now()),
+                set_=dict(status=status, sub_status=sub_status, seat_no=None, updated_at=func.now()),
                 where=Booking.status != status
             )
         ).returning(Booking.booking_id)
