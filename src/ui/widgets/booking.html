@@ -26,7 +26,7 @@ small{font-size:12px;color:var(--hn)}
 .lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .lg .b,.lg .v,.lg .q,.lg .n{width:8px;height:8px;border-radius:4px;box-shadow:none;background:var(--dt)}
 .mp{font-size:10px;color:var(--hn)}
-.tp{padding:0 22px}.bd{display:flex;gap:4px}.gd{flex:1;min-width:0}
+.bd{display:flex;gap:4px}.gd{flex:1;min-width:0}
 .rm,.o,.no{background:repeating-linear-gradient(135deg,transparent,transparent 4px,var(--sf) 4px,var(--sf) 8px)}
 .rm{height:36px;margin-bottom:14px;border-radius:10px;box-shadow:inset 0 0 0 1.5px var(--ln);display:flex;align-items:center;justify-content:center;font-size:12px}
 .is{padding:5px;border-radius:14px;box-shadow:inset 0 0 0 1px var(--ln)}
@@ -74,7 +74,7 @@ function cell(c){var mv=D.m||/^s/.test(pd);if(c=='b')return'<div class="s bs"><e
 function rw(r){var h='';r.forEach(function(c){h+=cell(c)});return h?'<div class="rw">'+h+'</div>':''}
 function pt(e){return typeof e=='string'?'<div class="rm">'+esc(e)+'</div>':'<div class="is">'+rw(e[0])+'<div class="tb">'+esc(e[1])+'</div>'+rw(e[2])+'</div>'}
 function map(){var a='',b='';L.forEach(function(e,i){if(i<TOP)a+=pt(e);else b+=pt(e)});
- return'<div class="mp"><div class="tp">'+a+'</div><div class="bd"><div class="sd"><span>Окно</span></div><div class="gd">'+b+'</div><div class="sd"><span>Коридор</span></div></div></div>'}
+ return'<div class="mp">'+a+'<div class="bd"><div class="sd"><span>Окно</span></div><div class="gd">'+b+'</div><div class="sd"><span>Коридор</span></div></div></div>'}
 function day(){var b=function(c,r,t){return'<button class="bt '+c+'" data-r="'+r+'">'+(pd=='r'?SP:t)+'</button>'},
  q=D.ro?'':D.st=='Q'?b('lv','lq','Выйти из очереди'):D.st=='B'?b('lv','c','Отменить бронь'):D.s.indexOf(0)<0?b('','q','Встать в очередь'):'';
  return'<div class="hd"><div><b>'+esc(D.t)+'</b><small'+(fl?' class="'+fl[0]+'"':'')+'>'+esc(fl?fl[1]:D.h)+'</small></div></div>'+map()+'<div class="ft"><button class="bt" data-k="1">« Назад</button>'+q+'</div>'}

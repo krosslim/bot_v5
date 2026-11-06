@@ -1,28 +1,29 @@
-"""Уведомления администраторам в Telegram — общий сервис для любых алертов приложения.
+"""Алерты в Telegram — общий сервис для любых уведомлений приложения.
 
+Куда отправлять, решает AlertRecipients: сейчас это чат TG_ALERTS_CHAT_ID (см. AlertProvider).
 Один экземпляр на приложение (Scope.APP): его можно получить из джоба, хендлера или стартового кода.
 
     alerts: AlertService = await container.get(AlertService)
     await alerts.notify(Alert("Заголовок", "текст", level=logging.ERROR, key="уникальный-ключ"))
 
 Повторы: алерты с одинаковым key отправляются не чаще раза в dedup_ttl секунд (метка в Redis).
-Синхронный код, например будущий logging.Handler для алертов на ERROR, вызывает notify_nowait():
-алерт кладётся в очередь, отправляет его фоновая задача. Свои сбои сервис пишет в лог не выше WARNING,
-чтобы обработчик логов уровня ERROR не зациклился на ошибках отправки алертов.
+Синхронный код, например обработчик логов AlertLogHandler (src/infrastructure/log_alerts.py), вызывает
+notify_nowait(): алерт кладётся в очередь, отправляет его фоновая задача. Свои сбои сервис пишет в лог
+не выше WARNING, а всё, что логируется во время отправки, обработчик логов пропускает (is_sending_alert),
+поэтому алерты на ERROR не зацикливаются на ошибках отправки алертов.
 """
 import asyncio
 import html
 import logging
 from contextlib import suppress
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import List, Optional, Protocol, Sequence
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.storage.postgres.repository import Repository
 from src.storage.redis.store import RedisStore
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,14 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_LEN = 4096          # лимит Telegram на текст сообщения
 MAX_TITLE_LEN = 200
 ICONS = {logging.CRITICAL: "🔥", logging.ERROR: "❌", logging.WARNING: "⚠️", logging.INFO: "ℹ️"}
+
+# Внутри notify: всё, что пишется в лог при отправке алерта (ошибки Redis, Telegram),
+# не должно порождать новые алерты — иначе при сбое они пойдут по кругу
+_sending_alert: ContextVar[bool] = ContextVar("sending_alert", default=False)
+
+
+def is_sending_alert() -> bool:
+    return _sending_alert.get()
 
 
 @dataclass(frozen=True)
@@ -45,19 +54,8 @@ class AlertRecipients(Protocol):
     async def chat_ids(self) -> List[int]: ...
 
 
-class AdminRecipients:
-    """Все активные администраторы бота (users.is_admin), в личном чате"""
-
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
-        self.session_factory = session_factory
-
-    async def chat_ids(self) -> List[int]:
-        async with self.session_factory() as session:
-            return await Repository(session).admin_ids()
-
-
 class ChatRecipients:
-    """Фиксированный список чатов, например отдельная группа для алертов"""
+    """Фиксированный список чатов, например отдельная группа для алертов (TG_ALERTS_CHAT_ID)"""
 
     def __init__(self, chat_ids: Sequence[int]):
         self._chat_ids = list(chat_ids)
@@ -76,14 +74,14 @@ def _level_icon(level: int) -> str:
 def format_alert(alert: Alert) -> str:
     """HTML для Telegram: иконка уровня, жирный заголовок и текст. Длинный текст обрезается до лимита"""
     title = alert.title if len(alert.title) <= MAX_TITLE_LEN else alert.title[:MAX_TITLE_LEN - 1] + "…"
-    head = f"{_level_icon(alert.level)} <b>{html.escape(title)}</b>"
+    head = f"{_level_icon(alert.level)} <b>{html.escape(title, quote=False)}</b>"
     body = (alert.text or "").strip()
     if not body:
         return head
-    out = f"{head}\n\n{html.escape(body)}"
+    out = f"{head}\n\n{html.escape(body, quote=False)}"
     while len(out) > MAX_MESSAGE_LEN:
         body = body[:max(0, int(len(body) * 0.9) - 1)]
-        out = f"{head}\n\n{html.escape(body)}…"
+        out = f"{head}\n\n{html.escape(body, quote=False)}…"
     return out
 
 
@@ -102,6 +100,13 @@ class AlertService:
     # ---------------------------------------------------------------------------#
     async def notify(self, alert: Alert) -> int:
         """Отправить алерт сейчас. Возвращает, скольким получателям он ушёл (0 — повтор или ошибка)"""
+        token = _sending_alert.set(True)
+        try:
+            return await self._notify(alert)
+        finally:
+            _sending_alert.reset(token)
+
+    async def _notify(self, alert: Alert) -> int:
         if alert.key and not await self._first_in_window(alert):
             return 0
         try:

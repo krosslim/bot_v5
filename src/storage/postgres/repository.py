@@ -84,13 +84,6 @@ class Repository:
         res = await self.session.execute(stmt)
         return res.rowcount #type: ignore
 
-    async def admin_ids(self) -> List[int]:
-        """Активные администраторы — получатели алертов"""
-        res = await self.session.execute(
-            select(User.user_id).where(User.is_admin.is_(True), User.is_active.is_(True)).order_by(User.user_id)
-        )
-        return [int(r) for r in res.scalars().all()]
-
     async def get_employees(self,
                             limit: int,
                             offset: int,

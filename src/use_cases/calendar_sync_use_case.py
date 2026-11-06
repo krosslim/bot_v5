@@ -29,7 +29,7 @@ from src.utils.work_calendar import (CalendarChange, CalendarDataError, Calendar
 logger = logging.getLogger(__name__)
 
 FAIL_SINCE_KEY = "calendar:isdayoff:fail_since"   # когда isdayoff.ru перестал отвечать (ISO-время)
-DOWN_ALERT_AFTER = timedelta(days=3)               # через сколько сообщать админам, что сервис недоступен
+DOWN_ALERT_AFTER = timedelta(days=3)               # через сколько сообщать в чат алертов, что сервис недоступен
 DOWN_ALERT_EVERY = 24 * 3600                       # и как часто повторять
 NO_NEXT_YEAR_ALERT_MONTH = 12                      # с какого месяца ждать данных на следующий год
 NO_NEXT_YEAR_ALERT_EVERY = 7 * 24 * 3600

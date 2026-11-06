@@ -11,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import Config, setup_logging
 from src.handlers import bot_combined_router
 from src.infrastructure.dishka import container
+from src.infrastructure.log_alerts import AlertLogHandler
 from src.infrastructure.telegram.widgets import WIDGET_QUERY_UPDATE, widgets_supported
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
 from src.middlewares.widget_query_middleware import WidgetQueryMiddleware
+from src.services.alert_service import AlertService
 from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
 from src.utils.app_configuration.register import init_system_tasks
 from src.utils.commands import get_commands_list
@@ -27,6 +29,10 @@ async def main() -> None:
     bot_info = await bot.get_me()
     dp: Dispatcher = await container.get(Dispatcher)
     settings: Config = await container.get(Config)
+
+    # Записи лога ERROR и выше → алерт в TG_ALERTS_CHAT_ID (с одного места в коде не чаще раза в час)
+    alert_log_handler = AlertLogHandler(await container.get(AlertService))
+    logging.getLogger().addHandler(alert_log_handler)
 
     setup_dishka(container=container, router=dp, auto_inject=True)
 
@@ -72,6 +78,7 @@ async def main() -> None:
 
     finally:
         logger.info("Закрытие соединений…")
+        logging.getLogger().removeHandler(alert_log_handler)
         await container.close()
         logger.info("Бот остановлен.")
 

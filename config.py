@@ -65,6 +65,8 @@ class Config(BaseSettings):
     DIGEST_WIDGET_ENABLED: bool = False  # Дайджест в группе отправляется виджетом
     WIDGET_HISTORY_MONTHS: int = 3       # Сколько прошлых месяцев можно листать в календаре виджета (только просмотр)
 
+    TG_ALERTS_CHAT_ID: int = -1000000000000 # Чат для алертов
+
 
 settings = Config()
 
