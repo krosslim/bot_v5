@@ -5,6 +5,8 @@ from aiogram.dispatcher.middlewares.base import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 from aiogram.exceptions import TelegramBadRequest
 
+from src.utils.telegram_errors import is_harmless_bad_request
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +22,10 @@ class ExceptionMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         except TelegramBadRequest as e:
-            logger.error("Telegram API exception: %s", e, exc_info=False)
+            if is_harmless_bad_request(e):
+                logger.warning("Telegram API exception: %s", e)
+            else:
+                logger.error("Telegram API exception: %s", e, exc_info=False)
 
         except Exception as e:
             logger.exception("Unhandled exception: %s", e)

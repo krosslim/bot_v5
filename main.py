@@ -12,10 +12,12 @@ from config import Config, setup_logging
 from src.handlers import bot_combined_router
 from src.infrastructure.dishka import container
 from src.infrastructure.log_alerts import AlertLogHandler
+from src.infrastructure.ops_alerts import RunMonitor, watch_missed_jobs
 from src.infrastructure.telegram.widgets import WIDGET_QUERY_UPDATE, widgets_supported
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
 from src.middlewares.widget_query_middleware import WidgetQueryMiddleware
 from src.services.alert_service import AlertService
+from src.storage.redis.store import RedisStore
 from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
 from src.utils.app_configuration.register import init_system_tasks
 from src.utils.commands import get_commands_list
@@ -31,7 +33,8 @@ async def main() -> None:
     settings: Config = await container.get(Config)
 
     # Записи лога ERROR и выше → алерт в TG_ALERTS_CHAT_ID (с одного места в коде не чаще раза в час)
-    alert_log_handler = AlertLogHandler(await container.get(AlertService))
+    alerts: AlertService = await container.get(AlertService)
+    alert_log_handler = AlertLogHandler(alerts)
     logging.getLogger().addHandler(alert_log_handler)
 
     setup_dishka(container=container, router=dp, auto_inject=True)
@@ -54,7 +57,12 @@ async def main() -> None:
         )
 
     scheduler: AsyncIOScheduler = await container.get(AsyncIOScheduler)
+    watch_missed_jobs(scheduler, alerts)        # алерт, если планировщик пропустил запуск во время работы
     scheduler.start()
+
+    # Метка «жив» в Redis: при следующем старте видно, был ли сбой и какие задачи пришлись на простой
+    run_monitor = RunMonitor(await container.get(RedisStore), alerts, scheduler)
+    await run_monitor.start()
 
     async with container() as req:
         session: AsyncSession = await req.get(AsyncSession)
@@ -78,6 +86,7 @@ async def main() -> None:
 
     finally:
         logger.info("Закрытие соединений…")
+        await run_monitor.stop()
         logging.getLogger().removeHandler(alert_log_handler)
         await container.close()
         logger.info("Бот остановлен.")

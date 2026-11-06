@@ -1,5 +1,5 @@
 <!doctype html><style>
-:root{--tx:var(--tg-theme-text-color,#000);--bg:var(--tg-theme-bg-color,#fff);--hn:var(--tg-theme-hint-color,#8e8e93);--ac:var(--tg-theme-button-color,#3390ec);--at:var(--tg-theme-button-text-color,#fff);--s2:var(--tg-theme-secondary-bg-color,#f1f1f4);--dg:var(--tg-theme-destructive-text-color,#e53935);--ln:rgba(128,128,128,.32);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--gr:rgba(26,155,71,.55);--r:#d23a31;--y:#b58900}
+:root{--tx:var(--tg-theme-text-color,#000);--bg:var(--tg-theme-bg-color,#fff);--hn:var(--tg-theme-hint-color,#8e8e93);--ac:var(--tg-theme-button-color,#3390ec);--at:var(--tg-theme-button-text-color,#fff);--s2:var(--tg-theme-secondary-bg-color,#f1f1f4);--ln:rgba(128,128,128,.32);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--gr:rgba(26,155,71,.55);--r:#d23a31;--y:#b58900}
 .dk{--g:#4cd964;--gl:rgba(76,217,100,.12);--gr:rgba(76,217,100,.5);--r:#ff6b63;--y:#ffd60a}
 *{box-sizing:border-box;margin:0}
 body{font:14px/1.3 system-ui,sans-serif;color:var(--tx);padding:10px 10px max(12px,env(safe-area-inset-bottom))}
@@ -14,9 +14,8 @@ small{font-size:12px;color:var(--hn)}
 .nv[disabled]{color:var(--ln)}
 .gr{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
 .gr small{font-size:11px;text-align:center;padding-bottom:2px}
-.c{height:38px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;font-size:15px}
-.c:before,.c:after{content:"";width:5px;height:5px;border-radius:3px;margin-top:2px}
-.c:after{background:var(--dt,transparent)}
+.c{height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;position:relative;font-size:15px}
+.c:after{content:"";position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:3px;background:var(--dt,transparent)}
 .f,.b,.q,.n{box-shadow:inset 0 0 0 1px var(--ln)}
 .b{--dt:var(--g)}.v{--dt:var(--hn)}.q{--dt:var(--y)}.n{--dt:var(--r)}
 .p,.v{background:var(--sf)}
@@ -24,21 +23,19 @@ small{font-size:12px;color:var(--hn)}
 .t{background:var(--tx);color:var(--bg);font-weight:700;box-shadow:none}
 .lg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;font-size:11px;color:var(--hn)}
 .lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-.lg .b,.lg .v,.lg .q,.lg .n{width:8px;height:8px;border-radius:4px;box-shadow:none;background:var(--dt)}
+.lg i:not(.f){width:8px;height:8px;border-radius:4px;box-shadow:none;background:var(--dt)}
 .mp{font-size:10px;color:var(--hn)}
-.bd{display:flex;gap:4px}.gd{flex:1;min-width:0}
+.or{display:flex;justify-content:space-between;margin:0 4px 6px;font-size:11px}
 .rm,.o,.no{background:repeating-linear-gradient(135deg,transparent,transparent 4px,var(--sf) 4px,var(--sf) 8px)}
-.rm{height:36px;margin-bottom:14px;border-radius:10px;box-shadow:inset 0 0 0 1.5px var(--ln);display:flex;align-items:center;justify-content:center;font-size:12px}
-.is{padding:5px;border-radius:14px;box-shadow:inset 0 0 0 1px var(--ln)}
+.rm{height:36px;margin-bottom:8px;border-radius:10px;box-shadow:inset 0 0 0 1.5px var(--ln);display:flex;align-items:center;justify-content:center;font-size:12px}
+.is{padding:4px;border-radius:14px;box-shadow:inset 0 0 0 1px var(--ln)}
 .is+.is{margin-top:14px}
 .tb{height:36px;margin:4px 0;border-radius:8px;box-shadow:inset 0 0 0 1px var(--ln);text-align:center;line-height:36px;text-transform:uppercase;letter-spacing:.5px}
 .rw{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
-.sd{width:18px;border-radius:6px;background:var(--sf);position:relative}
-.sd span{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-90deg);white-space:nowrap}
-.s{height:40px;border-radius:10px;display:flex;flex-direction:column;justify-content:center;padding:0 5px;overflow:hidden;font-size:12px;color:var(--tx)}
+.s{height:40px;border-radius:10px;display:flex;flex-direction:column;justify-content:center;padding:0 2px;overflow:hidden;font-size:12px;color:var(--tx)}
 .s em{font-style:normal;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tk,.bs,.me{background:var(--s2);color:var(--hn)}
-.bs em{white-space:normal;line-height:1.15}
+div.s em{white-space:normal;line-height:1.15}
 .fr{background:var(--gl);box-shadow:inset 0 0 0 1.5px var(--gr);color:var(--g);font-weight:600}
 .mv{background:none;font-weight:400;font-size:11px}
 .o{height:auto;min-height:26px}
@@ -50,13 +47,13 @@ small{font-size:12px;color:var(--hn)}
 .bt{flex:1;height:40px;border-radius:10px;background:var(--s2);color:var(--ac);font-weight:600;display:flex;align-items:center;justify-content:center}
 .bt+.bt{flex:2}
 .pr{background:var(--ac);color:var(--at)}
-.lv{color:var(--dg)}
+.lv{color:var(--r)}
 </style><div id="a"></div><script>
 var T=window.TelegramWidget||{},H=T.HapticFeedback,A=document.getElementById('a'),
 L=__LAYOUT__,TOP=__TOP__,B=__BOSS__,U=__USER__,AS=__AS__,
 C={},M=-1,D=null,busy=0,pd=null,fl=null,ft,LT=0,FS=0,F='Не получилось, попробуйте ещё раз',SP='<i class="sp"></i>';
 try{FS=+localStorage.getItem('fs');if(!FS)localStorage.setItem('fs',FS=Date.now())}catch(e){}
-function esc(s){return String(s).replace(/[<>&"]/g,function(c){return'&#'+c.charCodeAt(0)+';'})}
+function esc(s){return String(s).replace(/[<>&"]/g,function(c){return'&#'+c.charCodeAt()+';'})}
 function rd(){try{C=JSON.parse(T.chatData||'{}')}catch(e){C={}}C.m=C.m||[];if(M<0)M=C.c||0;M=Math.min(M,C.m.length-1)}
 function th(){document.documentElement.className=T.colorScheme=='dark'?'dk':''}
 function old(){var n=Date.now();return C.e&&n>C.e*1e3&&n-FS>6e4&&n-LT>3e5}
@@ -69,12 +66,13 @@ function cal(){var m=C.m[M],h=AS?'<p><small>'+esc(AS)+'</small></p>':'',i,lg='';
   h+='<'+tg+(go?' data-d="'+s+'"':'')+' class="c '+c+(s==C.t?' t':'')+'">'+(s==pd?SP:i)+'</'+tg+'>'}
  'fСвободно|bЕсть бронь|vБыла бронь|qОчередь|nМест нет'.split('|').forEach(function(x){if(k.indexOf(x[0])>=0)lg+='<span><i class="'+x[0]+'"></i>'+x.slice(1)+'</span>'});
  return h+'</div>'+(lg&&'<div class="lg">'+lg+'</div>')+'<div class="ft"><button class="bt" data-e="1">'+(pd=='e'?SP:'« Выйти')+'</button></div>'}
-function cell(c){var mv=D.m||/^s/.test(pd);if(c=='b')return'<div class="s bs"><em>'+esc(B)+'</em></div>';var v=D.s[c-1];if(c=='x'||!v&&D.ro)return'<div class="s '+(c=='x'?'o':'no')+'"></div>';
- return v?'<div class="s '+(c==D.m?'me':'tk')+'"><em>'+esc(v)+'</em></div>':'<button class="s fr'+(mv?' mv':'')+'" data-s="'+c+'">'+('s'+c==pd?SP:'<em>'+(mv?'пересесть':'занять')+'</em>')+'</button>'}
+function nm(v,c){var z=v.split(' ')[0].length+(c=='me');return'<div class="s '+c+'"><em style="font-size:'+(z>11?9:z>10?10:z>9?11:12)+'px">'+esc(v)+'</em></div>'}
+function cell(c){var mv=D.m||/^s/.test(pd);if(c=='b')return nm(B,'bs');var v=D.s[c-1];if(c=='x'||!v&&D.ro)return'<div class="s '+(c=='x'?'o':'no')+'"></div>';
+ return v?nm(v,c==D.m?'me':'tk'):'<button class="s fr'+(mv?' mv':'')+'" data-s="'+c+'">'+('s'+c==pd?SP:'<em>'+(mv?'пересесть':'занять')+'</em>')+'</button>'}
 function rw(r){var h='';r.forEach(function(c){h+=cell(c)});return h?'<div class="rw">'+h+'</div>':''}
 function pt(e){return typeof e=='string'?'<div class="rm">'+esc(e)+'</div>':'<div class="is">'+rw(e[0])+'<div class="tb">'+esc(e[1])+'</div>'+rw(e[2])+'</div>'}
 function map(){var a='',b='';L.forEach(function(e,i){if(i<TOP)a+=pt(e);else b+=pt(e)});
- return'<div class="mp">'+a+'<div class="bd"><div class="sd"><span>Окно</span></div><div class="gd">'+b+'</div><div class="sd"><span>Коридор</span></div></div></div>'}
+ return'<div class="mp">'+a+'<div class="or"><span>← Окно</span><span>Коридор →</span></div>'+b+'</div>'}
 function day(){var b=function(c,r,t){return'<button class="bt '+c+'" data-r="'+r+'">'+(pd=='r'?SP:t)+'</button>'},
  q=D.ro?'':D.st=='Q'?b('lv','lq','Выйти из очереди'):D.st=='B'?b('lv','c','Отменить бронь'):D.s.indexOf(0)<0?b('','q','Встать в очередь'):'';
  return'<div class="hd"><div><b>'+esc(D.t)+'</b><small'+(fl?' class="'+fl[0]+'"':'')+'>'+esc(fl?fl[1]:D.h)+'</small></div></div>'+map()+'<div class="ft"><button class="bt" data-k="1">« Назад</button>'+q+'</div>'}

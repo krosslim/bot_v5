@@ -583,9 +583,12 @@ async def birthday_job(container: AsyncContainer) -> None:
             logger.info("birthday_job | finished at %s",
                         datetime.now(tz=ZoneInfo(settings.MSC_TZ)))
 
-        except (TelegramForbiddenError, TelegramBadRequest, DBError) as e:
-            logger.info("birthday_job | finished at %s | fail all cause %s",
-                        datetime.now(tz=ZoneInfo(settings.MSC_TZ)), str(e))
+        except (TelegramForbiddenError, TelegramBadRequest) as e:
+            # ERROR → алерт: поздравление не дошло до чата (бота удалили из группы, нет прав писать и т. п.)
+            logger.error("birthday_job | поздравление не отправлено в чат %s | %s", settings.TG_CHAT_ID, e)
+        except DBError as e:
+            # Саму ошибку БД уже записал with_db_errors на уровне ERROR — второй алерт не нужен
+            logger.warning("birthday_job | не выполнено из-за ошибки БД | %s", e)
 
 
 # -------------------------------- Производственный календарь --------------------------------
