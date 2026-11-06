@@ -11,13 +11,14 @@ from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
                                  CancelBookingFifoDTO, BookingStatus, OwnBookingDTO,
                                  WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO,
                                  DaySeatRowDTO, CalendarWidgetRowDTO)
-from src.dto.calendar_dates_dto import CalendarDatesDTO, DigestScheduleDTO
+from src.dto.calendar_dates_dto import CalendarDatesDTO, DigestScheduleDTO, DayBookingDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO, DictDTO, UserStatisticsDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
                                          CalendarDate, BookingEvent, Profession, Product,
                                          DigestSchedule)
 from src.utils.db_exc_wrapper import with_db_errors, DBError
+from src.utils.work_calendar import DayFlags
 
 
 @with_db_errors
@@ -82,6 +83,13 @@ class Repository:
         stmt = (update(User).where(User.user_id == user_id).values(is_active=is_active))
         res = await self.session.execute(stmt)
         return res.rowcount #type: ignore
+
+    async def admin_ids(self) -> List[int]:
+        """Активные администраторы — получатели алертов"""
+        res = await self.session.execute(
+            select(User.user_id).where(User.is_admin.is_(True), User.is_active.is_(True)).order_by(User.user_id)
+        )
+        return [int(r) for r in res.scalars().all()]
 
     async def get_employees(self,
                             limit: int,
@@ -817,6 +825,42 @@ class Repository:
 # ---------------------------------------------------------------------------#
 #  CALENDAR DATES
 # ---------------------------------------------------------------------------#
+    async def insert_calendar_days(self, days: Sequence[DayFlags]) -> int:
+        """Добавить недостающие дни. Уже существующие не трогаются (в том числе visit_count)"""
+        if not days:
+            return 0
+        res = await self.session.execute(
+            pg_insert(CalendarDate)
+            .values([dict(cal_date=d.cal_date, is_weekend=d.is_weekend, is_holiday=d.is_holiday,
+                          is_workday=d.is_workday, source=d.source) for d in days])
+            .on_conflict_do_nothing(index_elements=[CalendarDate.cal_date])
+        )
+        return res.rowcount or 0
+
+    async def update_calendar_day(self, day: DayFlags) -> None:
+        """Обновить флаги и источник дня. visit_count не меняется"""
+        await self.session.execute(
+            update(CalendarDate)
+            .where(CalendarDate.cal_date == day.cal_date)
+            .values(is_weekend=day.is_weekend, is_holiday=day.is_holiday, is_workday=day.is_workday,
+                    source=day.source, updated_at=func.now())
+        )
+
+    async def active_bookings_on(self, cal_dates: Sequence[date]) -> List[DayBookingDTO]:
+        """Брони (BOOKED) и очередь (WAITLISTED) на даты"""
+        if not cal_dates:
+            return []
+        res = await self.session.execute(
+            select(Booking.cal_date, Booking.user_id, User.full_name, Booking.status)
+            .join(User, User.user_id == Booking.user_id)
+            .where(
+                Booking.cal_date.in_(list(cal_dates)),
+                Booking.status.in_([BookingStatus.BOOKED, BookingStatus.WAITLISTED]),
+            )
+            .order_by(Booking.cal_date, Booking.status, Booking.created_at)
+        )
+        return [DayBookingDTO.model_validate(r) for r in res.all()]
+
     async def get_calendar_dates_by_range(self, cal_date_start: date,
                                    cal_date_end: date) -> List[CalendarDatesDTO]:
         stmt = select(CalendarDate).where(

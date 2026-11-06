@@ -18,7 +18,8 @@ from src.jobs.cron_jobs import (
     remind_to_confirm_booking_job,
     cancel_waitlist_bookings_job,
     cancel_not_confirmed_booking_job,
-    birthday_job
+    birthday_job,
+    calendar_sync_job,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,22 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
     )
     logger.info("register job: birthday_job | every day | start at: %s:%s",
                 s.BIRTHDAY_JOB_HOUR, s.BIRTHDAY_JOB_MINUTES)
+
+    sched.add_job(
+        partial(calendar_sync_job, container),
+        trigger=CronTrigger(
+            hour=s.CALENDAR_SYNC_JOB_HOUR,
+            minute=s.CALENDAR_SYNC_JOB_MINUTES,
+            timezone=sched.timezone
+        ),
+        id="calendar_sync_job",
+        max_instances=1,
+        misfire_grace_time=3600,
+        coalesce=True,
+        replace_existing=True
+    )
+    logger.info("register job: calendar_sync_job | every day | start at: %s:%s",
+                s.CALENDAR_SYNC_JOB_HOUR, s.CALENDAR_SYNC_JOB_MINUTES)
 
 
 

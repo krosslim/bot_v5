@@ -115,6 +115,19 @@ uv run python main.py            # запустить бота
 Добавить или обновить зависимость: `uv add <пакет>` / `uv lock --upgrade-package <пакет>`, затем закоммитить `pyproject.toml` и `uv.lock`.
 Docker-образ ставит зависимости через `uv sync --locked`: сборка упадёт, если `uv.lock` не соответствует `pyproject.toml`.
 
+Тесты (без БД, Redis и Telegram): `uv run python -m unittest discover -s tests -t .`
+
+### Производственный календарь
+
+---
+Даты в `calendar_dates` вручную вносить не нужно. При старте бота и каждую ночь (`CALENDAR_SYNC_JOB_HOUR`:`CALENDAR_SYNC_JOB_MINUTES` в `config.py`, по умолчанию 04:10 МСК) бот загружает текущий и следующий год из [isdayoff.ru](https://isdayoff.ru) — с праздниками, переносами и рабочими субботами.
+
+- Если isdayoff.ru недоступен или ещё не знает год (постановление о переносах выходит осенью), недостающие дни добавляются по библиотеке `holidays` (праздники и переносы РФ, без рабочих суббот). Когда данные появятся на isdayoff.ru, они заменят эти дни.
+- Источник дня — `calendar_dates.source` (`CalendarSource` в `src/dto/calendar_dates_dto.py`): `0` — isdayoff.ru, `1` — holidays.
+- Прошлые дни и сегодня не меняются, `visit_count` синхронизация не трогает.
+- Админам (`users.is_admin`, активные) приходят уведомления: календарь изменился; день стал нерабочим, а на него есть брони (брони не отменяются); isdayoff.ru не отвечает больше 3 дней; в декабре ещё нет данных на следующий год.
+- Уведомления отправляет `AlertService` (`src/services/alert_service.py`). Он подходит для любых алертов: `await alerts.notify(Alert(...))`, повторы с одним `key` отсекаются, для синхронного кода (например, обработчика логов) есть `notify_nowait()`.
+
 ### Виджеты выбора места (Bot API 10.4)
 
 ---
@@ -136,4 +149,4 @@ TELEGRAM_API_BASE=https://api.telegram.org/beta
 - Тестовые брони в локальной базе: `uv run python scripts/dev_seed_bookings.py` — сценарии на ноябрь и прошлые дни за `WIDGET_HISTORY_MONTHS`; `--only-past` — только прошлые дни.
 - Запросы из виджетов приходят апдейтом `widget_query`, его перехватывает `WidgetQueryMiddleware` (aiogram пока не знает этот тип).
 - Отправить дайджест сразу, не дожидаясь 16:00 (только для администраторов, в личке с ботом): `/digest_now` — на ближайший рабочий день, `/digest_now 10.11` — на дату.
-- Тесты виджетов без БД: `uv run python -m unittest discover -s tests -t .`
+- Тесты виджетов входят в общий набор тестов (см. выше).

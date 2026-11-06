@@ -30,6 +30,7 @@ from src.ui.messages.settings_mess import visit_plan_report_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
 from src.use_cases.booking_use_case import BookingUseCase
+from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.get_week_range import week_range
@@ -585,6 +586,17 @@ async def birthday_job(container: AsyncContainer) -> None:
         except (TelegramForbiddenError, TelegramBadRequest, DBError) as e:
             logger.info("birthday_job | finished at %s | fail all cause %s",
                         datetime.now(tz=ZoneInfo(settings.MSC_TZ)), str(e))
+
+
+# -------------------------------- Производственный календарь --------------------------------
+async def calendar_sync_job(container: AsyncContainer) -> None:
+    """Дни текущего и следующего года из isdayoff.ru (запасной вариант — библиотека holidays)"""
+    async with container() as req:
+        uc: CalendarSyncUseCase = await req.get(CalendarSyncUseCase)
+        try:
+            await uc.sync()
+        except DBError as e:
+            logger.exception(f"ERROR: calendar_sync_job | {str(e)}")
 
 
 # -------------------------------- helpers --------------------------------

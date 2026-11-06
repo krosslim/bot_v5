@@ -55,6 +55,9 @@ class Config(BaseSettings):
     BIRTHDAY_JOB_HOUR: int = 9           # Поздравление с ДР (часы запуска)
     BIRTHDAY_JOB_MINUTES: int = 00       # Поздравление с ДР (минуты запуска)
 
+    CALENDAR_SYNC_JOB_HOUR: int = 4      # Синхронизация производственного календаря с isdayoff.ru (часы запуска)
+    CALENDAR_SYNC_JOB_MINUTES: int = 10  # Синхронизация производственного календаря с isdayoff.ru (минуты запуска)
+
     # --- HTML-виджеты (Bot API 10.4) ---
     TELEGRAM_API_BASE: str = "https://api.telegram.org"  # для беты: https://api.telegram.org/beta
     TELEGRAM_TEST_ENV: bool = False      # True — тестовое окружение Telegram (.../bot<token>/test/<method>)

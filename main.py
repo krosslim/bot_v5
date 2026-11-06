@@ -14,6 +14,7 @@ from src.infrastructure.dishka import container
 from src.infrastructure.telegram.widgets import WIDGET_QUERY_UPDATE, widgets_supported
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
 from src.middlewares.widget_query_middleware import WidgetQueryMiddleware
+from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
 from src.utils.app_configuration.register import init_system_tasks
 from src.utils.commands import get_commands_list
 
@@ -52,6 +53,14 @@ async def main() -> None:
     async with container() as req:
         session: AsyncSession = await req.get(AsyncSession)
         await init_system_tasks(session)
+
+    # Дни календаря на текущий и следующий год должны быть в БД до первых броней
+    async with container() as req:
+        try:
+            calendar: CalendarSyncUseCase = await req.get(CalendarSyncUseCase)
+            await calendar.sync(quick=True)
+        except Exception:
+            logger.exception("Синхронизация производственного календаря при старте не удалась")
 
     try:
         logger.info("Инициализация бота: %s", bot_info)

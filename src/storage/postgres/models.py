@@ -1,5 +1,6 @@
 from datetime import datetime, date
-from typing import List, Optional
+from enum import IntEnum
+from typing import List, Optional, Type
 
 from sqlalchemy import (
     BigInteger,
@@ -22,10 +23,29 @@ from sqlalchemy.orm import (
     relationship,
 )
 from sqlalchemy.sql import expression
+from sqlalchemy.types import TypeDecorator
+
+from src.dto.calendar_dates_dto import CalendarSource
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class IntEnumType(TypeDecorator):
+    """IntEnum в колонке smallint: в БД число, в коде член перечисления"""
+    impl = SmallInteger
+    cache_ok = True
+
+    def __init__(self, enum_cls: Type[IntEnum], *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.enum_cls = enum_cls
+
+    def process_bind_param(self, value, dialect):
+        return None if value is None else int(self.enum_cls(value))
+
+    def process_result_value(self, value, dialect):
+        return None if value is None else self.enum_cls(value)
 
 
 # ---------------------------------------------------------------------------#
@@ -101,6 +121,9 @@ class CalendarDate(Base):
     is_weekend: Mapped[bool] = mapped_column(Boolean, nullable=False)
     is_holiday: Mapped[bool] = mapped_column(Boolean, nullable=False)
     visit_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    source: Mapped[CalendarSource] = mapped_column(
+        IntEnumType(CalendarSource), nullable=False, server_default=text(str(int(CalendarSource.ISDAYOFF)))
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     # relationships

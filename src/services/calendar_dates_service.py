@@ -10,6 +10,7 @@ from src.storage.postgres.repository import Repository
 from src.services.exceptions import CalDateIsNotFound, NoDataForMissedBooking
 from src.utils.month_first_last_by_offset import month_first_last
 from src.utils.today import effective_today
+from src.utils.work_calendar import CalendarPlan
 
 
 class CalendarDatesService:
@@ -33,6 +34,21 @@ class CalendarDatesService:
 
     async def is_workday(self, cal_date: date) -> bool:
         return await self.repo.get_workday(cal_date)
+
+    # -------------------- Синхронизация производственного календаря --------------------
+    async def days_by_range(self, start: date, end: date) -> List[CalendarDatesDTO]:
+        """Без кэша: синхронизации нужны данные из БД, а не недельная копия"""
+        return await self.repo.get_calendar_dates_by_range(start, end)
+
+    async def save_days(self, plan: CalendarPlan) -> None:
+        await self.repo.insert_calendar_days(plan.inserts)
+        for change in plan.updates:
+            await self.repo.update_calendar_day(change.new)
+
+    @staticmethod
+    async def reset_cache() -> None:
+        """Сбросить кэш недельного экрана (get_calendar_dates_by_range держит данные неделю)"""
+        await CalendarDatesService.get_calendar_dates_by_range.cache.clear()
 
     async def get_cal_date(self, cal_date: date) -> CalendarDatesDTO:
 

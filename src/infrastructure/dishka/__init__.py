@@ -1,7 +1,9 @@
 from dishka import make_async_container
 
 from config import settings
+from src.infrastructure.dishka.alert_provider import AlertProvider
 from src.infrastructure.dishka.bot_provider import BotProvider
+from src.infrastructure.dishka.client_provider import ClientProvider
 from src.infrastructure.dishka.config_provider import ConfigProvider
 from src.infrastructure.dishka.postgres_provider import PostgresProvider
 from src.infrastructure.dishka.redis_provider import RedisProvider
@@ -21,5 +23,7 @@ container = make_async_container(
     ServiceProvider(),
     UseCaseProvider(),
     SchedulerProvider(),
+    AlertProvider(),
+    ClientProvider(),
 
 )

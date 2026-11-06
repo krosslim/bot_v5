@@ -7,6 +7,7 @@ from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
                                      CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue,
                                      SeatIsTaken, SeatNotFound, NoActiveBooking)
 from src.dto.booking_dto import CancelBookingFifoDTO, DaySeatRowDTO, CalendarWidgetRowDTO
+from src.dto.calendar_dates_dto import DayBookingDTO
 from src.storage.postgres.repository import Repository
 from src.ui.widgets.layout import SEATS
 from src.utils.month_first_last_by_offset import month_first_last
@@ -228,3 +229,6 @@ class BookingService:
             cal_date: date
     ) -> None:
         return await self.repo.book_missed(user_id, cal_date)
+
+    async def active_bookings_on(self, cal_dates: List[date]) -> List[DayBookingDTO]:
+        return await self.repo.active_bookings_on(cal_dates)
