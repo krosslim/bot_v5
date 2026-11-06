@@ -15,13 +15,13 @@ async def init_configure_bot_db(session: AsyncSession) -> None:
     async with session.begin():
         # 1) OfficeCapacityWeekday
         weekdays_payload = [
-            {"weekday": 1, "short_name": "ПН", "name": "Понедельник", "capacity": 12},
-            {"weekday": 2, "short_name": "ВТ", "name": "Вторник",      "capacity": 12},
-            {"weekday": 3, "short_name": "СР", "name": "Среда",         "capacity": 12},
-            {"weekday": 4, "short_name": "ЧТ", "name": "Четверг",       "capacity": 12},
-            {"weekday": 5, "short_name": "ПТ", "name": "Пятница",       "capacity": 12},
-            {"weekday": 6, "short_name": "СБ", "name": "Суббота",       "capacity": 12},
-            {"weekday": 7, "short_name": "ВС", "name": "Воскресенье",   "capacity": 12},
+            {"weekday": 1, "short_name": "ПН", "name": "Понедельник", "capacity": 10},
+            {"weekday": 2, "short_name": "ВТ", "name": "Вторник",      "capacity": 10},
+            {"weekday": 3, "short_name": "СР", "name": "Среда",         "capacity": 10},
+            {"weekday": 4, "short_name": "ЧТ", "name": "Четверг",       "capacity": 10},
+            {"weekday": 5, "short_name": "ПТ", "name": "Пятница",       "capacity": 10},
+            {"weekday": 6, "short_name": "СБ", "name": "Суббота",       "capacity": 10},
+            {"weekday": 7, "short_name": "ВС", "name": "Воскресенье",   "capacity": 10},
         ]
         await session.execute(insert(OfficeCapacityWeekday).values(weekdays_payload))
 

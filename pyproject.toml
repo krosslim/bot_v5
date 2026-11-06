@@ -1,0 +1,30 @@
+[project]
+name = "bot-v5"
+version = "0.1.0"
+description = "Telegram-бот для бронирования мест в офисе"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    # Держим 3.26.x: WidgetQueryMiddleware опирается на то, что aiogram не знает апдейт widget_query
+    # и кладёт его в Update.model_extra. Версия с поддержкой Bot API 10.4 потребует переписать мост
+    # src/infrastructure/telegram/widgets.py, поэтому обновлять aiogram только вместе с ним.
+    "aiogram~=3.26.0",
+    "aiohttp~=3.13.3",
+    "aiocache~=0.12.3",
+    "alembic~=1.15.1",
+    "apscheduler~=3.11.0",
+    "asyncpg~=0.31.0",
+    "certifi>=2026.1.4",
+    "dishka~=1.5.3",
+    "psycopg2-binary~=2.9.11",
+    "pydantic~=2.12.5",
+    "pydantic-settings~=2.10.1",
+    "python-dateutil>=2.9.0.post0,<3",
+    "python-dotenv~=1.0.1",
+    "redis~=5.2.1",
+    "sqlalchemy[asyncio]~=2.0.39",
+    "strenum~=0.4.15",
+]
+
+[tool.uv]
+package = false

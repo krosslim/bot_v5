@@ -40,3 +40,5 @@ Thumbs.db
 
 # Keep main build files
 !docker-compose.yml
+# Tooling caches
+.mypy_cache/

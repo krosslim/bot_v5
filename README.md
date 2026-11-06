@@ -23,7 +23,8 @@
 ├── docker-compose.yml
 ├── docker-entrypoint.sh
 ├── main.py
-├── requirements.txt
+├── pyproject.toml
+├── uv.lock
 └── src
     ├── clients
     ├── dto
@@ -104,6 +105,16 @@ GOOGLE_SHEET_USER_URL=
 ```bash
 docker compose up --build -d
 ```
+#### Запуск без Docker (разработка)
+Нужен Python 3.14 и [uv](https://docs.astral.sh/uv/). Зависимости описаны в `pyproject.toml`, точные версии зафиксированы в `uv.lock`.
+```bash
+uv sync                          # создать .venv на Python 3.14 и поставить зависимости из uv.lock
+uv run alembic upgrade head      # применить миграции
+uv run python main.py            # запустить бота
+```
+Добавить или обновить зависимость: `uv add <пакет>` / `uv lock --upgrade-package <пакет>`, затем закоммитить `pyproject.toml` и `uv.lock`.
+Docker-образ ставит зависимости через `uv sync --locked`: сборка упадёт, если `uv.lock` не соответствует `pyproject.toml`.
+
 ### Виджеты выбора места (Bot API 10.4)
 
 ---
@@ -122,7 +133,7 @@ TELEGRAM_API_BASE=https://api.telegram.org/beta
 - Миграция `e1a7c3f9b2d4` добавляет `bookings.seat_no` и раздаёт места будущим броням по порядку записи: `alembic upgrade head`.
 - Схема зала, подпись кабинета и место руководителя: `src/ui/widgets/layout.py`. Шаблоны виджетов: `src/ui/widgets/*.html` (≤ 4096 байт после zlib).
 - При старте бот проверяет, есть ли методы виджетов на этом адресе. Если нет, в логе будет подсказка, а бот покажет старые экраны и отправит дайджест текстом.
-- Тестовые брони в локальной базе: `python scripts/dev_seed_bookings.py` — сценарии на ноябрь и прошлые дни за `WIDGET_HISTORY_MONTHS`; `--only-past` — только прошлые дни.
+- Тестовые брони в локальной базе: `uv run python scripts/dev_seed_bookings.py` — сценарии на ноябрь и прошлые дни за `WIDGET_HISTORY_MONTHS`; `--only-past` — только прошлые дни.
 - Запросы из виджетов приходят апдейтом `widget_query`, его перехватывает `WidgetQueryMiddleware` (aiogram пока не знает этот тип).
 - Отправить дайджест сразу, не дожидаясь 16:00 (только для администраторов, в личке с ботом): `/digest_now` — на ближайший рабочий день, `/digest_now 10.11` — на дату.
-- Тесты виджетов без БД: `python -m unittest discover -s tests -t .`
+- Тесты виджетов без БД: `uv run python -m unittest discover -s tests -t .`
