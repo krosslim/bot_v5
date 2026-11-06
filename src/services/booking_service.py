@@ -4,8 +4,11 @@ from typing import List, Optional, Dict, Any, Union, Tuple
 from src.dto.booking_dto import (DateBookingsDTO, BookingStatus, OwnBookingDTO,
                                  WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
 from src.services.exceptions import (FreePlaceIsNotFound, BookingIsAlreadyExist,
-                                     CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
+                                     CancelIsAlreadyExist, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue,
+                                     SeatIsTaken, SeatNotFound, NoActiveBooking)
+from src.dto.booking_dto import CancelBookingFifoDTO, DaySeatRowDTO, CalendarWidgetRowDTO
 from src.storage.postgres.repository import Repository
+from src.ui.widgets.layout import SEATS
 from src.utils.month_first_last_by_offset import month_first_last
 
 
@@ -57,45 +60,89 @@ class BookingService:
     async def pre_check_booking(self, user_id: int, cal_date: date, capacity: int) -> bool:
         check = await self.repo.take_capacity_slot(user_id, cal_date, capacity, False)
         if not check:
-            raise FreePlaceIsNotFound("⏳ Мест уже нет, но ты можешь встать в очередь.")
+            raise FreePlaceIsNotFound("⏳ Мест уже нет, но вы можете встать в очередь.")
         return check
 
+    async def pick_seat(self, cal_date: date, preferred: Optional[int] = None) -> int:
+        """Свободное место на день. Вызывать после блокировки дня (take_capacity_slot / lock_cal_date)."""
+        taken = await self.repo.taken_seats(cal_date)
+        if preferred:
+            if preferred not in SEATS:
+                raise SeatNotFound("Такого места нет на схеме")
+            if preferred in taken:
+                raise SeatIsTaken("Это место только что заняли")
+            return preferred
+        for seat in SEATS:
+            if seat not in taken:
+                return seat
+        raise FreePlaceIsNotFound("⏳ Мест уже нет, но вы можете встать в очередь.")
 
-    async def create_booking(self, user_id: int, cal_date: date, auto_confirm: bool) -> None:
+    async def day_seat_rows(self, cal_date: date) -> List[DaySeatRowDTO]:
+        return await self.repo.day_seat_rows(cal_date)
+
+    async def calendar_widget_rows(self, user_id: int, start: date, end: date) -> List[CalendarWidgetRowDTO]:
+        return await self.repo.calendar_widget_rows(user_id, start, end)
+
+    async def move_seat(self, user_id: int, cal_date: date, seat_no: int) -> None:
+        """Пересадка: разрешена всегда, если место свободно"""
+        await self.repo.lock_cal_date(cal_date)
+        booking = await self.repo.get_user_booking_for_date(user_id, cal_date)
+        if booking is None:
+            raise NoActiveBooking("Брони на этот день нет")
+        if booking.seat_no == seat_no:
+            raise SeatIsTaken("Это место уже ваше")
+        await self.pick_seat(cal_date, seat_no)
+        await self.repo.set_seat(user_id, cal_date, seat_no)
+
+
+    async def create_booking(
+            self, user_id: int, cal_date: date, auto_confirm: bool, seat_no: Optional[int] = None
+    ) -> None:
 
         if auto_confirm:
             sub_status = BookingStatus.CONFIRMED
         else:
             sub_status = BookingStatus.RESERVED
 
-        booking_id = await self.repo.upsert_booked(user_id, cal_date, BookingStatus.BOOKED, sub_status)
+        booking_id = await self.repo.upsert_booked(user_id, cal_date, BookingStatus.BOOKED, sub_status, seat_no)
         if booking_id:
-            await self.repo.insert_event(booking_id, BookingStatus.BOOKED, sub_status, user_id)
+            await self.repo.insert_event(booking_id, BookingStatus.BOOKED, sub_status, user_id, seat_no)
         else:
-            raise BookingIsAlreadyExist("✅ У тебя уже есть бронь на этот день! "
+            raise BookingIsAlreadyExist("✅ У вас уже есть бронь на этот день! "
                              "Повторная бронь не требуется.")
 
 
-    async def cancel_booking(self, user_id: int, cal_date: date, cancel_sub_status: str | None) -> Optional[int]:
+    async def cancel_booking(self, user_id: int, cal_date: date, cancel_sub_status: str | None) -> CancelBookingFifoDTO:
 
+        # Блокировка дня: отмена, повышение из очереди и выдача мест идут по очереди
+        await self.repo.lock_cal_date(cal_date)
         cancel_promote = await self.repo.cancel_booking(user_id, cal_date, cancel_sub_status)
 
         if cancel_promote.canceled_user_id is None:
-            raise CancelIsAlreadyExist("✅ У тебя больше нет брони на этот день! "
+            raise CancelIsAlreadyExist("✅ У вас больше нет брони на этот день! "
                                        "Повторная отмена не требуется.")
-        if cancel_promote.promoted_user_id:
-            return cancel_promote.promoted_user_id
+
+        # У старой брони могло не быть места — тогда повышенному выдаём первое свободное
+        if cancel_promote.promoted_user_id and cancel_promote.seat_no is None:
+            try:
+                seat = await self.pick_seat(cal_date)
+                await self.repo.set_seat(cancel_promote.promoted_user_id, cal_date, seat)
+                cancel_promote = cancel_promote.model_copy(update={"seat_no": seat})
+            except FreePlaceIsNotFound:
+                pass
+        return cancel_promote
 
 
     async def join_queue(self, user_id: int, cal_date: date, auto_confirm: bool, capacity: int) -> bool:
         check = await self.repo.take_capacity_slot(user_id, cal_date, capacity, True)
         if check:
-            await self.create_booking(user_id, cal_date, auto_confirm)
+            seat = await self.pick_seat(cal_date)
+            await self.create_booking(user_id, cal_date, auto_confirm, seat)
             return False
 
         booking_id = await self.repo.upsert_waitlisted(user_id, cal_date)
         if not booking_id:
-            raise UserIsAlreadyInWaitingList("ℹ️ Ты уже в очереди!\nЧтобы выйти, нажми кнопку с 🚪")
+            raise UserIsAlreadyInWaitingList("ℹ️ Вы уже в очереди!\nЧтобы выйти, нажмите кнопку с 🚪")
         await self.repo.insert_event(booking_id, BookingStatus.WAITLISTED, BookingStatus.WAITLISTED_MANUAL, user_id)
         return True
 
@@ -103,7 +150,7 @@ class BookingService:
 
         booking_id = await self.repo.leave_waitlist(user_id, cal_date)
         if not booking_id:
-            raise UserIsAlreadyLeaveQueue("ℹ️ Ты уже вышел из очереди!")
+            raise UserIsAlreadyLeaveQueue("ℹ️ Вы уже вышли из очереди!")
 
         await self.repo.insert_event(booking_id, BookingStatus.CANCELED, BookingStatus.CANCELED_CHANGED_MIND, user_id)
 

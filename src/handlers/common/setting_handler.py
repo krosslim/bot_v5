@@ -3,10 +3,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from dishka import FromDishka
 
+from config import settings
 from src.fsm.states import UpdateProfileState
 from src.utils.birthday import validate_birthday, birthday_str_to_date
-from src.handlers.user.booking_handler import render_booking_page
+from src.handlers.user.booking_handler import render_booking_page, open_booking_widget
 from src.services.exceptions import UserWarn
+from src.services.tech_service import TechService
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.settings_employee_kb import render_employees_keyboard, visit_plan_report_kb
@@ -19,6 +21,7 @@ from src.ui.messages.settings_mess import render_auto_confirm_mess, render_emplo
 from src.ui.messages.start_mess import bot_menu_mess, incorrect_birthday_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.get_week_range import week_range
 from src.utils.date_to_str import format_date_ru
@@ -285,11 +288,19 @@ async def handle_settings_employee(
         callback_data: SettingsCB,
         u_uc: FromDishka[UserUseCase],
         b_uc: FromDishka[BookingUseCase],
+        widgets: FromDishka[WidgetUseCase],
+        tech_svc: FromDishka[TechService],
         state: FSMContext
 ):
     try:
         employee_id = int(callback_data.extra)
         employee = await u_uc.check_exists(employee_id)
+
+        if settings.WIDGETS_ENABLED and await open_booking_widget(
+                call, widgets, tech_svc, employee.user_id, employee.full_name, finish_session=False):
+            # Виджет сам передаёт user_id сотрудника в каждом запросе, состояние FSM не нужно
+            await call.answer(text=f"Бронирование за сотрудника:\n{employee.full_name}", show_alert=True)
+            return
 
         await state.update_data(user_id=employee_id)
 
@@ -393,34 +404,6 @@ async def handle_settings_change_employee_group(
     await _render_settings_visit_group_page(call, uc, group_id, profession_id, page)
 
 
-# ---------------------------------------------- helpers ----------------------------------------------
-async def _render_settings_visit_group_page(
-        call: CallbackQuery,
-        uc: UserUseCase,
-        group_id: int,
-        profession_id: int | None,
-        page: int
-) -> None:
-    try:
-
-        pagination_step = SettingsStep.EMPLOYEES_PAGINATION_FOR_GROUP
-        on_click_step = SettingsStep.ADD_EMPLOYEE_TO_GROUP
-
-        employees = await uc.get_users(200, 0, profession_id)
-
-        await call.message.edit_text(
-            text=render_employee_group_mess(employees, group_id),
-            reply_markup=render_employees_keyboard(
-                employees, page, profession_id, pagination_step, on_click_step, group_id
-            )
-        )
-
-    except DBError:
-        await call.answer(text="❌ Не удалось получить сотрудника.\nПопробуйте ещё раз позже.",
-                          show_alert=True
-                          )
-
-
 @router.callback_query(SettingsCB.filter(F.step.in_({
     SettingsStep.EMPLOYEE_STATISTICS,
     SettingsStep.EMPLOYEE_STATISTICS_INFO,
@@ -456,6 +439,34 @@ async def handle_settings_employee_statistics(
 
     except DBError:
         await call.answer(text="❌ Не удалось получить данные.\nПопробуйте ещё раз позже.",
+                          show_alert=True
+                          )
+
+
+# ---------------------------------------------- helpers ----------------------------------------------
+async def _render_settings_visit_group_page(
+        call: CallbackQuery,
+        uc: UserUseCase,
+        group_id: int,
+        profession_id: int | None,
+        page: int
+) -> None:
+    try:
+
+        pagination_step = SettingsStep.EMPLOYEES_PAGINATION_FOR_GROUP
+        on_click_step = SettingsStep.ADD_EMPLOYEE_TO_GROUP
+
+        employees = await uc.get_users(200, 0, profession_id)
+
+        await call.message.edit_text(
+            text=render_employee_group_mess(employees, group_id),
+            reply_markup=render_employees_keyboard(
+                employees, page, profession_id, pagination_step, on_click_step, group_id
+            )
+        )
+
+    except DBError:
+        await call.answer(text="❌ Не удалось получить сотрудника.\nПопробуйте ещё раз позже.",
                           show_alert=True
                           )
 

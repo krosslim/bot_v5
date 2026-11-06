@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import Config, setup_logging
 from src.handlers import bot_combined_router
 from src.infrastructure.dishka import container
+from src.infrastructure.telegram.widgets import WIDGET_QUERY_UPDATE, widgets_supported
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
+from src.middlewares.widget_query_middleware import WidgetQueryMiddleware
 from src.utils.app_configuration.register import init_system_tasks
 from src.utils.commands import get_commands_list
 
@@ -31,9 +33,18 @@ async def main() -> None:
 
     setup_outer_middlewares(dp)
     setup_inner_middlewares(dp, settings.TG_CHAT_ID)
+    dp.update.outer_middleware(WidgetQueryMiddleware())   # Bot API 10.4: запросы из виджетов
 
     dp.include_router(bot_combined_router)
     await bot.set_my_commands(get_commands_list(), scope=BotCommandScopeAllPrivateChats())
+
+    if (settings.WIDGETS_ENABLED or settings.DIGEST_WIDGET_ENABLED) and not await widgets_supported(bot):
+        logger.error(
+            "Bot API по адресу %s не знает методы виджетов (sendWidget). Bot API 10.4 сейчас доступен "
+            "на бете: TELEGRAM_API_BASE=https://api.telegram.org/beta. Пока это не исправлено, "
+            "бот показывает старые экраны, а дайджест уходит текстом.",
+            settings.TELEGRAM_API_BASE,
+        )
 
     scheduler: AsyncIOScheduler = await container.get(AsyncIOScheduler)
     scheduler.start()
@@ -44,7 +55,11 @@ async def main() -> None:
 
     try:
         logger.info("Инициализация бота: %s", bot_info)
-        await dp.start_polling(bot)
+        if settings.WIDGETS_ENABLED or settings.DIGEST_WIDGET_ENABLED:
+            # widget_query aiogram не знает, поэтому сам его в allowed_updates не добавит
+            await dp.start_polling(bot, allowed_updates=[*dp.resolve_used_update_types(), WIDGET_QUERY_UPDATE])
+        else:
+            await dp.start_polling(bot)
 
     finally:
         logger.info("Закрытие соединений…")

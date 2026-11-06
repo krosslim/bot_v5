@@ -24,9 +24,9 @@ def render_my_booking_mess(data) -> str:
     parts = []
     blocks_count = 0
 
-    # --- Блок 1: Твои бронирования ---
+    # --- Блок 1: Ваши бронирования ---
     if booked:
-        parts.append("🗓️ <b>Твои бронирования</b>\n")
+        parts.append("🗓️ <b>Ваши бронирования</b>\n")
         booked_sorted = sorted(booked, key=lambda x: x.cal_date)
 
         lines = []
@@ -65,16 +65,16 @@ def render_my_booking_mess(data) -> str:
         for w in wl_sorted:
             d = w.cal_date
             pos = getattr(w, "position", None)
-            parts.append(f"• {_fmt_day(d)} — ты <b>{_ordinal_masc(pos)}</b>\n")
+            parts.append(f"• {_fmt_day(d)} — вы <b>{_ordinal_masc(pos)}</b>\n")
 
         parts.append("</blockquote>\n")
         blocks_count += 1
 
     # --- Нижний блок ---
     if blocks_count == 2:
-        parts.append("Выбери, что хочешь изменить ⤵︎")
+        parts.append("Выберите, что хотите изменить ⤵︎")
     else:
-        parts.append("Выбери дату для редактирования ⤵︎")
+        parts.append("Выберите дату для редактирования ⤵︎")
 
     return "".join(parts)
 
@@ -91,6 +91,6 @@ def render_book_day_mess(date_str: str, sub_status: str) -> str:
     else:
         status = f"Статус: <b>{sub_status}</b>\n\n"
 
-    footer = "Выбери действие ⤵︎"
+    footer = "Выберите действие ⤵︎"
 
     return header + status + footer

@@ -3,7 +3,7 @@ from datetime import date
 from typing import List, Optional
 
 from src.dto.calendar_dates_dto import DigestScheduleDTO
-from src.dto.user_dto import UserBookingSessionDTO
+from src.dto.user_dto import UserBookingSessionDTO, BookingWidgetPointerDTO
 from src.services.exceptions import CacheCalDate
 from src.storage.postgres.repository import Repository
 from src.storage.redis.store import RedisStore
@@ -88,3 +88,22 @@ class TechService:
         dates_str = await self.store.lrange(key)
         return [date.fromisoformat(ds) for ds in dates_str]
 
+
+    # Последний личный виджет в чате: чтобы погасить его при открытии нового и обновить,
+    # когда бронь меняется вне виджета. Без срока жизни: ключ один на чат и перезаписывается при каждом открытии
+    async def set_booking_widget(self, chat_id: int, message_id: int, target_id: Optional[int]) -> None:
+        await self.store.set_value(f"widget:booking:{chat_id}", f"{message_id}:{target_id or ''}")
+
+    async def clear_booking_widget(self, chat_id: int) -> None:
+        await self.store.delete(f"widget:booking:{chat_id}")
+
+    async def get_booking_widget(self, chat_id: int) -> Optional[BookingWidgetPointerDTO]:
+        raw = await self.store.get_value(f"widget:booking:{chat_id}")
+        if not raw:
+            return None
+        try:
+            message_id, target = raw.split(":", 1)
+            return BookingWidgetPointerDTO(message_id=int(message_id), target_id=int(target) if target else None)
+        except ValueError:
+            logger.warning("get_booking_widget | bad value %s for chat %s", raw, chat_id)
+            return None

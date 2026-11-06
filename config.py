@@ -55,6 +55,13 @@ class Config(BaseSettings):
     BIRTHDAY_JOB_HOUR: int = 9           # Поздравление с ДР (часы запуска)
     BIRTHDAY_JOB_MINUTES: int = 00       # Поздравление с ДР (минуты запуска)
 
+    # --- HTML-виджеты (Bot API 10.4) ---
+    TELEGRAM_API_BASE: str = "https://api.telegram.org"  # для беты: https://api.telegram.org/beta
+    TELEGRAM_TEST_ENV: bool = False      # True — тестовое окружение Telegram (.../bot<token>/test/<method>)
+    WIDGETS_ENABLED: bool = False        # «Забронировать место» и бронь за сотрудника открывают виджет
+    DIGEST_WIDGET_ENABLED: bool = False  # Дайджест в группе отправляется виджетом
+    WIDGET_HISTORY_MONTHS: int = 3       # Сколько прошлых месяцев можно листать в календаре виджета (только просмотр)
+
 
 settings = Config()
 

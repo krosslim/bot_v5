@@ -3,11 +3,12 @@ from datetime import date
 from typing import Optional, List
 
 from aiogram import Router, F, Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramNotFound
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
+from config import settings
 from src.dto.booking_dto import BookingStatus
 from src.services.exceptions import BookingError
 from src.services.tech_service import TechService
@@ -21,7 +22,9 @@ from src.ui.messages.help_booking_mess import render_help_booking_mess3
 from src.ui.messages.missed_days_booking_mess import render_missed_booking_mess
 from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_booking_mess import render_booking_week_mess
+from src.ui.widgets.render import WidgetTooLarge
 from src.use_cases.booking_use_case import BookingUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.get_week_range import week_range
 
@@ -34,7 +37,14 @@ logger = logging.getLogger(__name__)
 async def handle_booking_page(call: CallbackQuery,
                               callback_data: BookingCB,
                               uc: FromDishka[BookingUseCase],
+                              widgets: FromDishka[WidgetUseCase],
+                              tech_svc: FromDishka[TechService],
                               state: FSMContext):
+
+    # Виджет не отправился (например, Bot API без методов 10.4) — показываем недельный экран как раньше
+    if settings.WIDGETS_ENABLED and callback_data.step == BookingStep.INIT_BOOKING:
+        if await open_booking_widget(call, widgets, tech_svc):
+            return
 
     _, _, week_offset = week_range(int(callback_data.extra) if callback_data.extra else None)
 
@@ -117,7 +127,7 @@ async def handle_queue_join(call: CallbackQuery,
 
     try:
         await uc.waitlist_place(user_id, cal_date)
-        await call.answer(text="Записали тебя в очередь!\n\nОтправим пуш, если появится место",
+        await call.answer(text="Записали вас в очередь!\n\nОтправим пуш, если появится место",
                           show_alert=True)
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)
@@ -191,7 +201,7 @@ async def handle_week_info(call: CallbackQuery, callback_data: BookingCB, state:
     week_offset = int(state_data.get('week_offset', 0))
     help_page = state_data.get('help_page', None)
     if help_page:
-        special_text = f"Вернуть обычный режим:\nжми •{callback_data.extra}•"
+        special_text = f"Вернуть обычный режим:\nнажмите •{callback_data.extra}•"
     else:
         special_text = f"• Подробная инструкция:\n{callback_data.extra}"
 
@@ -204,7 +214,7 @@ async def handle_week_info(call: CallbackQuery, callback_data: BookingCB, state:
         await call.answer(text=msg, show_alert=True)
         return
 
-    await call.answer(text="• Записаться: жми ПН–ПТ\n───────────\n"+msg, show_alert=True)
+    await call.answer(text="• Записаться: нажмите ПН–ПТ\n───────────\n"+msg, show_alert=True)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.MISSED_NOT_CHOOSEN, BookingStep.MISSED_CHOOSEN})))
@@ -273,6 +283,39 @@ async def handle_missed_booking_confirmation(
 
 
 # ---------------------------------------------- helpers ----------------------------------------------
+async def open_booking_widget(
+        call: CallbackQuery,
+        widgets: WidgetUseCase,
+        tech_svc: TechService,
+        target_id: Optional[int] = None,
+        target_name: Optional[str] = None,
+        finish_session: bool = True,
+) -> bool:
+    """Отправить виджет бронирования новым сообщением. target_* — бронь админом за сотрудника.
+    False — виджет не отправился, вызывающий показывает старый экран."""
+    try:
+        await widgets.send_booking_widget(call.from_user.id, call.from_user.id, target_id, target_name)
+    except TelegramNotFound as e:
+        logger.error("open_booking_widget | Bot API %s не знает sendWidget, нужен TELEGRAM_API_BASE беты | %s",
+                     settings.TELEGRAM_API_BASE, e)
+        return False
+    except (TelegramAPIError, WidgetTooLarge, DBError) as e:
+        logger.error("open_booking_widget | user=%s target=%s | %s", call.from_user.id, target_id, e)
+        return False
+    finally:
+        # Сессия недельного экрана для этого сообщения не нужна: оно заменяется виджетом
+        if finish_session:
+            await tech_svc.finish_booking_session(user_data=f"{call.from_user.id}:{call.message.message_id}")
+
+    # Превратить текстовое сообщение в виджет Telegram не позволяет, поэтому меню заменяется:
+    # виджет уже отправлен, исходное сообщение удаляем. «Выйти» в виджете вернёт меню тем же способом
+    try:
+        await call.message.delete()
+    except TelegramAPIError as e:
+        logger.info("open_booking_widget | не удалось удалить сообщение меню | %s", e)
+    return True
+
+
 async def render_booking_page(
         call: CallbackQuery,
         week_offset: int,
@@ -327,7 +370,8 @@ async def promote_user_after_cancel(
     if call is None and user_id is None:
         return None
 
-    promote_user_id = await uc.cancel_book_place(user_id, cal_date, cancel_sub_status)
+    result = await uc.cancel_book_place(user_id, cal_date, cancel_sub_status)
+    promote_user_id = result.promoted_user_id
     if promote_user_id:
         try:
             if call and bot is None:

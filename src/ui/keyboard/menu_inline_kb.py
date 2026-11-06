@@ -11,28 +11,34 @@ def get_menu_kb() -> InlineKeyboardMarkup:
     kb.row(
         InlineKeyboardButton(
             text="Забронировать место",
-            icon_custom_emoji_id="6039758482524081695",
+            style="success",
+            # icon_custom_emoji_id="6039758482524081695",
             callback_data=BookingCB(step=BookingStep.INIT_BOOKING, idk=gen_idk()).pack()
         ),
         width=1
     )
-    kb.row(
-        InlineKeyboardButton(
-            text="Мои брони",
-            icon_custom_emoji_id="5972158252790582632",
-            callback_data=MyBookingCB(step=MyBookingStep.INIT_MY_BOOKING, idk=gen_idk()).pack()
-        ),
-        width=1
-    )
+    # С виджетами брони видны и отменяются в календаре, отдельный экран не нужен
+    if not settings.WIDGETS_ENABLED:
+        kb.row(
+            InlineKeyboardButton(
+                text="Мои брони",
+                style="primary",
+                # icon_custom_emoji_id="5972158252790582632",
+                callback_data=MyBookingCB(step=MyBookingStep.INIT_MY_BOOKING, idk=gen_idk()).pack()
+            ),
+            width=1
+        )
     kb.row(
         InlineKeyboardButton(
             text="Таблица",
-            icon_custom_emoji_id="5974308936189218317",
+            style="primary",
+            # icon_custom_emoji_id="5974308936189218317",
             url=settings.GOOGLE_SHEET_USER_URL
         ),
         InlineKeyboardButton(
             text="Настройки",
-            icon_custom_emoji_id="5974104203688152439",
+            style="primary",
+            # icon_custom_emoji_id="5974104203688152439",
             callback_data=SettingsCB(step=SettingsStep.INIT_SETTINGS, idk=gen_idk()).pack()
         ),
         width=2

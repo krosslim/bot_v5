@@ -2,11 +2,23 @@ from typing import AsyncGenerator
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
 from dishka import Provider, Scope, provide
 
 from config import Config
+
+
+def api_server(cfg: Config) -> TelegramAPIServer:
+    """Адрес Bot API: обычный, бета (Bot API 10.4) или тестовое окружение Telegram"""
+    base = cfg.TELEGRAM_API_BASE.rstrip("/")
+    test = "/test" if cfg.TELEGRAM_TEST_ENV else ""
+    return TelegramAPIServer(
+        base=f"{base}/bot{{token}}{test}/{{method}}",
+        file=f"{base}/file/bot{{token}}{test}/{{path}}",
+    )
 
 
 class BotProvider(Provider):
@@ -15,6 +27,7 @@ class BotProvider(Provider):
     async def bot(self, cfg: Config) -> AsyncGenerator[Bot, None]:
         bot = Bot(
             token=cfg.TOKEN,
+            session=AiohttpSession(api=api_server(cfg)),
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         try:

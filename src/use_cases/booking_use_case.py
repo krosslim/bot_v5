@@ -1,5 +1,6 @@
+from contextlib import asynccontextmanager
 from datetime import date
-from typing import Optional, List, Tuple, Union
+from typing import AsyncIterator, Optional, List, Tuple, Union
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.dto.booking_dto import (
@@ -7,16 +8,18 @@ from src.dto.booking_dto import (
     BookingStatus,
     WaitlistPositionDTO,
     DateBookingsDTO,
+    CancelBookingFifoDTO,
 )
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.user_dto import UserDTO
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
 from src.services.exceptions import FreePlaceIsAvailable, NoActiveBooking
-from src.services.exceptions import UserWarn
+from src.services.exceptions import UserWarn, CalDateIsNotFound, NoCapacityInfo
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.services.user_service import UserService
+from src.ui.widgets.state import CalendarDay, DaySeats, SeatHolder
 from src.utils.is_autoconfirm import is_in_autoconfirm_period
 
 
@@ -49,8 +52,9 @@ class BookingUseCase:
             return active, capacity, calendar
 
     async def book_place(
-        self, user_id: int, cal_date: date, auto_confirm: bool | None = None
-    ) -> None:
+        self, user_id: int, cal_date: date, auto_confirm: bool | None = None, seat_no: int | None = None
+    ) -> int:
+        """Бронь на день. seat_no=None — первое свободное место. Возвращает номер места."""
         async with self.session.begin():
             if auto_confirm is None:
                 if not is_in_autoconfirm_period(cal_date):
@@ -60,17 +64,21 @@ class BookingUseCase:
             capacity = await self.office_capacity.get_weekday_capacity(
                 cal_date.isoweekday()
             )
+            # take_capacity_slot блокирует день, поэтому выбор места ниже не гоняется с другими бронями
             await self.booking.pre_check_booking(user_id, cal_date, capacity)
-            await self.booking.create_booking(user_id, cal_date, auto_confirm)
+            seat = await self.booking.pick_seat(cal_date, seat_no)
+            await self.booking.create_booking(user_id, cal_date, auto_confirm, seat)
+            return seat
 
     async def cancel_book_place(
         self, user_id: int, cal_date: date, cancel_sub_status: str | None
-    ) -> Optional[int]:
+    ) -> CancelBookingFifoDTO:
         async with self.session.begin():
-            promote_user_id = await self.booking.cancel_booking(
-                user_id, cal_date, cancel_sub_status
-            )
-            return promote_user_id
+            return await self.booking.cancel_booking(user_id, cal_date, cancel_sub_status)
+
+    async def move_seat(self, user_id: int, cal_date: date, seat_no: int) -> None:
+        async with self.session.begin():
+            await self.booking.move_seat(user_id, cal_date, seat_no)
 
     async def waitlist_place(self, user_id: int, cal_date: date) -> None:
         async with self.session.begin():
@@ -83,7 +91,7 @@ class BookingUseCase:
             )
 
         if not is_join:
-            raise FreePlaceIsAvailable("✅ Место освободилось — ты записан!")
+            raise FreePlaceIsAvailable("✅ Место освободилось — вы записаны!")
 
     async def cancel_waitlist_place(self, user_id: int, cal_date: date) -> None:
         async with self.session.begin():
@@ -112,7 +120,7 @@ class BookingUseCase:
             if not bookings:
                 raise NoActiveBooking(
                     "❗️Активных записей нет\n\n"
-                    "↓ Для бронирования жми ↓\n\n🆕 Забронировать место"
+                    "↓ Для бронирования нажмите ↓\n\n🆕 Забронировать место"
                 )
 
             date_list = []
@@ -218,3 +226,75 @@ class BookingUseCase:
         async with self.session.begin():
             for i in cal_dates:
                 await self.booking.book_missed(user_id, i)
+
+
+    # ---------------------------------------------------------------------------#
+    #  Данные для виджетов
+    # ---------------------------------------------------------------------------#
+    @asynccontextmanager
+    async def _read(self) -> AsyncIterator[None]:
+        """Чтение внутри уже открытой транзакции (задачи по расписанию вызывают сервисы без begin) или в своей"""
+        if self.session.in_transaction():
+            yield
+        else:
+            async with self.session.begin():
+                yield
+
+    async def widget_calendar(self, user_id: int, start: date, end: date) -> List[CalendarDay]:
+        async with self._read():
+            rows = await self.booking.calendar_widget_rows(user_id, start, end)
+        return [CalendarDay(**r.model_dump()) for r in rows]
+
+    async def widget_day(self, cal_date: date) -> Tuple[DaySeats, bool]:
+        """Схема дня и признак рабочего дня"""
+        async with self._read():
+            rows = await self.booking.day_seat_rows(cal_date)
+            try:
+                info = await self.calendar_dates.get_cal_date(cal_date)
+            except CalDateIsNotFound:
+                info = None
+            try:
+                capacity = await self.office_capacity.get_weekday_capacity(cal_date.isoweekday())
+            except NoCapacityInfo:
+                capacity = 0
+        holders = [
+            SeatHolder(user_id=r.user_id, full_name=r.full_name, seat_no=r.seat_no,
+                       confirmed=r.sub_status == BookingStatus.CONFIRMED)
+            for r in rows if r.status == BookingStatus.BOOKED
+        ]
+        queue = [r.user_id for r in rows if r.status == BookingStatus.WAITLISTED]
+        day = DaySeats(cal_date=cal_date, capacity=capacity, holders=holders, queue=queue)
+        return day, bool(info and info.is_workday)
+
+    async def is_workday(self, cal_date: date) -> bool:
+        async with self._read():
+            try:
+                info = await self.calendar_dates.get_cal_date(cal_date)
+            except CalDateIsNotFound:
+                return False
+        return bool(info.is_workday)
+
+    async def digest_message_id(self, cal_date: date) -> Optional[int]:
+        async with self._read():
+            return await self.tech.get_chat_message_id(cal_date)
+
+    async def user_or_none(self, user_id: int) -> Optional[UserDTO]:
+        async with self._read():
+            try:
+                return await self.user.get_user(user_id)
+            except UserWarn:
+                return None
+
+    async def can_act_for(self, actor_id: int, target_id: int) -> bool:
+        """Бронь за другого: админ — за любого, лид — за сотрудников своей должности (как в списке сотрудников)"""
+        if actor_id == target_id:
+            return True
+        async with self._read():
+            try:
+                actor = await self.user.get_user(actor_id)
+                target = await self.user.get_user(target_id)
+            except UserWarn:
+                return False
+        if actor.is_admin:
+            return True
+        return actor.is_lead and actor.profession_id == target.profession_id

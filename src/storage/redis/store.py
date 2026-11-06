@@ -31,3 +31,11 @@ class RedisStore:
     async def z_range_by_score(self, key: str, min_score: str | int, max_score: str | int, withscores: bool = True) -> list:
         return await self.redis.zrangebyscore(key, min_score, max_score, withscores=withscores)
 
+    async def set_value(self, key: str, value: str, ttl: Optional[int] = None) -> None:
+        await self.redis.set(key, value, ex=ttl)
+
+    async def get_value(self, key: str) -> Optional[str]:
+        return await self.redis.get(key)
+
+    async def delete(self, key: str) -> None:
+        await self.redis.delete(key)

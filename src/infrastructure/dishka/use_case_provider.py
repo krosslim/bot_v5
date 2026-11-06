@@ -1,5 +1,8 @@
+from aiogram import Bot
 from dishka import Provider, provide, Scope
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import Config
 
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
@@ -8,6 +11,7 @@ from src.services.tech_service import TechService
 from src.services.user_service import UserService
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 
 
 class UseCaseProvider(Provider):
@@ -26,3 +30,7 @@ class UseCaseProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def provide_user_use_case(self, user: UserService, session: AsyncSession) -> UserUseCase:
         return UserUseCase(user, session)
+
+    @provide(scope=Scope.REQUEST)
+    def provide_widget_use_case(self, bot: Bot, uc: BookingUseCase, tech: TechService, cfg: Config) -> WidgetUseCase:
+        return WidgetUseCase(bot, uc, tech, cfg)

@@ -41,7 +41,7 @@ async def handle_cancel_query(q: InlineQuery, bot: Bot, uc: FromDishka[BookingUs
         error_title = "❓Как отменить запись"
     error_response = (
         f"<b>Как работает inline-mode?</b>\n"
-        f"<blockquote>1. Введи: @{s.BOT_USERNAME}\n   (или жми <b>Попробовать</b>)\n"
+        f"<blockquote>1. Введите: @{s.BOT_USERNAME}\n   (или нажмите <b>Попробовать</b>)\n"
         f"2. Затем:\n"
         f"  • Для отмены брони на день: ДД.ММ\n"
         f"  • Отмена нескольких дней: ДД.ММ-ДД.ММ</blockquote>"
@@ -142,7 +142,7 @@ async def handle_cancel_reason(
                 bot,
                 user_id,
                 f"<b>⚠️ Ошибка: {i.cal_date}</b>\n{str(e)}\n"
-                f"На всякий случай проверь, пожалуйста, календарь",
+                f"На всякий случай проверьте, пожалуйста, календарь",
             )
             continue
 

@@ -10,12 +10,12 @@ from config import settings as s
 def render_help_booking_mess(has_holiday: bool, has_available: bool) -> str:
 
     message = ("⚪️ — Места еще есть\n\n"
-               "🟢 — Ты уже забронировал\n")
+               "🟢 — Вы уже забронировали\n")
 
     if not has_available:
         message +=("───────────\n"
-                "🔴 — Мест нет\nВстать в очередь: жми кнопку c ⏳\n\n"
-                "🟡️ — Ты в очереди\nВыйти из очереди: жми кнопку с 🚪\n")
+                "🔴 — Мест нет\nВстать в очередь: нажмите кнопку c ⏳\n\n"
+                "🟡️ — Вы в очереди\nВыйти из очереди: нажмите кнопку с 🚪\n")
     if has_holiday:
         message +=("───────────\n"
                   "🌴 — Праздничный/Выходной день ")
@@ -34,11 +34,11 @@ def render_help_booking_mess2(
     if free:
         msg += "⚪️ — Есть свободное место\n\n"
     if user_booked:
-        msg += "🟢 — У тебя есть бронь\n\n"
+        msg += "🟢 — У вас есть бронь\n\n"
     if no_seat:
-        msg += "🔴 — Мест нет\nВстать в очередь: жми кнопку c ⏳\n\n"
+        msg += "🔴 — Мест нет\nВстать в очередь: нажмите кнопку c ⏳\n\n"
     if user_waitlisted:
-        msg += "🟡️ — Ты в очереди\nВыйти из очереди: жми кнопку с 🚪\n\n"
+        msg += "🟡️ — Вы в очереди\nВыйти из очереди: нажмите кнопку с 🚪\n\n"
     if holiday:
         msg += "🌴 — Праздничный день"
 
@@ -112,16 +112,16 @@ def render_help_booking_mess3(
         else:
             if user_is_booked:
                 header = f"<b>🟢 {c_info.short_name} {day_str}</b>"
-                info = f"У тебя есть бронь.\nДля отмены: жми <b>✓ {c_info.short_name}</b>"
+                info = f"У вас есть бронь.\nДля отмены: нажмите <b>✓ {c_info.short_name}</b>"
             elif free_seats > 0:
                 header = f"<b>⚪️ {c_info.short_name} {day_str}</b>"
-                info = f"Есть свободные места.\nДля записи: жми <b>{c_info.short_name}</b>"
+                info = f"Есть свободные места.\nДля записи: нажмите <b>{c_info.short_name}</b>"
             elif user_waitlist_pos:
                 header = f"<b>🟡 {c_info.short_name} {day_str}</b>"
-                info = f"Ты в очереди.\nДля выхода: жми <b>🚪{c_info.short_name}</b>"
+                info = f"Вы в очереди.\nДля выхода: нажмите <b>🚪{c_info.short_name}</b>"
             else:
                 header = f"<b>🔴 {c_info.short_name} {day_str}</b>"
-                info = f"Мест нет.\nДля записи в очередь: жми <b>⏳{c_info.short_name}</b>"
+                info = f"Мест нет.\nДля записи в очередь: нажмите <b>⏳{c_info.short_name}</b>"
 
 
         lines.append(f"{header}\n<blockquote>{info}</blockquote>")

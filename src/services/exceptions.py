@@ -57,6 +57,18 @@ class CalDateIsNotFound(BookingError):
     """Не удалось получить данные по дате"""
     pass
 
+class SeatIsTaken(BookingError):
+    """Выбранное место уже занято"""
+    pass
+
+class SeatNotFound(BookingError):
+    """Такого места нет на схеме"""
+    pass
+
+class NoPermission(BookingError):
+    """Нет прав действовать за другого пользователя"""
+    pass
+
 class NoDataForMissedBooking(BookingError):
     """Нет дат для указанного месяца, чтобы отметиться за предыдущие дни"""
     pass

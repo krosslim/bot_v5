@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dto.booking_dto import (DateBookingsDTO, UserBookingDTO,
                                  CancelBookingFifoDTO, BookingStatus, OwnBookingDTO,
-                                 WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO)
+                                 WaitlistPositionDTO, WeekVisitsDTO, UserBookingWeekResultDTO,
+                                 DaySeatRowDTO, CalendarWidgetRowDTO)
 from src.dto.calendar_dates_dto import CalendarDatesDTO, DigestScheduleDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO, DictDTO, UserStatisticsDTO
@@ -206,7 +207,8 @@ class Repository:
     ) -> List[OwnBookingDTO]:
 
         stmt = (
-            select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status,Booking.sub_status)
+            select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status, Booking.sub_status,
+                   Booking.seat_no)
         )
 
         if isinstance(cal_date, tuple):
@@ -283,7 +285,8 @@ class Repository:
 
     async def get_user_booking_for_date(self, user_id: int, cal_date: date, for_update: bool = False) -> Optional[OwnBookingDTO]:
         stmt = (
-            select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status,Booking.sub_status)
+            select(Booking.booking_id, Booking.cal_date, Booking.user_id, Booking.status, Booking.sub_status,
+                   Booking.seat_no)
             .where(
                 Booking.cal_date == cal_date,
                 Booking.user_id == user_id,
@@ -359,12 +362,13 @@ class Repository:
 
     # -------------------- ОБЩЕЕ (запись истории бронирования) --------------------
     async def insert_event(
-            self, booking_id: int, status: str, sub_status: str, user_id: int
+            self, booking_id: int, status: str, sub_status: str, user_id: int, seat_no: Optional[int] = None
     ) -> None:
 
         event = BookingEvent(booking_id=booking_id,
                            status=status,
                            sub_status=sub_status,
+                           seat_no=seat_no,
                            updated_by=user_id)
         self.session.add(event)
 
@@ -397,14 +401,14 @@ class Repository:
 
     # -------------------- ЗАБРОНИРОВАТЬ МЕСТО --------------------
     async def upsert_booked(
-            self, user_id: int, cal_date: date, status: str, sub_status: str
+            self, user_id: int, cal_date: date, status: str, sub_status: str, seat_no: Optional[int] = None
     ) -> Optional[int]:
         stmt = (
             pg_insert(Booking)
-            .values(user_id=user_id, cal_date=cal_date, status=status,sub_status=sub_status)
+            .values(user_id=user_id, cal_date=cal_date, status=status, sub_status=sub_status, seat_no=seat_no)
             .on_conflict_do_update(
                 index_elements=[Booking.user_id, Booking.cal_date],
-                set_=dict(status=status, sub_status=sub_status, updated_at=func.now()),
+                set_=dict(status=status, sub_status=sub_status, seat_no=seat_no, updated_at=func.now()),
                 where=Booking.status != status
             )
             .returning(Booking.booking_id)
@@ -434,7 +438,7 @@ class Repository:
                 Booking.status == BookingStatus.BOOKED
             )
             .values(status=BookingStatus.CANCELED, sub_status=cancel_sub_status, updated_at=func.now())
-            .returning(Booking.booking_id)
+            .returning(Booking.booking_id, Booking.seat_no)
         )
         cancel_res = await self.session.execute(cancel_stmt)
         cancel_row = cancel_res.first()
@@ -442,8 +446,9 @@ class Repository:
             return CancelBookingFifoDTO(canceled_user_id=None, promoted_user_id=None)
 
         canceled_id = int(cancel_row[0])
+        freed_seat = cancel_row[1]
         await self.insert_event(
-            canceled_id, BookingStatus.CANCELED, cancel_sub_status, cancel_user_id
+            canceled_id, BookingStatus.CANCELED, cancel_sub_status, cancel_user_id, freed_seat
         )
 
         # поиск замены
@@ -456,10 +461,12 @@ class Repository:
             .scalar_subquery()
         )
 
+        # первый в очереди получает тот же стул, что освободился
         promote_stmt = (
             update(Booking)
             .where(Booking.booking_id == head_sub_q, Booking.status == BookingStatus.WAITLISTED)
-            .values(status=BookingStatus.BOOKED, sub_status=BookingStatus.CONFIRMED, updated_at=func.now())
+            .values(status=BookingStatus.BOOKED, sub_status=BookingStatus.CONFIRMED,
+                    seat_no=freed_seat, updated_at=func.now())
             .returning(Booking.booking_id, Booking.user_id)
         )
         res_promote = await self.session.execute(promote_stmt)
@@ -469,9 +476,10 @@ class Repository:
             promoted_id = int(promoted_row[0])
             promoted_user_id = int(promoted_row[1])
             await self.insert_event(
-                promoted_id, BookingStatus.BOOKED, BookingStatus.CONFIRMED, promoted_user_id
+                promoted_id, BookingStatus.BOOKED, BookingStatus.CONFIRMED, promoted_user_id, freed_seat
             )
-            return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=promoted_user_id)
+            return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=promoted_user_id,
+                                        seat_no=freed_seat)
 
         dec_stmt = (
             update(CalendarDate)
@@ -479,7 +487,85 @@ class Repository:
             .values(visit_count=CalendarDate.visit_count - 1, updated_at=func.now())
         )
         await self.session.execute(dec_stmt)
-        return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=None)
+        return CancelBookingFifoDTO(canceled_user_id=cancel_user_id, promoted_user_id=None, seat_no=freed_seat)
+
+    # -------------------- МЕСТА --------------------
+    async def lock_cal_date(self, cal_date: date) -> bool:
+        """Блокировка дня до конца транзакции: все изменения мест на дату идут по очереди.
+        take_capacity_slot и отмена берут ту же блокировку через UPDATE calendar_dates."""
+        res = await self.session.execute(
+            select(CalendarDate.cal_date).where(CalendarDate.cal_date == cal_date).with_for_update()
+        )
+        return res.first() is not None
+
+    async def taken_seats(self, cal_date: date) -> set:
+        res = await self.session.execute(
+            select(Booking.seat_no).where(
+                Booking.cal_date == cal_date,
+                Booking.status == BookingStatus.BOOKED,
+                Booking.seat_no.is_not(None),
+            )
+        )
+        return {int(r[0]) for r in res.all()}
+
+    async def set_seat(self, user_id: int, cal_date: date, seat_no: int) -> Optional[int]:
+        """Пересадка или назначение места существующей брони"""
+        res = await self.session.execute(
+            update(Booking)
+            .where(
+                Booking.user_id == user_id,
+                Booking.cal_date == cal_date,
+                Booking.status == BookingStatus.BOOKED,
+            )
+            .values(seat_no=seat_no, updated_at=func.now())
+            .returning(Booking.booking_id, Booking.sub_status)
+        )
+        row = res.first()
+        if not row:
+            return None
+        await self.insert_event(int(row[0]), BookingStatus.BOOKED, row[1], user_id, seat_no)
+        return int(row[0])
+
+    async def day_seat_rows(self, cal_date: date) -> List[DaySeatRowDTO]:
+        """Брони (BOOKED) и очередь (WAITLISTED) на день. Очередь — в порядке повышения, как в cancel_booking"""
+        res = await self.session.execute(
+            select(Booking.user_id, User.full_name, Booking.status, Booking.sub_status, Booking.seat_no)
+            .join(User, User.user_id == Booking.user_id)
+            .where(
+                Booking.cal_date == cal_date,
+                Booking.status.in_([BookingStatus.BOOKED, BookingStatus.WAITLISTED]),
+            )
+            .order_by(Booking.created_at, Booking.booking_id)
+        )
+        return [DaySeatRowDTO.model_validate(r) for r in res.all()]
+
+    async def calendar_widget_rows(self, user_id: int, start: date, end: date) -> List[CalendarWidgetRowDTO]:
+        res = await self.session.execute(
+            select(
+                CalendarDate.cal_date,
+                CalendarDate.is_weekend,
+                CalendarDate.is_holiday,
+                CalendarDate.is_workday,
+                CalendarDate.visit_count,
+                OfficeCapacityWeekday.capacity,
+                Booking.status.label("my_status"),
+            )
+            .join(
+                OfficeCapacityWeekday,
+                extract('ISODOW', CalendarDate.cal_date) == OfficeCapacityWeekday.weekday
+            )
+            .outerjoin(
+                Booking,
+                and_(
+                    Booking.cal_date == CalendarDate.cal_date,
+                    Booking.user_id == user_id,
+                    Booking.status.in_([BookingStatus.BOOKED, BookingStatus.WAITLISTED]),
+                ),
+            )
+            .where(CalendarDate.cal_date.between(start, end))
+            .order_by(CalendarDate.cal_date)
+        )
+        return [CalendarWidgetRowDTO.model_validate(r) for r in res.all()]
 
 
     # -------------------- ИЗМЕНИТЬ СТАТУС БРОНИРОВАНИЯ --------------------

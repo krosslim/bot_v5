@@ -4,6 +4,7 @@ from typing import List
 from src.dto.booking_dto import DateBookingsDTO, BookingStatus
 from src.dto.calendar_dates_dto import CalendarDatesDTO
 from src.dto.office_capacity_dto import OfficeCapacityDTO
+from src.utils.today import is_after_work_end
 from src.utils.tz_day import d_tz, dt_tz
 
 from config import settings as s
@@ -85,7 +86,7 @@ def render_booking_week_mess(
             p_was = _plural_ru(booked_count, "был", "было", "было")
             p_people = _plural_ru(booked_count, "человек", "человека", "человек")
             header = f"<b>{base_header}</b> <i>({p_was} {booked_count} {p_people})</i>"
-        elif day == today and today_dt.hour >= s.WORK_END_HOUR:
+        elif day == today and is_after_work_end(today_dt):
             p_people = _plural_ru(booked_count, "человек", "человека", "человек")
             header = f"<b>{base_header}</b> <i>({booked_count} {p_people})</i>"
         else:

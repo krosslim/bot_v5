@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     UniqueConstraint,
+    CheckConstraint,
     text,
     Index,
 )
@@ -127,6 +128,14 @@ class Booking(Base):
             "ix_booking_cal_date_status_created",
             "cal_date", "status", "created_at"
         ),
+        # Одно место в день — одна активная бронь. NULL (очередь, старые брони) не конфликтуют
+        Index(
+            "ux_bookings_date_seat_booked",
+            "cal_date", "seat_no",
+            unique=True,
+            postgresql_where=text("status = 'BOOKED'"),
+        ),
+        CheckConstraint("seat_no > 0", name="ck_bookings_seat_no_positive"),
     )
 
     booking_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -134,6 +143,7 @@ class Booking(Base):
     cal_date: Mapped[date] = mapped_column(Date, ForeignKey("calendar_dates.cal_date"), nullable=False)
     status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
     sub_status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
+    seat_no: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)  # номер места, схема в коде
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
@@ -188,6 +198,7 @@ class BookingEvent(Base):
     booking_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("bookings.booking_id"), nullable=False)
     status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
     sub_status: Mapped[str] = mapped_column(Text, ForeignKey("booking_status_dict.slug"), nullable=False)
+    seat_no: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=False)
 

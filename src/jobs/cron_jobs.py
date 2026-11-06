@@ -6,7 +6,7 @@ from functools import partial
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dishka import AsyncContainer
@@ -31,11 +31,12 @@ from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.get_week_range import week_range
 from src.utils.tz_day import d_tz, dt_tz
 from src.utils.db_exc_wrapper import DBError
 from src.utils.sheet_name import month_name
-from src.utils.today import effective_datetime_range
+from src.utils.today import effective_datetime_range, is_after_work_end, work_end_time
 from src.utils.tommorow import fmt_date_ru
 
 logger = logging.getLogger(__name__)
@@ -104,12 +105,21 @@ async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler, po
 
             last_message = await sc_svc.last_message()
 
-            message = await bot.send_message(
-                chat_id=settings.TG_CHAT_ID,
-                text=build_digest_message_v2(bookings, capacity, tomorrow),
-                reply_markup=confirm_kb(bookings, capacity, tomorrow),
-                disable_web_page_preview=True
-            )
+            message = None
+            if settings.DIGEST_WIDGET_ENABLED:
+                try:
+                    widgets: WidgetUseCase = await req.get(WidgetUseCase)
+                    message = await widgets.send_digest(tomorrow)
+                except TelegramAPIError as e:
+                    # INPUT_MEDIA_WIDGET_NOT_ALLOWED — Telegram не пускает виджеты бота в группу: DIGEST_WIDGET_ENABLED=false
+                    logger.error(f"ERROR: chat_remind_job | виджет не отправлен, шлём текст | {str(e)}")
+            if message is None:
+                message = await bot.send_message(
+                    chat_id=settings.TG_CHAT_ID,
+                    text=build_digest_message_v2(bookings, capacity, tomorrow),
+                    reply_markup=confirm_kb(bookings, capacity, tomorrow),
+                    disable_web_page_preview=True
+                )
             await bot.pin_chat_message(chat_id=settings.TG_CHAT_ID, message_id=message.message_id, disable_notification=True)
             if last_message:
                 await _unpin_last_message(bot, last_message.message_id)
@@ -151,6 +161,10 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
 
             if not updates:
                 # print('Изменений нет. Останавливаемся')
+                return
+
+            if settings.DIGEST_WIDGET_ENABLED:
+                await _refresh_digest_widget(req, sc_svc, target_date)
                 return
 
             weekday = target_date.isoweekday()
@@ -225,7 +239,7 @@ async def check_chat_remind_reserve_job(container: AsyncContainer, sched: AsyncI
         _add_postponed_sunday_chat_remind_job(container, sched)
 
 
-    if settings.WORK_END_HOUR <= now.hour < settings.REMIND_JOB_HOUR:
+    if is_after_work_end(now) and now.hour < settings.REMIND_JOB_HOUR:
         logger.info("check_chat_remind_reserve_job | removed cause not in work hour")
         return
 
@@ -243,13 +257,13 @@ async def check_chat_remind_reserve_job(container: AsyncContainer, sched: AsyncI
             if message.cal_date == today_date:
                 end_dt = datetime.combine(
                     date=today_date,
-                    time=time(settings.WORK_END_HOUR, 0),
+                    time=work_end_time(),
                     tzinfo=ZoneInfo(settings.MSC_TZ)
                 )
             elif message.cal_date == tomorrow_date:
                 end_dt = datetime.combine(
                     date=tomorrow_date,
-                    time=time(settings.WORK_END_HOUR, 0),
+                    time=work_end_time(),
                     tzinfo=ZoneInfo(settings.MSC_TZ)
                 )
             else:
@@ -432,6 +446,13 @@ async def cancel_waitlist_bookings_job(container: AsyncContainer) -> None:
         except DBError as e:
             logger.exception(f"ERROR: cancel_waitlist_job | {str(e)}")
 
+        if settings.DIGEST_WIDGET_ENABLED:
+            try:
+                widgets: WidgetUseCase = await req.get(WidgetUseCase)
+                await widgets.refresh_digest(d_tz())    # после WORK_END_HOUR день закрыт: виджет только для чтения
+            except DBError as e:
+                logger.exception(f"ERROR: cancel_waitlist_job | close digest | {str(e)}")
+
 
 # -------------------------------- Отмена не подтвержденных бронирований --------------------------------
 async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
@@ -466,8 +487,9 @@ async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
             logger.info("cancel_not_confirmed_booking_job | no users to confirm for %s", tomorrow)
             return
 
+        affected = []
         for user in reserved.users:
-            await promote_user_after_cancel(
+            promoted_id = await promote_user_after_cancel(
                 call=None,
                 uc=uc,
                 cal_date=tomorrow,
@@ -480,6 +502,18 @@ async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
                 user_id=user.user_id,
                 cal_date=tomorrow
             )
+            affected.append(user.user_id)
+            if promoted_id:
+                affected.append(promoted_id)
+
+        if settings.WIDGETS_ENABLED or settings.DIGEST_WIDGET_ENABLED:
+            try:
+                widgets: WidgetUseCase = await req.get(WidgetUseCase)
+                await widgets.refresh_digest(tomorrow)
+                for user_id in affected:
+                    await widgets.refresh_user_widget(user_id)
+            except DBError as e:
+                logger.exception(f"ERROR: cancel_not_confirmed_booking_job | widgets | {str(e)}")
 
         logger.info("cancel_not_confirmed_booking_job | total_count=%s", len(reserved.users))
 
@@ -554,6 +588,30 @@ async def birthday_job(container: AsyncContainer) -> None:
 
 
 # -------------------------------- helpers --------------------------------
+async def _refresh_digest_widget(req: AsyncContainer, sc_svc: TechService, target_date: date) -> None:
+    """Дайджест-виджет: правим chat_data, а если сообщения нет — отправляем заново"""
+    widgets: WidgetUseCase = await req.get(WidgetUseCase)
+    message_id = await sc_svc.get_chat_message_id(cal_date=target_date)
+
+    if message_id:
+        try:
+            await widgets.edit_digest_now(target_date, message_id)
+            return
+        except TelegramAPIError as e:
+            logger.error(f"ERROR: check_chat_remind_job | widget | {str(e)}")
+            # Пересылаем заново только если сообщение удалили; в остальных случаях (например, это текстовый
+            # дайджест, отправленный вместо виджета) ничего не делаем
+            if not isinstance(e, TelegramBadRequest) or "message to edit not found" not in (e.message or "").lower():
+                return
+
+    try:
+        message = await widgets.send_digest(target_date)
+    except TelegramAPIError as e:
+        logger.error(f"ERROR: check_chat_remind_job | widget send | {str(e)}")
+        return
+    await sc_svc.upsert_chat_message_id(cal_date=target_date, message_id=message.message_id)
+
+
 def _add_job_checker(
         sched: AsyncIOScheduler,
         container: AsyncContainer,
@@ -589,7 +647,7 @@ async def _send_cancel_message(bot: Bot, user_id: int, cal_date: date) -> None:
             text=f"<b>❗️ {str_date} → Бронь отменена</b>\n\n"
                  f"<blockquote>К сожалению, мы так и не получили подтверждение о завтрашней записи.\n"
                  f"Поэтому она была автоматически отменена. "
-                 f"Если места еще остались, ты можешь попробовать занять.\nНовую запись подтверждать не придется</blockquote>",
+                 f"Если места еще остались, вы можете попробовать занять.\nНовую запись подтверждать не придется</blockquote>",
             reply_markup=check_bookings_kb()
         )
     except (TelegramBadRequest, TelegramForbiddenError) as e_tg:

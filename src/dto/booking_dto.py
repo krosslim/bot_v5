@@ -29,6 +29,7 @@ class CancelBookingFifoDTO(BaseModel):
 
     canceled_user_id: int | None
     promoted_user_id: int | None
+    seat_no: int | None = None          # освободившееся место; первый в очереди получает его же
 
 
 class OwnBookingDTO(BaseModel):
@@ -39,6 +40,7 @@ class OwnBookingDTO(BaseModel):
     cal_date: date
     status: str
     sub_status: str
+    seat_no: int | None = None
 
 class WaitlistPositionDTO(BaseModel):
     model_config = ConfigDict(frozen=True, from_attributes=True)
@@ -51,6 +53,30 @@ class WeekVisitsDTO(BaseModel):
 
     cal_date: date
     visits: int
+
+class DaySeatRowDTO(BaseModel):
+    """Бронь или место в очереди на день — для схемы зала"""
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    user_id: int
+    full_name: str
+    status: str
+    sub_status: str
+    seat_no: int | None
+
+
+class CalendarWidgetRowDTO(BaseModel):
+    """День календаря с лимитом и статусом пользователя — для календаря виджета"""
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    cal_date: date
+    is_weekend: bool
+    is_holiday: bool
+    is_workday: bool
+    visit_count: int
+    capacity: int
+    my_status: str | None
+
 
 class UserBookingWeekResultDTO(BaseModel):
     model_config = ConfigDict(frozen=True, from_attributes=True)

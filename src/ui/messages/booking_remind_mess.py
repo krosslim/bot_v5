@@ -49,9 +49,9 @@ def build_digest_message(bookings: DateBookingsDTO, capacity: int, cal_date: dat
     additional_info = f"<b>{contacts} | {google_sheet}</b>"
     if has_reserved:
         footer = (
-            "<blockquote>Для подтверждения брони — жми\n"
+            "<blockquote>Для подтверждения брони — нажмите\n"
             "<b>ПОДТВЕРДИТЬ до 21:30</b>. Иначе отменится.\n"
-            "Для брони свободного слота — жми\n"
+            "Для брони свободного слота — нажмите\n"
             "<b>ЗАНЯТЬ МЕСТО</b>"
             "</blockquote>"
         ) + additional_info

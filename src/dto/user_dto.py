@@ -32,6 +32,13 @@ class UserBookingSessionDTO(BaseModel):
     message_id: int
 
 
+class BookingWidgetPointerDTO(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    message_id: int
+    target_id: int | None = None   # бронь админом за сотрудника
+
+
 class DictDTO(BaseModel):
     model_config = ConfigDict(frozen=True, from_attributes=True)
 
