@@ -93,7 +93,7 @@ async def update_sheet_data(
     users_with_days = sum(1 for u in user_data if u.get("days"))
     days_total = sum(len(u.get("days") or []) for u in user_data)
     payload_bytes = len(json.dumps(json_data, ensure_ascii=False).encode())
-    logger.info(
+    logger.debug(
         "sheet_update | → '%s' | POST %s | сотрудников %d (с бронями %d), отметок %d, %d байт",
         sheet_name, _host(settings.GOOGLE_SHEET_URL), len(user_data), users_with_days, days_total, payload_bytes,
     )
@@ -117,7 +117,7 @@ async def update_sheet_data(
                 text = await response.text()
                 content_type = response.headers.get('Content-Type', '')
                 redirects = " → ".join(f"{r.status} {_host(r.url)}" for r in response.history) or "нет"
-                logger.info(
+                logger.debug(
                     "sheet_update | ← '%s' | HTTP %s за %d мс | редиректы: %s | итоговый хост %s | %s | %d символов",
                     sheet_name, response.status, elapsed_ms, redirects, _host(response.url),
                     content_type or "без Content-Type", len(text),
@@ -148,7 +148,8 @@ async def update_sheet_data(
                     logger.error("Скрипт сообщил об ошибке при обновлении листа '%s' (%s): %s",
                                  sheet_name, failed, _short(text))
                     return None
-                logger.info("sheet_update | ответ скрипта для '%s': %s", sheet_name, _short(text))
+                logger.info("sheet_update | '%s' обновлён за %d мс | сотрудников %d, отметок %d | %s",
+                            sheet_name, elapsed_ms, len(user_data), days_total, _short(text))
                 return data
 
     except asyncio.TimeoutError:

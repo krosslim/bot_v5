@@ -340,17 +340,10 @@ async def week_result_job(container: AsyncContainer, sched: AsyncIOScheduler) ->
 async def sheet_update_job(container: AsyncContainer) -> None:
     """Раз в минуту отправляет в Apps Script листы месяцев (прошлый, текущий, два следующих),
     в которых за последние 60 секунд менялись брони. Без изменений ничего не отправляется."""
-    global _sheet_update_announced
-    if not _sheet_update_announced:
-        _sheet_update_announced = True
-        logger.info("sheet_update_job | работает: лист отправляется, только если брони месяца менялись "
-                    "за последние 60 с (подробно по каждому запуску — уровень DEBUG)")
-
     async with container() as req:
         svc: BookingService = await req.get(BookingService)
 
         try:
-            sent = []
             for offset in range(-1, 3):
                 sheet_name = month_name(offset)
                 has_changes = await svc.get_booking_changes(offset)
@@ -358,19 +351,12 @@ async def sheet_update_job(container: AsyncContainer) -> None:
                     logger.debug("sheet_update_job | '%s' (offset %d) | изменений нет", sheet_name, offset)
                     continue
                 booking_data = await svc.get_users_month_bookings(offset)
-                logger.info("sheet_update_job | '%s' (offset %d) | есть изменения, сотрудников в выгрузке: %d",
-                            sheet_name, offset, len(booking_data))
-                result = await update_sheet_data(sheet_name, booking_data)
-                sent.append(f"{sheet_name}: {'ok' if result is not None else 'ошибка'}")
+                logger.debug("sheet_update_job | '%s' (offset %d) | есть изменения, сотрудников в выгрузке: %d",
+                             sheet_name, offset, len(booking_data))
+                await update_sheet_data(sheet_name, booking_data)
                 await asyncio.sleep(1.5)
-
-            if sent:
-                logger.info("sheet_update_job | итог: %s", ", ".join(sent))
         except DBError as e:
             logger.exception(f"ERROR: sheet_update_job | {str(e)}")
-
-
-_sheet_update_announced = False
 
 
 # -------------------------------- Напоминание о подтверждении брони --------------------------------
