@@ -201,6 +201,12 @@ class TemplatesTest(unittest.TestCase):
         self.assertIn("else if(t.n)rq('n:'+D.d+':'+t.n,'n')", html)
         self.assertIn("j.n?['',j.n]", html)
 
+    def test_haptics_only_for_action_results(self):
+        """Вибрация — только на результат действия (ok / er): открытие дня в календаре и ФИО — без неё"""
+        html = render_booking_widget()
+        self.assertIn("(j.ok||j.er)&&H&&H.notificationOccurred(j.er?'error':'success')", html)
+        self.assertEqual(html.count("notificationOccurred"), 1)
+
     def test_foreign_seats_merged_into_strips(self):
         """Подряд идущие места другой команды виджет рисует одной полосой"""
         self.assertEqual(_merge_foreign(["x", "x", "x", "x"]), ["x4"])
