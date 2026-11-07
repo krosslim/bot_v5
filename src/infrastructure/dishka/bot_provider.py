@@ -12,11 +12,12 @@ from config import Config
 
 
 def api_server(cfg: Config) -> TelegramAPIServer:
-    """Адрес Bot API: обычный или бета (Bot API 10.4)"""
+    """Адрес Bot API: обычный или бета (Bot API 10.4), на продовом или тестовом сервере Telegram"""
     base = cfg.TG_API_BASE.rstrip("/")
+    test = "/test" if cfg.TG_TEST_ENV else ""
     return TelegramAPIServer(
-        base=f"{base}/bot{{token}}/{{method}}",
-        file=f"{base}/file/bot{{token}}/{{path}}",
+        base=f"{base}/bot{{token}}{test}/{{method}}",
+        file=f"{base}/file/bot{{token}}{test}/{{path}}",
     )
 
 

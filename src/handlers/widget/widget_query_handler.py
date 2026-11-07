@@ -3,7 +3,8 @@
 Личный виджет:  d|b|c|q|lq:<дата>[:<место>][@<user_id сотрудника>]  → ответ — состояние дня (JSON)
                 x[@<user_id>]                                          → «Выйти»: виджет заменяется меню
                 o[@<user_id>]                                          → «Открыть заново»: новый виджет вместо устаревшего
-Дайджест:       s:<дата>:<место>                                       → ответ — {"m": текст, "e": ошибка, "b": кнопка бота}
+Дайджест:       s:<дата>:<место>                                       → ответ — {"m": текст, "e": ошибка, "b": кнопка бота,
+                                                                          "ok": успех, "h": вторая строка, "n": полное имя на чужом месте}
 """
 import logging
 import re
@@ -41,6 +42,7 @@ EXIT_CMD = "x"     # кнопка «Выйти» в календаре
 REOPEN_CMD = "o"   # кнопка «Открыть заново» в устаревшем или закрытом окне
 DB_ERROR_TEXT = "Не удалось выполнить действие, попробуйте ещё раз"
 REGISTER_TEXT = "Чтобы бронировать, зарегистрируйтесь в боте"
+UNDO_HINT = "Для отмены нажмите на своё место ещё раз"   # вторая строка под «Подтверждено» / «Забронировано»
 
 
 @dataclass(frozen=True)
@@ -260,38 +262,41 @@ async def _handle_group(query: WidgetQuery, bot: Bot, container: AsyncContainer)
         return {"m": REGISTER_TEXT, "e": 1, "b": 1}
     if await uc.digest_message_id(d) != query.message_id:
         return {"m": "Этот дайджест уже неактуален", "e": 1}
-    if not await widgets.is_bookable(d):
-        return {"m": "Бронирование на этот день закрыто", "e": 1}
     if seat not in SEATS:
         return {"m": "Такого места нет", "e": 1}
 
     day, _ = await uc.widget_day(d)
     at_seat = day.by_seat().get(seat)
+    if at_seat and at_seat.user_id != user_id:
+        # Чужое место: полное имя в плашке, в том числе когда бронирование уже закрыто.
+        # m/e — для дайджестов, отправленных до обновления (они не знают про n)
+        return {"m": f"Место занято: {at_seat.full_name}", "e": 1, "n": at_seat.full_name}
+    if not await widgets.is_bookable(d):
+        return {"m": "Бронирование на этот день закрыто", "e": 1}
+
     mine = day.holder(user_id)
     promoted: Optional[int] = None
+    # Успех: m — зелёным, h — второй строкой (только когда бронь осталась за человеком)
+    hint: Optional[str] = UNDO_HINT
 
     try:
-        if at_seat and at_seat.user_id == user_id:
+        if at_seat:
             if not at_seat.confirmed:
                 await uc.confirm_booking(user_id, d)
-                text = "Бронь подтверждена, ждём в офисе"
+                text = "Подтверждено"
             else:
                 promoted = await promote_user_after_cancel(
                     None, uc, d, bot, user_id, BookingStatus.CANCELED_CHANGED_MIND
                 )
-                text = "Бронь отменена, место ушло первому в очереди" if promoted else "Бронь отменена"
-        elif at_seat:
-            if not mine and not day.free_seats(SEATS):
-                return {"m": "Свободных мест нет. Встать в очередь можно в боте", "b": 1}
-            return {"m": f"Место занято: {short_name(at_seat.full_name)}", "e": 1}
+                text, hint = "Отменено", None
         elif mine:
             await uc.move_seat(user_id, d, seat)
             if not mine.confirmed:
                 await uc.confirm_booking(user_id, d)
-            text = "Пересадили на новое место"
+            text, hint = "Место изменено", None
         else:
             await uc.book_place(user_id, d, auto_confirm=True, seat_no=seat)
-            text = "Место забронировано"
+            text = "Забронировано"
     except FreePlaceIsNotFound:
         return {"m": "Свободных мест нет. Встать в очередь можно в боте", "b": 1}
     except BookingError as e:
@@ -303,4 +308,4 @@ async def _handle_group(query: WidgetQuery, bot: Bot, container: AsyncContainer)
     await widgets.refresh_user_widget(user_id)
     if promoted:
         await widgets.refresh_user_widget(promoted)
-    return {"m": text}
+    return {"m": text, "ok": 1, "h": hint} if hint else {"m": text, "ok": 1}

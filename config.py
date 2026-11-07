@@ -1,13 +1,12 @@
 import logging
 import sys
 
-from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv()
 
 class Config(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env",
+    # .env.local (если есть) перекрывает .env. Переменные окружения сильнее обоих файлов
+    model_config = SettingsConfigDict(env_file=(".env", ".env.local"),
                                       frozen=True,
                                       extra='ignore')
 
@@ -65,6 +64,7 @@ class Config(BaseSettings):
 
     # --- HTML-виджеты (Bot API 10.4) ---
     TG_API_BASE: str = "https://api.telegram.org"  # для беты: https://api.telegram.org/beta
+    TG_TEST_ENV: bool = False                      # тестовый сервер Telegram: /bot<token>/test/<method>
 
 
     TG_ALERTS_CHAT_ID: int = -1000000000000 # Чат для алертов

@@ -3,7 +3,7 @@ from enum import auto
 from typing import List
 
 from pydantic import BaseModel, ConfigDict
-from strenum import StrEnum
+from src.utils.name_enum import NameEnum
 
 
 class UserBookingDTO(BaseModel):
@@ -86,7 +86,7 @@ class UserBookingWeekResultDTO(BaseModel):
     booking_count: int
 
 
-class BookingStatus(StrEnum):
+class BookingStatus(NameEnum):
     # Основные статусы
     BOOKED = auto()
     CANCELED = auto()

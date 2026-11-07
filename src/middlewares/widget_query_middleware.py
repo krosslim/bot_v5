@@ -11,8 +11,8 @@ from src.infrastructure.telegram.widgets import extract_widget_query
 class WidgetQueryMiddleware(BaseMiddleware):
     """Перехватывает апдейт widget_query до диспетчера.
 
-    aiogram 3.26 не знает этот тип: кладёт его в Update.model_extra, а в _listen_update пропускает
-    с предупреждением. Outer-middleware на dp.update срабатывает раньше и обрабатывает запрос сам.
+    aiogram до поддержки Bot API 10.4 (3.31 — это 10.3) не знает этот тип: кладёт его в Update.model_extra,
+    а в _listen_update пропускает с предупреждением. Outer-middleware на dp.update срабатывает раньше и обрабатывает запрос сам.
     """
 
     async def __call__(

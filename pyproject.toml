@@ -5,28 +5,29 @@ description = "Telegram-бот для бронирования мест в оф�
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    # Держим 3.26.x: WidgetQueryMiddleware опирается на то, что aiogram не знает апдейт widget_query
-    # и кладёт его в Update.model_extra. Версия с поддержкой Bot API 10.4 потребует переписать мост
-    # src/infrastructure/telegram/widgets.py, поэтому обновлять aiogram только вместе с ним.
-    "aiogram~=3.26.0",
-    "aiohttp~=3.13.3",
+    # WidgetQueryMiddleware опирается на то, что aiogram не знает апдейт widget_query и кладёт его
+    # в Update.model_extra. 3.31 вышел до Bot API 10.4 и его не знает. Версия с поддержкой 10.4 потребует
+    # переписать мост src/infrastructure/telegram/widgets.py, поэтому обновлять aiogram только вместе с ним.
+    # aiogram 3.31 ограничивает сверху: aiohttp < 3.15, pydantic < 2.14, redis < 8 (extra "redis").
+    "aiogram~=3.31.0",
+    "aiohttp~=3.14.5",
     "aiocache~=0.12.3",
-    "alembic~=1.15.1",
-    "apscheduler~=3.11.0",
-    "asyncpg~=0.31.0",
-    "certifi>=2026.1.4",
-    "dishka~=1.5.3",
-    "google-api-python-client~=2.179",
-    "google-auth~=2.40",
+    "alembic~=1.20.1",
+    "apscheduler~=3.11.3",
+    "asyncpg~=0.32.0",
+    "certifi>=2026.10.23",
+    "dishka~=1.10.1",
+    "google-api-python-client~=2.201",
+    "google-auth~=2.62",
     "holidays~=0.108",
-    "psycopg2-binary~=2.9.11",
-    "pydantic~=2.12.5",
-    "pydantic-settings~=2.10.1",
-    "python-dateutil>=2.9.0.post0,<3",
-    "python-dotenv~=1.0.1",
-    "redis~=5.2.1",
-    "sqlalchemy[asyncio]~=2.0.39",
-    "strenum~=0.4.15",
+    "psycopg2-binary~=2.9.13",       # только для alembic (env.py меняет +asyncpg на +psycopg2)
+    "pydantic~=2.13.5",
+    "pydantic-settings~=2.16.2",
+    "python-dateutil~=2.9.0.post0",  # 4.0.0 вышел 2026-11-01, ждём патчей
+    "python-dotenv~=1.2.4",
+    "redis~=7.4.1",
+    # 2.1 — отдельный шаг: прогнать на тестовой БД (бот и alembic)
+    "sqlalchemy[asyncio]~=2.0.57",
 ]
 
 [tool.uv]

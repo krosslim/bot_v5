@@ -3,13 +3,13 @@ from datetime import timedelta, date
 from enum import auto
 from typing import Tuple, Optional
 
-from strenum import StrEnum
+from src.utils.name_enum import NameEnum
 
 from config import settings
 from src.utils.today import effective_today
 
 
-class ActionType(StrEnum):
+class ActionType(NameEnum):
     """Типы действий"""
     CANCEL = auto()
     CANCEL_RANGE = auto()

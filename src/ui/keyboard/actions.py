@@ -1,16 +1,16 @@
 from typing import Union
-from strenum import StrEnum
+from src.utils.name_enum import NameEnum
 from enum import auto
 from aiogram.filters.callback_data import CallbackData
 
 
-class MenuStep(StrEnum):
+class MenuStep(NameEnum):
     BOOKING = auto()
     MY_BOOKING = auto()
     SETTINGS = auto()
 
 
-class BookingStep(StrEnum):
+class BookingStep(NameEnum):
     INIT_BOOKING = auto()
     PAGE = auto()
     WEEK_INFO = auto()
@@ -26,7 +26,7 @@ class BookingStep(StrEnum):
     MISSED_CONFIRM = auto()
 
 
-class MyBookingStep(StrEnum):
+class MyBookingStep(NameEnum):
     INIT_MY_BOOKING = auto()
     GET_BACK_MENU = auto()
     GET_INFO = auto()
@@ -46,7 +46,7 @@ class MyBookingStep(StrEnum):
     GET_BACK_MY_BOOK_MENU = auto()
 
 
-class SettingsStep(StrEnum):
+class SettingsStep(NameEnum):
     INIT_SETTINGS = auto()
     AUTO_CONFIRM = auto()
     AUTO_CONFIRM_ON = auto()
@@ -76,7 +76,7 @@ class SettingsStep(StrEnum):
     WIDGETS_PICK = auto()     # extra — history / future: выбор числа месяцев
 
 
-class ChatBookingStep(StrEnum):
+class ChatBookingStep(NameEnum):
     CONFIRM_BOOKING = auto()
     ADD_BOOKING = auto()
     ADD_OR_CONFIRM_BOOKING = auto()
