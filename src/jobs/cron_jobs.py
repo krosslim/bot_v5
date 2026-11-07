@@ -31,6 +31,7 @@ from src.ui.messages.start_mess import bot_menu_mess
 from src.ui.messages.week_result_mess import week_summary_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
+from src.use_cases.sheet_template_use_case import SheetTemplateUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.get_week_range import week_range
@@ -337,27 +338,39 @@ async def week_result_job(container: AsyncContainer, sched: AsyncIOScheduler) ->
 
 # -------------------------------- Обновление Google-таблицы бронирований --------------------------------
 async def sheet_update_job(container: AsyncContainer) -> None:
+    """Раз в минуту отправляет в Apps Script листы месяцев (прошлый, текущий, два следующих),
+    в которых за последние 60 секунд менялись брони. Без изменений ничего не отправляется."""
+    global _sheet_update_announced
+    if not _sheet_update_announced:
+        _sheet_update_announced = True
+        logger.info("sheet_update_job | работает: лист отправляется, только если брони месяца менялись "
+                    "за последние 60 с (подробно по каждому запуску — уровень DEBUG)")
+
     async with container() as req:
         svc: BookingService = await req.get(BookingService)
 
         try:
+            sent = []
             for offset in range(-1, 3):
+                sheet_name = month_name(offset)
                 has_changes = await svc.get_booking_changes(offset)
-                # print(f"Наличие изменений: {has_changes}")
-                if has_changes:
-                    # print()
-                    booking_data = await svc.get_users_month_bookings(offset)
-                    # print(f"Данные: {booking_data}")
-                    # print("---------")
-                    sheet_name = month_name(offset)
-                    # print(f"Месяц: {sheet_name}")
-                    # print()
-                    await update_sheet_data(sheet_name, booking_data)
-                    await asyncio.sleep(1.5)
+                if not has_changes:
+                    logger.debug("sheet_update_job | '%s' (offset %d) | изменений нет", sheet_name, offset)
+                    continue
+                booking_data = await svc.get_users_month_bookings(offset)
+                logger.info("sheet_update_job | '%s' (offset %d) | есть изменения, сотрудников в выгрузке: %d",
+                            sheet_name, offset, len(booking_data))
+                result = await update_sheet_data(sheet_name, booking_data)
+                sent.append(f"{sheet_name}: {'ok' if result is not None else 'ошибка'}")
+                await asyncio.sleep(1.5)
 
-            return
+            if sent:
+                logger.info("sheet_update_job | итог: %s", ", ".join(sent))
         except DBError as e:
             logger.exception(f"ERROR: sheet_update_job | {str(e)}")
+
+
+_sheet_update_announced = False
 
 
 # -------------------------------- Напоминание о подтверждении брони --------------------------------
@@ -600,6 +613,17 @@ async def calendar_sync_job(container: AsyncContainer) -> None:
             await uc.sync()
         except DBError as e:
             logger.exception(f"ERROR: calendar_sync_job | {str(e)}")
+
+
+# -------------------------------- Шаблоны листов в Google-таблице --------------------------------
+async def sheet_template_job(container: AsyncContainer) -> None:
+    """Листы текущего и двух следующих месяцев. Существующие листы с данными не перезаписываются"""
+    async with container() as req:
+        uc: SheetTemplateUseCase = await req.get(SheetTemplateUseCase)
+        try:
+            await uc.run()
+        except DBError as e:
+            logger.exception(f"ERROR: sheet_template_job | {str(e)}")
 
 
 # -------------------------------- helpers --------------------------------

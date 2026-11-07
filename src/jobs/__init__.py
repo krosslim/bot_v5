@@ -20,6 +20,7 @@ from src.jobs.cron_jobs import (
     cancel_not_confirmed_booking_job,
     birthday_job,
     calendar_sync_job,
+    sheet_template_job,
 )
 
 logger = logging.getLogger(__name__)
@@ -188,6 +189,22 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
     )
     logger.info("register job: calendar_sync_job | every day | start at: %s:%s",
                 s.CALENDAR_SYNC_JOB_HOUR, s.CALENDAR_SYNC_JOB_MINUTES)
+
+    sched.add_job(
+        partial(sheet_template_job, container),
+        trigger=CronTrigger(
+            hour=s.SHEET_TEMPLATE_JOB_HOUR,
+            minute=s.SHEET_TEMPLATE_JOB_MINUTES,
+            timezone=sched.timezone
+        ),
+        id="sheet_template_job",
+        max_instances=1,
+        misfire_grace_time=3600,
+        coalesce=True,
+        replace_existing=True
+    )
+    logger.info("register job: sheet_template_job | every day | start at: %s:%s",
+                s.SHEET_TEMPLATE_JOB_HOUR, s.SHEET_TEMPLATE_JOB_MINUTES)
 
 
 

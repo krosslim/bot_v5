@@ -3,10 +3,10 @@ import json
 import zlib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from config import settings
-from src.ui.widgets.layout import BOSS_LABEL, LAYOUT_TOP_ROWS, OFFICE_LAYOUT
+from src.ui.widgets.layout import BOSS_LABEL, LAYOUT_TOP_ROWS, OFFICE_LAYOUT, LayoutCell, LayoutItem
 from src.ui.widgets.state import short_name
 
 MAX_HTML_BYTES = 32768   # лимит Telegram на исходный HTML
@@ -22,6 +22,23 @@ class WidgetTooLarge(ValueError):
 def _js(value: Any) -> str:
     # JSON — валидный литерал JS. "</" экранируем, чтобы строка не закрыла <script>
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+def _merge_foreign(row: List[LayoutCell]) -> List[LayoutCell]:
+    """Подряд идущие места другой команды → одна полоса: ["x", "x", 1] → ["x2", 1]"""
+    out: List[LayoutCell] = []
+    for c in row:
+        if c == "x" and out and isinstance(out[-1], str) and out[-1].startswith("x"):
+            out[-1] = f"x{int(out[-1][1:]) + 1}"
+        else:
+            out.append("x1" if c == "x" else c)
+    return out
+
+
+def widget_layout() -> List[LayoutItem]:
+    """Схема для виджетов: столы с местами другой команды, склеенными в полосы (виджет рисует их одной ячейкой)"""
+    return [item if isinstance(item, str) else [_merge_foreign(item[0]), item[1], _merge_foreign(item[2])]
+            for item in OFFICE_LAYOUT]
 
 
 @lru_cache(maxsize=None)
@@ -51,7 +68,7 @@ def _checked(html: str) -> str:
 def render_booking_widget(target_user_id: Optional[int] = None, target_name: Optional[str] = None) -> str:
     """Личный виджет. target_* — бронь админом за сотрудника: виджет добавит @user_id к каждому запросу."""
     return _checked(_fill(_template("booking"), {
-        "LAYOUT": OFFICE_LAYOUT,
+        "LAYOUT": widget_layout(),
         "TOP": LAYOUT_TOP_ROWS,
         "BOSS": BOSS_LABEL,
         "USER": str(target_user_id) if target_user_id else "",
@@ -63,7 +80,7 @@ def render_booking_widget(target_user_id: Optional[int] = None, target_name: Opt
 @lru_cache(maxsize=1)
 def render_digest_widget() -> str:
     return _checked(_fill(_template("digest"), {
-        "LAYOUT": OFFICE_LAYOUT,
+        "LAYOUT": widget_layout(),
         "TOP": LAYOUT_TOP_ROWS,
         "BOSS": BOSS_LABEL,
         "BOT": settings.BOT_USERNAME,

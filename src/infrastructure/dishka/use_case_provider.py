@@ -14,6 +14,7 @@ from src.services.user_service import UserService
 from src.storage.redis.store import RedisStore
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
+from src.use_cases.sheet_template_use_case import SheetTemplateUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.use_cases.widget_use_case import WidgetUseCase
 
@@ -45,3 +46,10 @@ class UseCaseProvider(Provider):
             client: IsDayOffClient, alerts: AlertService, store: RedisStore,
     ) -> CalendarSyncUseCase:
         return CalendarSyncUseCase(session, calendar, booking, client, alerts, store)
+
+    @provide(scope=Scope.REQUEST)
+    def provide_sheet_template_use_case(
+            self, session: AsyncSession, calendar: CalendarDatesService, office_capacity: OfficeCapacityService,
+            alerts: AlertService, cfg: Config,
+    ) -> SheetTemplateUseCase:
+        return SheetTemplateUseCase(session, calendar, office_capacity, alerts, cfg)

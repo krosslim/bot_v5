@@ -31,7 +31,7 @@ HEARTBEAT_KEY = "bot:heartbeat"       # время последнего «жив
 STOPPED_KEY = "bot:stopped_at"        # время последней штатной остановки (ISO)
 HEARTBEAT_EVERY = 60
 MAX_RUNS_PER_JOB = 50                 # при простое в несколько дней не перебирать расписание бесконечно
-RUN_AT_STARTUP = {"calendar_sync_job"}  # эти задачи выполняются и при старте бота: их пропуск не страшен
+RUN_AT_STARTUP = {"calendar_sync_job", "sheet_template_job"}  # выполняются и при старте: пропуск не страшен
 
 
 def _now() -> datetime:

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from functools import partial
 
 from aiogram import Dispatcher, Bot
 from aiogram.methods import DeleteWebhook
@@ -14,6 +15,7 @@ from src.infrastructure.dishka import container
 from src.infrastructure.log_alerts import AlertLogHandler
 from src.infrastructure.ops_alerts import RunMonitor, watch_missed_jobs
 from src.infrastructure.telegram.widgets import WIDGET_QUERY_UPDATE, widgets_supported
+from src.jobs.cron_jobs import sheet_template_job
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
 from src.middlewares.widget_query_middleware import WidgetQueryMiddleware
 from src.services.alert_service import AlertService
@@ -75,6 +77,9 @@ async def main() -> None:
             await calendar.sync(quick=True)
         except Exception:
             logger.exception("Синхронизация производственного календаря при старте не удалась")
+
+    # Шаблоны листов в Google-таблице — в фоне через планировщик, чтобы не задерживать polling
+    scheduler.add_job(partial(sheet_template_job, container), id="sheet_template_startup_job", replace_existing=True)
 
     try:
         logger.info("Инициализация бота: %s", bot_info)

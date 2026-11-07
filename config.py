@@ -30,6 +30,8 @@ class Config(BaseSettings):
     GOOGLE_SHEET_URL: str = "https://script.google.com/macros/s/abcd/exec"
     GOOGLE_SHEET_TOKEN: str = "TOKEN"
     GOOGLE_SHEET_USER_URL: str = "https://docs.google.com/spreadsheets"
+    GOOGLE_SHEET_CREDENTIALS: str = ""
+    GOOGLE_SHEET_KEY: str = ""
 
     WORK_END_HOUR: int = 12             # Время, до которого можно бронировать место для текущего дня
     WORK_END_MINUTES: int = 00
@@ -57,6 +59,9 @@ class Config(BaseSettings):
 
     CALENDAR_SYNC_JOB_HOUR: int = 4      # Синхронизация производственного календаря с isdayoff.ru (часы запуска)
     CALENDAR_SYNC_JOB_MINUTES: int = 10  # Синхронизация производственного календаря с isdayoff.ru (минуты запуска)
+
+    SHEET_TEMPLATE_JOB_HOUR: int = 4     # Шаблоны листов месяцев в Google-таблице (часы запуска)
+    SHEET_TEMPLATE_JOB_MINUTES: int = 30 # Шаблоны листов месяцев в Google-таблице (минуты запуска)
 
     # --- HTML-виджеты (Bot API 10.4) ---
     TELEGRAM_API_BASE: str = "https://api.telegram.org"  # для беты: https://api.telegram.org/beta

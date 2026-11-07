@@ -1,3 +1,5 @@
+from datetime import date
+
 from dateutil.relativedelta import relativedelta
 
 from src.utils.tz_day import d_tz
@@ -17,8 +19,11 @@ MONTHS_RU = {
     12: "декабрь",
 }
 
+def month_title(d: date) -> str:
+    """Название листа месяца в Google-таблице: 'сентябрь 2025'. Одно и то же для данных бота и шаблона листа"""
+    return f"{MONTHS_RU[d.month]} {d.year}"
+
+
 def month_name(offset: int = 0) -> str:
     """Вернёт строку вида 'сентябрь 2025' для текущего месяца + offset"""
-    today = d_tz()
-    target = today + relativedelta(months=offset)
-    return f"{MONTHS_RU[target.month]} {target.year}"
+    return month_title(d_tz() + relativedelta(months=offset))

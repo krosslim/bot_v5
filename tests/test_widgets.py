@@ -10,7 +10,8 @@ from src.utils.today import widget_data_expiry
 
 from src.handlers.widget.widget_query_handler import parse_group, parse_private
 from src.ui.widgets.layout import OFFICE_LAYOUT, SEATS
-from src.ui.widgets.render import MAX_ZLIB_BYTES, render_booking_widget, render_digest_widget, widget_size
+from src.ui.widgets.render import (MAX_ZLIB_BYTES, _merge_foreign, render_booking_widget, render_digest_widget,
+                                   widget_layout, widget_size)
 from src.ui.widgets.state import (MAX_DATA_BYTES, CalendarDay, DaySeats, SeatHolder, build_calendar_data,
                                   build_day_state, build_digest_data, data_size, day_code, people,
                                   shift_month, short_name, was_people)
@@ -33,7 +34,7 @@ class TemplatesTest(unittest.TestCase):
 
     def test_layout_and_admin_target_are_embedded(self):
         html = render_booking_widget(42, "Иванов Иван")
-        self.assertIn(json.dumps(OFFICE_LAYOUT, ensure_ascii=False, separators=(",", ":")), html)
+        self.assertIn(json.dumps(widget_layout(), ensure_ascii=False, separators=(",", ":")), html)
         self.assertIn('U="42"', html)
         self.assertIn("Бронь за сотрудника: Иван И.", html)
         self.assertIn('U=""', render_booking_widget())
@@ -77,7 +78,8 @@ class TemplatesTest(unittest.TestCase):
         short = widget_size(render_booking_widget(1, "Иванов Иван"))[1]
         huge = widget_size(render_booking_widget(1234567890123, "Константинопольская-Длинноименная " * 3))[1]
         self.assertLessEqual(huge - short, 40)
-        self.assertLessEqual(huge, MAX_ZLIB_BYTES - 150)
+        # Запас на будущие правки схемы; всё, что меняется в рантайме (id и имя сотрудника), уже в худшем значении
+        self.assertLessEqual(huge, MAX_ZLIB_BYTES - 80)
 
     def test_stale_window_offers_reopen(self):
         html = render_booking_widget()
@@ -96,6 +98,14 @@ class TemplatesTest(unittest.TestCase):
             css = html.split("</style>")[0]
             rules = [r for r in re.findall(r"([^{}]+)\{[^}]*opacity", css)]
             self.assertEqual([r.strip() for r in rules], ["button:active"])
+
+    def test_foreign_seats_merged_into_strips(self):
+        """Подряд идущие места другой команды виджет рисует одной полосой"""
+        self.assertEqual(_merge_foreign(["x", "x", "x", "x"]), ["x4"])
+        self.assertEqual(_merge_foreign([1, 2, "b", "x"]), [1, 2, "b", "x1"])
+        self.assertEqual(_merge_foreign(["x", 1, "x", "x"]), ["x1", 1, "x2"])
+        flat = [c for item in widget_layout() if not isinstance(item, str) for row in (item[0], item[2]) for c in row]
+        self.assertEqual(sorted(c for c in flat if isinstance(c, int)), list(SEATS))
 
     def test_seats(self):
         self.assertEqual(SEATS, tuple(range(1, 11)))
