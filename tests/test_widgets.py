@@ -209,6 +209,40 @@ class StateTest(unittest.TestCase):
         self.assertEqual(data["m"][data["c"]][0], "2026-12")
         self.assertGreater(len(data["m"]), 6)
 
+    def test_calendar_future_months(self):
+        """Вперёд — WIDGET_FUTURE_MONTHS месяцев после текущего; дни после горизонта бронирования серые (x)"""
+        today, horizon = date(2026, 11, 9), date(2026, 11, 29)
+        days = [CalendarDay(date(2026, 12, 7), False, False, True, 0, 10, None),
+                CalendarDay(date(2026, 12, 12), True, False, False, 0, 10, None),
+                CalendarDay(date(2027, 1, 1), False, True, False, 0, 10, None)]
+        data = json.loads(build_calendar_data(days, today, today, horizon, future_months=2))
+        self.assertEqual([m[0] for m in data["m"]], ["2026-11", "2026-12", "2027-01"])
+        self.assertEqual(data["c"], 0)
+        dec, jan = data["m"][1][2], data["m"][2][2]
+        self.assertEqual((dec[6], dec[11], jan[0]), ("x", "w", "h"))
+        # 0 — как раньше: до месяца горизонта, а горизонт дальше future_months не обрезается
+        self.assertEqual([m[0] for m in json.loads(build_calendar_data([], today, today, horizon))["m"]], ["2026-11"])
+        self.assertEqual([m[0] for m in json.loads(build_calendar_data([], today, today, date(2026, 12, 6),
+                                                                       future_months=0))["m"]], ["2026-11", "2026-12"])
+
+    def test_calendar_future_fits_chat_data(self):
+        """Не влезает в chat_data — отбрасываются самые далёкие от сегодня месяцы с обеих сторон,
+        текущий месяц и месяцы до горизонта бронирования остаются"""
+        today, horizon = date(2026, 11, 9), date(2026, 12, 6)
+        out = build_calendar_data([], today, today, horizon, history_months=12, future_months=12)
+        self.assertLessEqual(data_size(out), MAX_DATA_BYTES)
+        data = json.loads(out)
+        keys = [m[0] for m in data["m"]]
+        self.assertEqual(keys[data["c"]], "2026-11")
+        self.assertIn("2026-12", keys)
+        back, ahead = data["c"], len(keys) - 1 - data["c"]
+        self.assertLessEqual(abs(back - ahead), 1)
+        self.assertGreater(back, 3)
+        out = build_calendar_data([], today, today, horizon, future_months=36)
+        self.assertLessEqual(data_size(out), MAX_DATA_BYTES)
+        only_future = json.loads(out)
+        self.assertEqual([m[0] for m in only_future["m"]][:2], ["2026-11", "2026-12"])
+
     def test_widget_data_expiry(self):
         tz = ZoneInfo(settings.MSC_TZ)
         end = settings.WORK_END_HOUR

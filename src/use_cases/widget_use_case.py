@@ -16,7 +16,7 @@ from src.services.tech_service import TechService
 from src.ui.widgets.layout import SEATS
 from src.ui.widgets.render import render_booking_widget, render_digest_widget
 from src.ui.widgets.state import (build_calendar_data, build_day_state, build_digest_data,
-                                  build_expired_data, shift_month)
+                                  build_expired_data, calendar_last_month, shift_month)
 from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.get_week_range import week_range
 from src.utils.today import effective_today, widget_data_expiry
@@ -116,13 +116,16 @@ class WidgetUseCase:
     #  Состояние
     # ---------------------------------------------------------------------------#
     async def calendar_data(self, user_id: int) -> str:
-        """Календарь от WIDGET_HISTORY_MONTHS месяцев назад (прошлые дни — только просмотр) до горизонта бронирования"""
+        """Календарь от WIDGET_HISTORY_MONTHS месяцев назад до WIDGET_FUTURE_MONTHS месяцев вперёд (и не короче горизонта
+        бронирования). Прошлые дни — только просмотр, дни после горизонта серые: бронь на них ещё не открыта"""
         today, horizon = d_tz(), self.horizon()
         history = max(self.cfg.WIDGET_HISTORY_MONTHS, 0)
+        future = max(self.cfg.WIDGET_FUTURE_MONTHS, 0)
         start = shift_month(today, -history)
-        end = date(horizon.year, horizon.month, calendar.monthrange(horizon.year, horizon.month)[1])
+        last = calendar_last_month(today, horizon, future)
+        end = date(last.year, last.month, calendar.monthrange(last.year, last.month)[1])
         days = await self.uc.widget_calendar(user_id, start, end)
-        return build_calendar_data(days, today, self.first_bookable(), horizon, history, widget_data_expiry())
+        return build_calendar_data(days, today, self.first_bookable(), horizon, history, widget_data_expiry(), future)
 
     async def day_state(
             self, cal_date: date, subject_id: int, subject_name: str, self_view: bool,

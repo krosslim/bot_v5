@@ -101,16 +101,23 @@ def _month_starts(start: date, end: date) -> List[date]:
     return months
 
 
+def calendar_last_month(today: date, horizon: date, future_months: int = 0) -> date:
+    """Первое число последнего месяца календаря: месяц горизонта бронирования или today + future_months, что дальше"""
+    return max(date(horizon.year, horizon.month, 1), shift_month(today, max(future_months, 0)))
+
+
 def build_calendar_data(
         days: Sequence[CalendarDay], today: date, first_bookable: date, horizon: date, history_months: int = 0,
-        expires: Optional[int] = None,
+        expires: Optional[int] = None, future_months: int = 0,
 ) -> str:
     """m — месяцы [ГГГГ-ММ, название, коды дней], c — индекс текущего месяца (с него открывается календарь),
     e — unix-время, после которого виджет предложит «Открыть заново».
-    Если история не влезает в chat_data, самые старые месяцы отбрасываются"""
+    Месяцы: от history_months назад до future_months вперёд, но не раньше конца месяца горизонта бронирования.
+    Если не влезает в chat_data, отбрасывается самый далёкий от сегодня месяц (самый старый или самый дальний впереди);
+    текущий месяц и месяцы до горизонта бронирования остаются всегда"""
     by_date = {d.cal_date: d for d in days}
     months = []
-    for m in _month_starts(shift_month(today, -max(history_months, 0)), horizon):
+    for m in _month_starts(shift_month(today, -max(history_months, 0)), calendar_last_month(today, horizon, future_months)):
         nxt = date(m.year + (m.month == 12), m.month % 12 + 1, 1)
         codes = []
         for i in range((nxt - m).days):
@@ -119,14 +126,24 @@ def build_calendar_data(
             codes.append(day_code(info, first_bookable, horizon) if info else "x")
         months.append([f"{m.year}-{m.month:02d}", f"{MONTHS_NOM[m.month - 1]} {m.year}", "".join(codes)])
     current = f"{today.year}-{today.month:02d}"
+    keep_to = f"{horizon.year}-{horizon.month:02d}"
     while True:
-        data = {"t": today.isoformat(), "c": [m[0] for m in months].index(current), "m": months}
+        keys = [m[0] for m in months]
+        c = keys.index(current)
+        data = {"t": today.isoformat(), "c": c, "m": months}
         if expires:
             data["e"] = expires
         out = dumps(data)
-        if data_size(out) <= MAX_DATA_BYTES or months[0][0] == current:
+        if data_size(out) <= MAX_DATA_BYTES:
             return out
-        months.pop(0)
+        back = c if c > 0 else -1                                    # насколько далеко самый старый месяц
+        ahead = len(months) - 1 - c if keys[-1] > max(current, keep_to) else -1  # и самый дальний впереди
+        if back < 0 and ahead < 0:
+            return out
+        if back >= ahead:
+            months.pop(0)
+        else:
+            months.pop()
 
 
 def build_expired_data() -> str:
