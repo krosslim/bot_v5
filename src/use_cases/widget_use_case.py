@@ -118,11 +118,11 @@ class WidgetUseCase:
     #  Состояние
     # ---------------------------------------------------------------------------#
     async def calendar_data(self, user_id: int) -> str:
-        """Календарь от WIDGET_HISTORY_MONTHS месяцев назад до WIDGET_FUTURE_MONTHS месяцев вперёд (и не короче горизонта
+        """Календарь от history_months месяцев назад до future_months месяцев вперёд (настройки виджетов в админке; не короче горизонта
         бронирования). Прошлые дни — только просмотр, дни после горизонта серые: бронь на них ещё не открыта"""
         today, horizon = d_tz(), self.horizon()
-        history = max(self.cfg.WIDGET_HISTORY_MONTHS, 0)
-        future = max(self.cfg.WIDGET_FUTURE_MONTHS, 0)
+        history = self.flags.widgets.history_months
+        future = self.flags.widgets.future_months
         start = shift_month(today, -history)
         last = calendar_last_month(today, horizon, future)
         end = date(last.year, last.month, calendar.monthrange(last.year, last.month)[1])
@@ -209,7 +209,7 @@ class WidgetUseCase:
         ))
 
     async def refresh_digest(self, cal_date: date) -> None:
-        if not self.cfg.DIGEST_WIDGET_ENABLED:
+        if not self.flags.digest_widget:
             return
         message_id = await self.uc.digest_message_id(cal_date)
         if message_id:

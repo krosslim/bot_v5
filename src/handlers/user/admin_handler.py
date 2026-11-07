@@ -12,6 +12,7 @@ from aiogram.types import Message
 from dishka import FromDishka
 
 from config import settings
+from src.services.feature_flags import FeatureFlags
 from src.services.tech_service import TechService
 from src.ui.keyboard.booking_remind_kb import confirm_kb
 from src.ui.messages.booking_remind_mess import build_digest_message_v2
@@ -52,6 +53,7 @@ async def handle_digest_now(
         uc: FromDishka[BookingUseCase],
         widgets: FromDishka[WidgetUseCase],
         tech_svc: FromDishka[TechService],
+        flags: FromDishka[FeatureFlags],
 ):
     try:
         user = await uc.user_or_none(msg.from_user.id)
@@ -81,7 +83,7 @@ async def handle_digest_now(
                 await msg.answer("⚠️ В ближайшие две недели нет рабочих дней в календаре")
                 return
 
-        if settings.DIGEST_WIDGET_ENABLED:
+        if flags.digest_widget:
             message = await widgets.send_digest(target)
             kind = "виджетом"
         else:
@@ -92,7 +94,7 @@ async def handle_digest_now(
                 reply_markup=confirm_kb(bookings, capacity, target),
                 disable_web_page_preview=True,
             )
-            kind = "текстом (DIGEST_WIDGET_ENABLED=false)"
+            kind = "текстом (дайджест-виджет выключен в Меню админа → Виджеты)"
 
         # Нажатия в виджете принимаются только из сообщения, записанного здесь
         await tech_svc.upsert_chat_message_id(cal_date=target, message_id=message.message_id)
@@ -112,8 +114,8 @@ async def handle_digest_now(
         logger.error("digest_now | %s", e)
         if "INPUT_MEDIA_WIDGET_NOT_ALLOWED" in str(e):
             await msg.answer("⚠️ Telegram пока не разрешает этому боту отправлять виджеты в группу.\n"
-                             "<blockquote>Личный виджет работает. Для дайджеста поставьте в .env "
-                             "DIGEST_WIDGET_ENABLED=false — он будет уходить текстом, как раньше</blockquote>")
+                             "<blockquote>Личный виджет работает. Для дайджеста выберите «текстом» в "
+                             "Настройки → Меню админа → Виджеты — он будет уходить текстом, как раньше</blockquote>")
         else:
             await msg.answer(f"⚠️ Telegram не принял дайджест:\n<code>{e}</code>")
     except DBError:

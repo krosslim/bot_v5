@@ -210,7 +210,7 @@ class StateTest(unittest.TestCase):
         self.assertGreater(len(data["m"]), 6)
 
     def test_calendar_future_months(self):
-        """Вперёд — WIDGET_FUTURE_MONTHS месяцев после текущего; дни после горизонта бронирования серые (x)"""
+        """Вперёд — future_months месяцев после текущего («Месяцы вперёд» в админке); дни после горизонта бронирования серые (x)"""
         today, horizon = date(2026, 11, 9), date(2026, 11, 29)
         days = [CalendarDay(date(2026, 12, 7), False, False, True, 0, 10, None),
                 CalendarDay(date(2026, 12, 12), True, False, False, 0, 10, None),

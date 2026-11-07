@@ -18,7 +18,7 @@ from src.dto.booking_dto import BookingStatus
 from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
-from src.services.feature_flags import FeatureFlags, WidgetsMode
+from src.services.feature_flags import FeatureFlags
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.ui.keyboard.booking_remind_kb import confirm_kb
@@ -110,12 +110,14 @@ async def chat_remind_job(container: AsyncContainer, sched: AsyncIOScheduler, po
             last_message = await sc_svc.last_message()
 
             message = None
-            if settings.DIGEST_WIDGET_ENABLED:
+            flags: FeatureFlags = await req.get(FeatureFlags)
+            if flags.digest_widget:
                 try:
                     widgets: WidgetUseCase = await req.get(WidgetUseCase)
                     message = await widgets.send_digest(tomorrow)
                 except TelegramAPIError as e:
-                    # INPUT_MEDIA_WIDGET_NOT_ALLOWED — Telegram не пускает виджеты бота в группу: DIGEST_WIDGET_ENABLED=false
+                    # INPUT_MEDIA_WIDGET_NOT_ALLOWED — Telegram не пускает виджеты бота в группу:
+                    # выключить дайджест-виджет в админке (Меню админа → Виджеты)
                     logger.error(f"ERROR: chat_remind_job | виджет не отправлен, шлём текст | {str(e)}")
             if message is None:
                 message = await bot.send_message(
@@ -168,7 +170,8 @@ async def check_chat_remind_job(container: AsyncContainer) -> None:
                 return
 
             # False — дайджест на эту дату ушёл текстом (виджет не отправился): обновляем текст как раньше
-            if settings.DIGEST_WIDGET_ENABLED and await _refresh_digest_widget(req, sc_svc, target_date):
+            flags: FeatureFlags = await req.get(FeatureFlags)
+            if flags.digest_widget and await _refresh_digest_widget(req, sc_svc, target_date):
                 return
 
             weekday = target_date.isoweekday()
@@ -448,7 +451,8 @@ async def cancel_waitlist_bookings_job(container: AsyncContainer) -> None:
         except DBError as e:
             logger.exception(f"ERROR: cancel_waitlist_job | {str(e)}")
 
-        if settings.DIGEST_WIDGET_ENABLED:
+        flags: FeatureFlags = await req.get(FeatureFlags)
+        if flags.digest_widget:
             try:
                 widgets: WidgetUseCase = await req.get(WidgetUseCase)
                 await widgets.refresh_digest(d_tz())    # после WORK_END_HOUR день закрыт: виджет только для чтения
@@ -509,7 +513,7 @@ async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
                 affected.append(promoted_id)
 
         flags: FeatureFlags = await req.get(FeatureFlags)
-        if flags.widgets_mode != WidgetsMode.OFF or settings.DIGEST_WIDGET_ENABLED:
+        if flags.any_widgets:
             try:
                 widgets: WidgetUseCase = await req.get(WidgetUseCase)
                 await widgets.refresh_digest(tomorrow)

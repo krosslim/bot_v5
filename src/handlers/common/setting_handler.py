@@ -10,7 +10,8 @@ from src.utils.birthday import validate_birthday, birthday_str_to_date
 from src.handlers.user.booking_handler import render_booking_page, open_booking_widget
 from src.infrastructure.telegram.widgets import widgets_supported
 from src.services.exceptions import UserWarn
-from src.services.feature_flags import FeatureFlags, MODE_TITLES, WidgetsMode
+from src.services.feature_flags import (FeatureFlags, MODE_TITLES, MONTHS_CHOICES, WidgetsMode, digest_title,
+                                        months_title)
 from src.services.tech_service import TechService
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
@@ -20,9 +21,10 @@ from src.ui.keyboard.settings_inline_kb import (render_settings_menu_kb,
                                                 render_lead_admin_menu_kb,
                                                 render_week_visits_count_kb,
                                                 render_profile_settings_kb, get_dict_with_back_kb,
-                                                render_widgets_settings_kb)
+                                                render_widgets_settings_kb, render_widgets_months_kb)
 from src.ui.messages.settings_mess import (render_auto_confirm_mess, render_employee_group_mess,
-                                           visit_plan_report_mess, render_widgets_settings_mess)
+                                           visit_plan_report_mess, render_widgets_settings_mess,
+                                           render_widgets_months_mess)
 from src.ui.messages.start_mess import bot_menu_mess, incorrect_birthday_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
@@ -503,7 +505,7 @@ async def _get_profile(
 
 
 # ---------------------------------------------------------------------------#
-#  Меню админа → Виджеты: режим выключены / только админам / всем (FeatureFlags)
+#  Меню админа → Виджеты: режим в личке, дайджест, месяцы календаря (FeatureFlags)
 # ---------------------------------------------------------------------------#
 async def _admin_or_none(call: CallbackQuery, uc: UserUseCase):
     """Права проверяем по БД на каждое нажатие: кнопка могла остаться у бывшего админа"""
@@ -521,8 +523,25 @@ async def _admin_or_none(call: CallbackQuery, uc: UserUseCase):
 async def _render_widgets_screen(call: CallbackQuery, bot: Bot, flags: FeatureFlags) -> None:
     await call.message.edit_text(
         text=render_widgets_settings_mess(flags.widgets, await widgets_supported(bot)),
-        reply_markup=render_widgets_settings_kb(flags.widgets_mode),
+        reply_markup=render_widgets_settings_kb(flags.widgets),
     )
+
+
+def parse_widgets_change(extra: object) -> tuple[dict, str] | None:
+    """«поле=значение» из кнопки → (изменение для FeatureFlags.update_widgets, подпись для ответа)"""
+    field, _, value = str(extra or "").partition("=")
+    try:
+        if field == "mode":
+            mode = WidgetsMode(value)
+            return {"mode": mode}, f"Бронирование в личке: {MODE_TITLES[mode]}"
+        if field == "digest" and value in ("on", "off"):
+            return {"digest": value == "on"}, f"Дайджест в группе: {digest_title(value == 'on')}"
+        if field in ("history", "future") and int(value) in MONTHS_CHOICES:
+            label = "Прошлые месяцы" if field == "history" else "Месяцы вперёд"
+            return {f"{field}_months": int(value)}, f"{label}: {months_title(int(value))}"
+    except ValueError:
+        pass
+    return None
 
 
 @router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.WIDGETS})))
@@ -534,29 +553,45 @@ async def handle_settings_widgets(call: CallbackQuery, bot: Bot, uc: FromDishka[
     await call.answer()
 
 
+@router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.WIDGETS_PICK})))
+async def handle_settings_widgets_pick(call: CallbackQuery, callback_data: SettingsCB,
+                                       uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags]):
+    if await _admin_or_none(call, uc) is None:
+        return
+    field = str(callback_data.extra)
+    if field not in ("history", "future"):
+        await call.answer("⚠️ Неизвестная настройка", show_alert=True)
+        return
+    current = flags.widgets.history_months if field == "history" else flags.widgets.future_months
+    await call.message.edit_text(text=render_widgets_months_mess(field, current),
+                                 reply_markup=render_widgets_months_kb(field, current))
+    await call.answer()
+
+
 @router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.WIDGETS_SET})))
 async def handle_settings_widgets_set(call: CallbackQuery, callback_data: SettingsCB, bot: Bot,
                                       uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags]):
     user = await _admin_or_none(call, uc)
     if user is None:
         return
-    try:
-        mode = WidgetsMode(str(callback_data.extra))
-    except ValueError:
-        await call.answer("⚠️ Неизвестный режим", show_alert=True)
+    parsed = parse_widgets_change(callback_data.extra)
+    if parsed is None:
+        await call.answer("⚠️ Неизвестная настройка", show_alert=True)
         return
-    if mode == flags.widgets_mode:
-        await call.answer(f"Уже: {MODE_TITLES[mode]}")
-        return
-    if mode != WidgetsMode.OFF and not await widgets_supported(bot):
+    change, label = parsed
+    turns_on = change.get("mode", WidgetsMode.OFF) != WidgetsMode.OFF or change.get("digest") is True
+    if turns_on and not await widgets_supported(bot):
         await call.answer("⚠️ Bot API по этому адресу не знает виджеты.\n"
                           "Нужен TELEGRAM_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота",
                           show_alert=True)
         return
     try:
-        await flags.set_widgets_mode(mode, user.full_name)
+        changed = await flags.update_widgets(user.full_name, **change)
     except DBError:
         await call.answer("⚠️ Не удалось сохранить, попробуйте ещё раз", show_alert=True)
         return
-    await _render_widgets_screen(call, bot, flags)
-    await call.answer(f"Виджеты: {MODE_TITLES[mode]}")
+    # Из выбора месяцев всегда возвращаемся на экран виджетов; нажатие на текущий режим экран не меняет
+    # (повторная отрисовка того же текста — ошибка Telegram «message is not modified»)
+    if changed or any(k.endswith("_months") for k in change):
+        await _render_widgets_screen(call, bot, flags)
+    await call.answer(label if changed else f"Уже так: {label[0].lower()}{label[1:]}")

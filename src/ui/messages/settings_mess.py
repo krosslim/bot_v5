@@ -3,7 +3,7 @@ from datetime import date
 from typing import List
 
 from src.dto.user_dto import UserDTO, UserStatisticsDTO
-from src.services.feature_flags import MODE_TITLES, WidgetsSetting
+from src.services.feature_flags import MODE_TITLES, WidgetsSetting, digest_title, months_title
 
 
 def render_auto_confirm_mess() -> str:
@@ -140,10 +140,24 @@ def render_widgets_settings_mess(setting: WidgetsSetting, api_supported: bool) -
     api = ("✅ Bot API поддерживает виджеты" if api_supported else
            "⚠️ Bot API по этому адресу не знает виджеты — включить не получится. "
            "Нужен TELEGRAM_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота")
-    return (f"<b>🧩 Виджеты бронирования</b>\n\n"
-            f"Сейчас: <b>{MODE_TITLES[setting.mode]}</b>{changed}\n{api}\n\n"
-            "<blockquote expandable><b>• Выключены</b> — у всех прежние экраны: недельное расписание и «Мои брони»\n"
-            "<b>• Только админам</b> — виджет у админов, у остальных прежние экраны. Удобно проверить на проде\n"
-            "<b>• Всем</b> — «Забронировать место» открывает календарь со схемой зала, «Мои брони» скрыта\n\n"
-            "Окна, уже открытые в чатах, при выключении не пропадают: любое нажатие в них заменит окно меню. "
-            "Групповой дайджест этот переключатель не затрагивает (DIGEST_WIDGET_ENABLED).</blockquote>")
+    return (f"<b>🧩 Виджеты</b>\n\n"
+            f"Бронирование в личке: <b>{MODE_TITLES[setting.mode]}</b>\n"
+            f"Дайджест в группе: <b>{digest_title(setting.digest)}</b>\n"
+            f"Календарь: назад <b>{months_title(setting.history_months)}</b>, "
+            f"вперёд <b>{months_title(setting.future_months)}</b>{changed}\n{api}\n\n"
+            "<blockquote expandable><b>Бронирование в личке</b>\n"
+            "• Выключены — у всех прежние экраны: недельное расписание и «Мои брони»\n"
+            "• Только админам — виджет у админов, у остальных прежние экраны. Удобно проверить на проде\n"
+            "• Всем — «Забронировать место» открывает календарь со схемой зала, «Мои брони» скрыта\n"
+            "Окна, уже открытые в чатах, при выключении не пропадают: любое нажатие в них заменит окно меню.\n\n"
+            "<b>Дайджест в группе</b> — виджетом со схемой зала или текстом, как раньше. Telegram пока не пускает "
+            "виджеты ботов в группы: если не пустит, дайджест уйдёт текстом, а в чат алертов придёт ошибка.\n\n"
+            "<b>Календарь</b> — сколько прошлых месяцев можно посмотреть и на сколько месяцев вперёд листать. "
+            "Бронь всё равно только в пределах горизонта бронирования. Если месяцев слишком много для лимита "
+            "Telegram, самые дальние отбрасываются.</blockquote>")
+
+
+def render_widgets_months_mess(field: str, current: int) -> str:
+    what = ("Сколько прошлых месяцев можно посмотреть в календаре (только просмотр)" if field == "history" else
+            "На сколько месяцев после текущего можно листать календарь вперёд. Бронь — только в пределах горизонта")
+    return f"<b>🧩 Виджеты → календарь</b>\n\n{what}.\nСейчас: <b>{months_title(current)}</b>"

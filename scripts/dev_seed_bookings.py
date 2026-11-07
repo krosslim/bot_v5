@@ -3,8 +3,9 @@
     python scripts/dev_seed_bookings.py              # сценарии 9–30 ноября 2026 + прошлые дни, «я» = единственный админ
     python scripts/dev_seed_bookings.py --me 123456   # явно указать свой user_id
     python scripts/dev_seed_bookings.py --only-past   # только прошлые дни, сценарии не трогать
+    python scripts/dev_seed_bookings.py --history-months 6   # глубина прошлых дней (по умолчанию 3)
 
-Прошлые дни — рабочие дни, которые видны в календаре виджета: от WIDGET_HISTORY_MONTHS месяцев назад
+Прошлые дни — рабочие дни, которые видны в календаре виджета: от --history-months месяцев назад
 до начала сценариев. Каждый день — случайная, но одинаковая при каждом запуске рассадка; у меня бронь
 примерно в половине дней. Всё подтверждено (неподтверждённые брони отменяются вечером накануне).
 
@@ -60,8 +61,8 @@ INSERT = text(
 )
 
 
-def history_range() -> tuple[date, date]:
-    return shift_month(d_tz(), -settings.WIDGET_HISTORY_MONTHS), START - timedelta(days=1)
+def history_range(months: int) -> tuple[date, date]:
+    return shift_month(d_tz(), -months), START - timedelta(days=1)
 
 
 async def clear_range(conn, start: date, end: date) -> int:
@@ -82,8 +83,8 @@ async def recount(conn, start: date, end: date) -> None:
     ), {"s": start, "e": end})
 
 
-async def seed_history(conn, me: int, others: list[int]) -> None:
-    start, end = history_range()
+async def seed_history(conn, me: int, others: list[int], months: int) -> None:
+    start, end = history_range(months)
     if start > end:
         return
     days = (await conn.execute(text(
@@ -122,7 +123,7 @@ def guard_local(url: str) -> None:
         sys.exit(f"Отказ: POSTGRES_URL указывает на {host}. Скрипт только для локальной базы.")
 
 
-async def main(me_arg: int | None, only_past: bool) -> None:
+async def main(me_arg: int | None, only_past: bool, history_months: int) -> None:
     guard_local(settings.POSTGRES_URL)
     engine = create_async_engine(settings.POSTGRES_URL)
     async with engine.begin() as conn:
@@ -135,7 +136,7 @@ async def main(me_arg: int | None, only_past: bool) -> None:
         others = (await conn.execute(text(
             "SELECT user_id FROM users WHERE is_active AND user_id <> :me ORDER BY user_id"
         ), {"me": me})).scalars().all()
-        await seed_history(conn, me, list(others))
+        await seed_history(conn, me, list(others), history_months)
         if only_past:
             await engine.dispose()
             print("\nГотово. Откройте «Забронировать место» заново, чтобы календарь подтянул данные.")
@@ -187,5 +188,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--me", type=int, help="ваш user_id (по умолчанию — единственный админ)")
     parser.add_argument("--only-past", action="store_true", help="заполнить только прошлые дни, сценарии не трогать")
+    parser.add_argument("--history-months", type=int, default=3,
+                        help="сколько прошлых месяцев заполнить (как «Прошлые месяцы» в Меню админа → Виджеты)")
     args = parser.parse_args()
-    asyncio.run(main(args.me, args.only_past))
+    asyncio.run(main(args.me, args.only_past, args.history_months))

@@ -71,8 +71,9 @@ class SettingsStep(StrEnum):
     EMPLOYEE_STATISTICS = auto()
     EMPLOYEE_STATISTICS_INFO = auto()
     EMPLOYEE_STATISTICS_PAGE = auto()
-    WIDGETS = auto()          # меню админа → режим виджетов
-    WIDGETS_SET = auto()      # extra — WidgetsMode: off / admins / all
+    WIDGETS = auto()          # меню админа → настройки виджетов
+    WIDGETS_SET = auto()      # extra — «поле=значение»: mode=all, digest=on, history=3, future=2
+    WIDGETS_PICK = auto()     # extra — history / future: выбор числа месяцев
 
 
 class ChatBookingStep(StrEnum):
