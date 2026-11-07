@@ -139,7 +139,7 @@ def render_widgets_settings_mess(setting: WidgetsSetting, api_supported: bool) -
         changed = f"\nИзменено: {setting.changed_at:%d.%m.%Y %H:%M}{who}"
     api = ("✅ Bot API поддерживает виджеты" if api_supported else
            "⚠️ Bot API по этому адресу не знает виджеты — включить не получится. "
-           "Нужен TELEGRAM_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота")
+           "Нужен TG_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота")
     return (f"<b>🧩 Виджеты</b>\n\n"
             f"Бронирование в личке: <b>{MODE_TITLES[setting.mode]}</b>\n"
             f"Дайджест в группе: <b>{digest_title(setting.digest)}</b>\n"

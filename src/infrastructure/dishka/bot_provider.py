@@ -13,7 +13,7 @@ from config import Config
 
 def api_server(cfg: Config) -> TelegramAPIServer:
     """Адрес Bot API: обычный или бета (Bot API 10.4)"""
-    base = cfg.TELEGRAM_API_BASE.rstrip("/")
+    base = cfg.TG_API_BASE.rstrip("/")
     return TelegramAPIServer(
         base=f"{base}/bot{{token}}/{{method}}",
         file=f"{base}/file/bot{{token}}/{{path}}",

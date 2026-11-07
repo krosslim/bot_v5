@@ -64,7 +64,7 @@ class Config(BaseSettings):
     SHEET_TEMPLATE_JOB_MINUTES: int = 30 # Шаблоны листов месяцев в Google-таблице (минуты запуска)
 
     # --- HTML-виджеты (Bot API 10.4) ---
-    TELEGRAM_API_BASE: str = "https://api.telegram.org"  # для беты: https://api.telegram.org/beta
+    TG_API_BASE: str = "https://api.telegram.org"  # для беты: https://api.telegram.org/beta
 
 
     TG_ALERTS_CHAT_ID: int = -1000000000000 # Чат для алертов

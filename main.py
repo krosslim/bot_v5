@@ -57,9 +57,9 @@ async def main() -> None:
     if flags.any_widgets and not await widgets_supported(bot):
         logger.error(
             "Bot API по адресу %s не знает методы виджетов (sendWidget). Bot API 10.4 сейчас доступен "
-            "на бете: TELEGRAM_API_BASE=https://api.telegram.org/beta. Пока это не исправлено, "
+            "на бете: TG_API_BASE=https://api.telegram.org/beta. Пока это не исправлено, "
             "бот показывает старые экраны, а дайджест уходит текстом.",
-            settings.TELEGRAM_API_BASE,
+            settings.TG_API_BASE,
         )
 
     scheduler: AsyncIOScheduler = await container.get(AsyncIOScheduler)

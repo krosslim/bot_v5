@@ -106,9 +106,9 @@ async def handle_digest_now(
         )
 
     except TelegramNotFound:
-        logger.error("digest_now | Bot API %s не знает sendWidget", settings.TELEGRAM_API_BASE)
+        logger.error("digest_now | Bot API %s не знает sendWidget", settings.TG_API_BASE)
         await msg.answer("⚠️ Этот адрес Bot API не поддерживает виджеты.\n"
-                         "<blockquote>Укажите в .env TELEGRAM_API_BASE=https://api.telegram.org/beta "
+                         "<blockquote>Укажите в .env TG_API_BASE=https://api.telegram.org/beta "
                          "и перезапустите бота</blockquote>")
     except (TelegramAPIError, WidgetTooLarge) as e:
         logger.error("digest_now | %s", e)

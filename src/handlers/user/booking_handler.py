@@ -299,8 +299,8 @@ async def open_booking_widget(
     try:
         await widgets.send_booking_widget(call.from_user.id, call.from_user.id, target_id, target_name)
     except TelegramNotFound as e:
-        logger.error("open_booking_widget | Bot API %s не знает sendWidget, нужен TELEGRAM_API_BASE беты | %s",
-                     settings.TELEGRAM_API_BASE, e)
+        logger.error("open_booking_widget | Bot API %s не знает sendWidget, нужен TG_API_BASE беты | %s",
+                     settings.TG_API_BASE, e)
         return False
     except (TelegramAPIError, WidgetTooLarge, DBError) as e:
         logger.error("open_booking_widget | user=%s target=%s | %s", call.from_user.id, target_id, e)

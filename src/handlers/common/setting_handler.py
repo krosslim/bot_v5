@@ -582,7 +582,7 @@ async def handle_settings_widgets_set(call: CallbackQuery, callback_data: Settin
     turns_on = change.get("mode", WidgetsMode.OFF) != WidgetsMode.OFF or change.get("digest") is True
     if turns_on and not await widgets_supported(bot):
         await call.answer("⚠️ Bot API по этому адресу не знает виджеты.\n"
-                          "Нужен TELEGRAM_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота",
+                          "Нужен TG_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота",
                           show_alert=True)
         return
     try:
