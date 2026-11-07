@@ -74,6 +74,8 @@ class SettingsStep(NameEnum):
     WIDGETS = auto()          # меню админа → настройки виджетов
     WIDGETS_SET = auto()      # extra — «поле=значение»: mode=all, digest=on, history=3, future=2
     WIDGETS_PICK = auto()     # extra — history / future: выбор числа месяцев
+    WIDGETS_BOSS = auto()     # extra — страница списка сотрудников: выбор руководителя на схеме зала
+    WIDGETS_BOSS_SET = auto() # extra — user_id руководителя, 0 — убрать
 
 
 class ChatBookingStep(NameEnum):

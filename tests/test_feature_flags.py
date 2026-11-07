@@ -8,8 +8,8 @@ from src.services import feature_flags as module
 from src.services.feature_flags import ADMINS_TTL, FeatureFlags, WidgetsMode, WidgetsSetting
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.handlers.common.setting_handler import parse_widgets_change
-from src.ui.keyboard.settings_inline_kb import (render_lead_admin_menu_kb, render_widgets_months_kb,
-                                                render_widgets_settings_kb)
+from src.ui.keyboard.settings_inline_kb import (render_lead_admin_menu_kb, render_widgets_boss_kb,
+                                                render_widgets_months_kb, render_widgets_settings_kb)
 from src.utils.db_exc_wrapper import DBError
 
 
@@ -77,6 +77,14 @@ class Clock:
         return self.now
 
 
+def _user(user_id, full_name):
+    from datetime import datetime
+    from src.dto.user_dto import UserDTO
+    return UserDTO(user_id=user_id, full_name=full_name, is_active=True, auto_confirm=False, auto_join_queue=False,
+                   is_admin=False, is_lead=False, profession_id=1, product_id=1, week_visit_plan=None,
+                   birth_date=None, created_at=datetime(2026, 1, 1))
+
+
 def button_texts(markup):
     return [b.text for row in markup.inline_keyboard for b in row]
 
@@ -136,6 +144,22 @@ class FeatureFlagsTest(unittest.IsolatedAsyncioTestCase):
         await again.load()
         w = again.widgets
         self.assertEqual((w.digest, w.history_months, w.future_months), (True, 3, 2))
+
+    async def test_boss_persists_and_alerts(self):
+        self.assertTrue(await self.flags.update_widgets("Админ", boss_id=42, boss_name="Петров Дмитрий"))
+        self.assertEqual(self.alerts.sent[-1].text, "Руководитель на схеме: не выбран → Дмитрий П.")
+        again = FeatureFlags(FakeSessionFactory(self.db), FakeAlerts())
+        await again.load()
+        self.assertEqual((again.widgets.boss_id, again.widgets.boss_name), (42, "Петров Дмитрий"))
+        # Тот же человек с новым ФИО — не изменение: виджеты и так берут имя из users по boss_id
+        self.assertFalse(await self.flags.update_widgets("Админ", boss_id=42, boss_name="Петров Дмитрий Иванович"))
+        self.assertTrue(await self.flags.update_widgets("Админ", boss_id=None, boss_name=None))
+        self.assertEqual(self.alerts.sent[-1].text, "Руководитель на схеме: Дмитрий П. → не выбран")
+
+    def test_boss_loads_defensively(self):
+        self.assertIsNone(WidgetsSetting.loads('{"mode": "all"}').boss_id)
+        broken = WidgetsSetting.loads('{"boss_id": "abc", "boss_name": "Кто-то"}')
+        self.assertEqual((broken.boss_id, broken.boss_name), (None, None))
 
     async def test_months_are_clamped(self):
         await self.flags.update_widgets("Админ", history_months=100, future_months=-5)
@@ -206,12 +230,27 @@ class KeyboardsTest(unittest.TestCase):
         self.assertEqual(texts[:6], ["⚪️ Выключены", "🔘 Только админам", "⚪️ Всем", "📰 Дайджест в группе: виджетом",
                                      "⬅️ Прошлые месяцы: 3 мес.", "➡️ Месяцы вперёд: нет"])
 
+    def test_widgets_screen_shows_boss(self):
+        self.assertIn("👤 Руководитель на схеме: не выбран", button_texts(render_widgets_settings_kb(WidgetsSetting())))
+        setting = WidgetsSetting(boss_id=42, boss_name="Петров Дмитрий")
+        self.assertIn("👤 Руководитель на схеме: Дмитрий П.", button_texts(render_widgets_settings_kb(setting)))
+
+    def test_boss_picker(self):
+        employees = [_user(i, f"Сотрудник{i:02d} Имя") for i in range(1, 24)]
+        texts = button_texts(render_widgets_boss_kb(employees, 0, 3))
+        self.assertEqual(texts[:4], ["⚪️ Сотрудник01 И.", "⚪️ Сотрудник02 И.", "🔘 Сотрудник03 И.", "⚪️ Сотрудник04 И."])
+        self.assertEqual(texts[-4:], ["1 / 3", "›", "✖️ Убрать руководителя", "« Виджеты"])
+        last = button_texts(render_widgets_boss_kb(employees, 99, None))     # страница за пределами — последняя
+        self.assertEqual(last[-3:], ["‹", "3 / 3", "« Виджеты"])
+        self.assertNotIn("✖️ Убрать руководителя", last)
+
     def test_months_picker(self):
         texts = button_texts(render_widgets_months_kb("history", 3))
         self.assertEqual(texts, ["⚪️ нет", "⚪️ 1 мес.", "⚪️ 2 мес.", "🔘 3 мес.", "⚪️ 6 мес.", "⚪️ 12 мес.", "« Виджеты"])
 
     def test_callback_data_fits_telegram_limit(self):
-        for markup in (render_widgets_settings_kb(WidgetsSetting()), render_widgets_months_kb("future", 12)):
+        boss_kb = render_widgets_boss_kb([_user(10 ** 19 - 1, "Константинопольская Александра")] * 30, 1, 10 ** 19 - 1)
+        for markup in (render_widgets_settings_kb(WidgetsSetting()), render_widgets_months_kb("future", 12), boss_kb):
             for row in markup.inline_keyboard:
                 for b in row:
                     self.assertLessEqual(len(b.callback_data.encode()), 64, b.callback_data)

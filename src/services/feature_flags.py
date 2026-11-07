@@ -1,4 +1,5 @@
 """Настройки виджетов, которые админ меняет в боте («Настройки → Меню админа → Виджеты»), без перезапуска.
+Сюда же входит руководитель на схеме зала: сотрудник, чьё имя стоит на месте руководителя.
 
 Все настройки хранятся одной JSON-строкой в system_config (ключ widgets) и держатся в памяти: клавиатуры
 строятся часто, ходить за ними в БД каждый раз незачем. Бот работает в одном экземпляре, поэтому копия
@@ -16,6 +17,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.services.alert_service import Alert, AlertService
+from src.ui.widgets.state import short_name
 from src.storage.postgres.repository import Repository
 from src.utils.db_exc_wrapper import DBError
 
@@ -48,6 +50,17 @@ def digest_title(on: bool) -> str:
     return "виджетом" if on else "текстом"
 
 
+def boss_title(name: Optional[str]) -> str:
+    return short_name(name) if name else "не выбран"
+
+
+def _user_id(value: Any) -> Optional[int]:
+    try:
+        return int(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _months(value: Any) -> int:
     try:
         return min(max(int(value), 0), MAX_MONTHS)
@@ -61,6 +74,9 @@ class WidgetsSetting:
     digest: bool = False                    # дайджест в группе уходит виджетом (иначе текстом)
     history_months: int = 0                 # сколько прошлых месяцев можно листать в календаре (только просмотр)
     future_months: int = 0                  # сколько месяцев после текущего можно листать вперёд
+    boss_id: Optional[int] = None           # руководитель на схеме зала (users.user_id)
+    boss_name: Optional[str] = None         # его ФИО на момент выбора — для экрана админки и алертов;
+                                            # виджеты берут актуальное имя из users по boss_id
     changed_by: Optional[str] = None
     changed_at: Optional[datetime] = None
 
@@ -68,6 +84,7 @@ class WidgetsSetting:
         return json.dumps({
             "mode": self.mode.value, "digest": self.digest,
             "history_months": self.history_months, "future_months": self.future_months,
+            "boss_id": self.boss_id, "boss_name": self.boss_name,
             "by": self.changed_by, "at": self.changed_at.isoformat() if self.changed_at else None,
         }, ensure_ascii=False)
 
@@ -92,8 +109,10 @@ class WidgetsSetting:
             changed_at = datetime.fromisoformat(at) if at else None
         except (TypeError, ValueError):
             changed_at = None
+        boss_id = _user_id(data.get("boss_id"))
         return cls(mode, data.get("digest") is True, _months(data.get("history_months")),
-                   _months(data.get("future_months")), data.get("by"), changed_at)
+                   _months(data.get("future_months")), boss_id, data.get("boss_name") if boss_id else None,
+                   data.get("by"), changed_at)
 
     def changes_from(self, old: "WidgetsSetting") -> List[str]:
         """Что поменялось — строки для алерта и лога"""
@@ -108,6 +127,8 @@ class WidgetsSetting:
         if self.future_months != old.future_months:
             out.append(f"Месяцы вперёд в календаре: {months_title(old.future_months)} → "
                        f"{months_title(self.future_months)}")
+        if self.boss_id != old.boss_id:
+            out.append(f"Руководитель на схеме: {boss_title(old.boss_name)} → {boss_title(self.boss_name)}")
         return out
 
 
@@ -178,7 +199,8 @@ class FeatureFlags:
 
     # ------------------------------------------------------------------ запись
     async def update_widgets(self, actor_name: str, **changes: Any) -> bool:
-        """Поменять настройки: mode, digest, history_months, future_months. False — ничего не изменилось.
+        """Поменять настройки: mode, digest, history_months, future_months, boss_id + boss_name.
+        False — ничего не изменилось.
         DBError пробрасывается: настройки в памяти остаются прежними"""
         old = self._widgets
         if "history_months" in changes:

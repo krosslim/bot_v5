@@ -1,12 +1,13 @@
 """Сборка HTML виджетов из шаблонов. HTML нельзя изменить после отправки, поэтому всё постоянное вшивается здесь."""
 import json
+import re
 import zlib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import settings
-from src.ui.widgets.layout import BOSS_LABEL, LAYOUT_TOP_ROWS, OFFICE_LAYOUT, LayoutCell, LayoutItem
+from src.ui.widgets.layout import LAYOUT_TOP_ROWS, OFFICE_LAYOUT, LayoutCell, LayoutItem
 from src.ui.widgets.state import short_name
 
 MAX_HTML_BYTES = 32768   # лимит Telegram на исходный HTML
@@ -43,7 +44,15 @@ def widget_layout() -> List[LayoutItem]:
 
 @lru_cache(maxsize=None)
 def _template(name: str) -> str:
-    return (_DIR / f"{name}.html").read_text(encoding="utf-8")
+    """Шаблон без переносов строк в <style> и <script>: смысла они не несут, а в лимите 4 КБ — байты.
+    В скриптах каждая строка заканчивается на ; { } , или + и ни одна не начинается с ( [ / + - ` —
+    склейка не меняет разбор (тест test_templates_join_safely). Цвета темы (--tg-theme-*) без запасных значений:
+    рендерер Telegram задаёт палитру всегда, его собственные UA-стили тоже берут её без запасных"""
+    html = (_DIR / f"{name}.html").read_text(encoding="utf-8")
+    for tag in ("style", "script"):
+        html = re.sub(rf"<{tag}>(.*?)</{tag}>", lambda m: f"<{tag}>" + re.sub(r"\n\s*", "", m.group(1)) + f"</{tag}>",
+                      html, count=1, flags=re.S)
+    return html
 
 
 def _fill(template: str, values: Dict[str, Any]) -> str:
@@ -65,23 +74,26 @@ def _checked(html: str) -> str:
 
 
 @lru_cache(maxsize=64)
-def render_booking_widget(target_user_id: Optional[int] = None, target_name: Optional[str] = None) -> str:
-    """Личный виджет. target_* — бронь админом за сотрудника: виджет добавит @user_id к каждому запросу."""
+def render_booking_widget(
+        target_user_id: Optional[int] = None, target_name: Optional[str] = None, boss: str = "",
+) -> str:
+    """Личный виджет. target_* — бронь админом за сотрудника: виджет добавит @user_id к каждому запросу.
+    boss — короткое имя руководителя на схеме (WidgetUseCase.boss_label), пустое — место со штриховкой."""
     return _checked(_fill(_template("booking"), {
         "LAYOUT": widget_layout(),
         "TOP": LAYOUT_TOP_ROWS,
-        "BOSS": BOSS_LABEL,
+        "BOSS": boss,
         "USER": str(target_user_id) if target_user_id else "",
         # Короткое имя: длина HTML не зависит от длины ФИО, иначе длинное имя упрётся в лимит 4 КБ
         "AS": f"Бронь за сотрудника: {short_name(target_name or '', 20)}" if target_user_id else "",
     }))
 
 
-@lru_cache(maxsize=1)
-def render_digest_widget() -> str:
+@lru_cache(maxsize=4)
+def render_digest_widget(boss: str = "") -> str:
     return _checked(_fill(_template("digest"), {
         "LAYOUT": widget_layout(),
         "TOP": LAYOUT_TOP_ROWS,
-        "BOSS": BOSS_LABEL,
+        "BOSS": boss,
         "BOT": settings.BOT_USERNAME,
     }))

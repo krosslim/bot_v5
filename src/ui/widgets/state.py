@@ -255,7 +255,11 @@ def build_day_state(
 #  Дайджест в группе
 # ---------------------------------------------------------------------------#
 def build_digest_data(day: DaySeats, seats: Sequence[int], closed: bool) -> str:
+    """f/c — «Свободно f из c» под датой, считается как в личном виджете (build_day_state):
+    места сверх лимита дня (capacity) не свободны и не входят в c"""
     taken, free = day.by_seat(), set(day.free_seats(seats))
+    total = min(day.capacity, len(seats))
+    free_count = max(0, min(total - len(day.holders), len(free)))
     for limit in (14, 9, 6):
         s = []
         for n in range(1, max(seats) + 1):
@@ -265,7 +269,7 @@ def build_digest_data(day: DaySeats, seats: Sequence[int], closed: bool) -> str:
                 s.append(0)
             else:
                 s.append([UNAVAILABLE_SEAT, 1])
-        data = {"d": day.cal_date.isoformat(), "t": day_title(day.cal_date), "s": s}
+        data = {"d": day.cal_date.isoformat(), "t": day_title(day.cal_date), "f": free_count, "c": total, "s": s}
         if closed:
             data["x"] = 1
         out = dumps(data)

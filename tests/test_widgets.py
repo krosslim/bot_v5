@@ -2,6 +2,7 @@
 import json
 import re
 import unittest
+from pathlib import Path
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -10,6 +11,7 @@ from src.utils.today import widget_data_expiry
 
 from src.handlers.widget.widget_query_handler import parse_group, parse_private
 from src.ui.widgets.layout import OFFICE_LAYOUT, SEATS
+from src.ui.widgets import render as render_module
 from src.ui.widgets.render import (MAX_ZLIB_BYTES, _merge_foreign, render_booking_widget, render_digest_widget,
                                    widget_layout, widget_size)
 from src.ui.widgets.state import (MAX_DATA_BYTES, CalendarDay, DaySeats, SeatHolder, build_calendar_data,
@@ -26,7 +28,9 @@ def _full_day(cal_date: date, confirmed: bool = False) -> DaySeats:
 
 class TemplatesTest(unittest.TestCase):
     def test_sizes_within_telegram_limits(self):
-        for html in (render_booking_widget(), render_booking_widget(1234567890123, LONG_NAME), render_digest_widget()):
+        boss = short_name(LONG_NAME)
+        for html in (render_booking_widget(), render_booking_widget(1234567890123, LONG_NAME, boss),
+                     render_digest_widget(), render_digest_widget(boss)):
             raw, packed = widget_size(html)
             self.assertLessEqual(packed, MAX_ZLIB_BYTES)
             self.assertNotIn("__LAYOUT__", html)
@@ -72,11 +76,20 @@ class TemplatesTest(unittest.TestCase):
             # абсолютный псевдоэлемент через calc() и обрезает его overflow:hidden
             self.assertIn('<i class="sp"></i>', html)
             self.assertNotIn(".ld", html)
+            # В местах (flex) спиннер центрирует align-self: margin:auto у flex-элемента клиент не учитывает
+            self.assertRegex(html, r"\.sp\{[^}]*align-self:center")
+
+    def test_day_hint_without_color_dot(self):
+        """Под датой только текст («Свободно 5 из 10», ФИО, сообщение), без цветной точки"""
+        html = render_booking_widget()
+        self.assertNotIn('class="dt', html)
+        self.assertIn("+'>'+esc(fl?fl[1]:D.h)+'</small>", html)
 
     def test_long_admin_name_does_not_grow_html(self):
         """Подпись «Бронь за сотрудника» — короткое имя: длина ФИО не приближает виджет к лимиту 4 КБ"""
-        short = widget_size(render_booking_widget(1, "Иванов Иван"))[1]
-        huge = widget_size(render_booking_widget(1234567890123, "Константинопольская-Длинноименная " * 3))[1]
+        boss = short_name("Константинопольский Александр")    # руководитель на схеме — тоже в худшем значении
+        short = widget_size(render_booking_widget(1, "Иванов Иван", boss))[1]
+        huge = widget_size(render_booking_widget(1234567890123, "Константинопольская-Длинноименная " * 3, boss))[1]
         self.assertLessEqual(huge - short, 40)
         # Запас на будущие правки схемы; всё, что меняется в рантайме (id и имя сотрудника), уже в худшем значении
         self.assertLessEqual(huge, MAX_ZLIB_BYTES - 80)
@@ -93,11 +106,100 @@ class TemplatesTest(unittest.TestCase):
         self.assertNotIn("rq('c:'", html)
 
     def test_no_mass_opacity(self):
-        """Не больше 16 элементов с opacity < 1 одновременно, иначе «Paint limit exceeded»: только нажатая кнопка"""
+        """Не больше 16 элементов с opacity < 1 одновременно, иначе «Paint limit exceeded». Нажатую кнопку
+        затемняет UA-стиль клиента (--tg-button-pressed-opacity), нажатое место — своё правило :active (тоже одно).
+        Ещё opacity у подложки кнопок действий под схемой (их не больше двух)"""
+        css = {k: html.split("</style>")[0] for k, html in
+               (("booking", render_booking_widget()), ("digest", render_digest_widget()))}
+        self.assertEqual(re.findall(r"([^{}]+)\{[^}]*opacity", css["booking"]),
+                         ["[data-n]:active,[data-s]:active", ".bt:before"])
+        self.assertEqual(re.findall(r"([^{}]+)\{[^}]*opacity", css["digest"]), ["[data-s]:active"])
+
+    def test_seats_are_divs(self):
+        """Места — <div>, не <button>: кнопки клиент рисует сам и скругляет одним радиусом, «стулья» пропадают
+        (scripts/widget_css_probe.py, раунд 2). Нажатия ловит общий обработчик по data-атрибутам"""
+        for html in (render_booking_widget(), render_digest_widget("Дмитрий К.")):
+            js = html.split("<script>")[1]
+            self.assertNotIn('<button class="s', js)
+        self.assertIn("return'<div'+(n?' data-n=\"'+n+'\"':'')+' class=\"s '+c+'\">", render_booking_widget())
+
+    def test_buttons_use_client_style(self):
+        """Шрифт, скругление и отступы кнопок — из токенов клиента --tg-button-*. Фон и цвет текста свои:
+        клиенты передают в --tg-button-bg цвет основной кнопки, и «Назад» выглядел бы как главное действие"""
         for html in (render_booking_widget(), render_digest_widget()):
             css = html.split("</style>")[0]
-            rules = [r for r in re.findall(r"([^{}]+)\{[^}]*opacity", css)]
-            self.assertEqual([r.strip() for r in rules], ["button:active"])
+            self.assertNotRegex(css, r"[>}]button[{:]")                 # нет общего сброса всех кнопок
+            self.assertNotIn("font:14px", css)
+            self.assertNotRegex(css, r"var\(--tg-theme-[a-z-]+,")      # палитру рендерер задаёт всегда
+            self.assertNotIn("\n", css.split("<style>")[1])               # переносы в CSS убираются при сборке
+        html = render_booking_widget()
+        # Подложка — полупрозрачный слой цвета текста (акцент или красный) поверх кнопки: текст того же цвета
+        # под ней не меняется, поэтому z-index не нужен
+        self.assertIn(".bt{flex:1;position:relative;background:none;color:var(--ac)}", html)
+        self.assertIn("background:currentColor;opacity:.12}", html)
+        # Скругление подложки — явным токеном: border-radius:inherit клиент не поддерживает (квадратные кнопки)
+        self.assertIn("border-radius:var(--tg-button-radius,8px);background:currentColor", html)
+        self.assertNotIn("inherit;background:currentColor", html)
+
+    def test_templates_join_safely(self):
+        """Переносы в <script> убираются при сборке: строки должны заканчиваться на ; { } , или + и не начинаться
+        с ( [ / + - ` — иначе склейка поменяет разбор (автоподстановка точки с запятой)"""
+        for name in ("booking", "digest"):
+            js = (Path(render_module.__file__).parent / f"{name}.html").read_text(encoding="utf-8")
+            lines = [l.strip() for l in js.split("<script>")[1].split("</script>")[0].split("\n") if l.strip()]
+            for a, b in zip(lines, lines[1:]):
+                self.assertIn(a[-1], ";{},+", (name, a[-40:]))
+                self.assertNotIn(b[0], "([/+-`", (name, b[:40]))
+
+    def test_chair_corners_use_longhands(self):
+        """Скругление «стульев»: фон с разными углами клиент рисует (scripts/widget_css_probe.py), а обрезку
+        overflow:hidden — по одному радиусу, и углы снова одинаковые. Поэтому у мест нет overflow:hidden:
+        длинное имя обрезает сам <em> (max-width и многоточие)"""
+        for html in (render_booking_widget(), render_digest_widget()):
+            css = html.split("</style>")[0]
+            seat = re.search(r"\}\.s\{([^}]*)\}", css).group(1)
+            self.assertNotIn("overflow", seat)
+            self.assertIn(".s em{max-width:100%;", css)
+            self.assertIn("border-bottom-left-radius:4px", css)
+            self.assertIn(".tb+.rw .s{border-radius:12px;border-top-left-radius:4px;border-top-right-radius:4px}", css)
+
+    def test_boss_seat(self):
+        """Место руководителя: подпись из админки и полное имя по нажатию; не выбран — штриховка"""
+        html = render_booking_widget(None, None, "Дмитрий К.")
+        self.assertIn('B="Дмитрий К."', html)
+        self.assertIn("if(c=='b')return B?nm(B,'bs','b'):'<div class=\"s o\"></div>'", html)
+        self.assertIn('B=""', render_booking_widget())
+        digest = render_digest_widget("Дмитрий К.")
+        self.assertIn('B="Дмитрий К."', digest)
+        self.assertIn('data-s="b"', digest)
+        self.assertIn('B=""', render_digest_widget())
+
+    def test_digest_header_and_status(self):
+        """Дайджест (вариант B): под датой «Свободно f из c» / «Все места заняты», ФИО или результат нажатия одной
+        строкой — успех зелёным, ошибка и «нужен бот» красным; нижняя строка — подсказка дня, следующий шаг (h)
+        или ссылка на бота (b). Результат 3 секунды, со ссылкой — 6. Лоадер только на свободном месте"""
+        html = render_digest_widget()
+        self.assertIn("'Свободно '+C.f+' из '+C.c:'Все места заняты'", html)
+        self.assertIn("esc(ts?ts.m:nv||(C.x?'Бронирование закрыто'", html)
+        self.assertIn("(ts?' class=\"'+(ts.ok?'ok':'er')+'\"':'')", html)
+        self.assertIn("(v?nm(v[0]):busy==c?'<i class=\"sp\"></i>'", html)       # занятое место — без лоадера
+        self.assertIn("if(j.n)fio(j.n);", html)
+        self.assertIn("j.b?6e3:3e3", html)
+        self.assertIn("(ts.b==2?'Зарегистрироваться':'Встать в очередь')+' в боте ›</button>'", html)
+        self.assertIn("ts&&ts.h?esc(ts.h)", html)
+        self.assertIn("'<i></i>Нажмите на своё место, чтобы подтвердить'", html)
+        self.assertIn("'Встать в очередь можно <button data-l=\"1\">в боте ›</button>'", html)
+        self.assertRegex(html, r"\.nt\{[^}]*height:19px")                       # нижняя часть — одна строка
+        self.assertNotIn("занято '", html)
+        self.assertIn(".tk,.bs{background:var(--bg);color:var(--hn)}", html)
+        self.assertNotIn("--nm", html)
+
+    def test_full_name_on_tap(self):
+        """Места с именами — кнопки: запрос n:<дата>:<место>, ответ {"n": ФИО} серым вместо подсказки дня"""
+        html = render_booking_widget()
+        self.assertIn("return v?nm(v,c==D.m?'me':'tk',c)", html)
+        self.assertIn("else if(t.n)rq('n:'+D.d+':'+t.n,'n')", html)
+        self.assertIn("j.n?['',j.n]", html)
 
     def test_foreign_seats_merged_into_strips(self):
         """Подряд идущие места другой команды виджет рисует одной полосой"""
@@ -119,13 +221,18 @@ class RequestParsingTest(unittest.TestCase):
         self.assertEqual((r.cmd, r.cal_date, r.seat, r.target), ("b", date(2026, 11, 12), 10, 1234567890))
         self.assertEqual(parse_private("d:2026-11-12").seat, None)
         self.assertEqual(parse_private("lq:2026-11-12").cmd, "lq")
-        for bad in ("x:2026-11-12", "b:2026-13-40:1", "b:2026-11-12:1@", "", "d:2026-11-12;drop"):
+        r = parse_private("n:2026-11-12:b@42")
+        self.assertEqual((r.cmd, r.seat, r.target), ("n", "b", 42))
+        self.assertEqual(parse_private("n:2026-11-12:7").seat, 7)
+        for bad in ("x:2026-11-12", "b:2026-13-40:1", "b:2026-11-12:1@", "", "d:2026-11-12;drop", "n:2026-11-12:bb"):
             self.assertIsNone(parse_private(bad), bad)
         self.assertLessEqual(len("lq:2026-11-12:10@12345678901234567890".encode()), 64)
 
     def test_group(self):
         self.assertEqual(parse_group("s:2026-11-10:5"), (date(2026, 11, 10), 5))
         self.assertIsNone(parse_group("b:2026-11-10:5"))
+        self.assertEqual(parse_group("s:2026-11-10:b"), (date(2026, 11, 10), "b"))
+        self.assertIsNone(parse_group("s:2026-11-10:x"))
 
 
 class StateTest(unittest.TestCase):
@@ -159,6 +266,17 @@ class StateTest(unittest.TestCase):
         state = json.loads(build_day_state(DaySeats(d, 2, holders), SEATS, 9, "Сидоров Сидор", True, False))
         self.assertEqual(state["s"][2], "Иван И.")
         self.assertTrue(all(v == "недоступно" for i, v in enumerate(state["s"]) if i != 2))
+
+    def test_digest_free_and_total(self):
+        """«Свободно f из c» под датой — как в личном виджете: места сверх лимита дня не считаются"""
+        d = date(2026, 11, 12)
+        holders = [SeatHolder(1, "Смирнов Алексей", 1, True), SeatHolder(2, "Кузнецова Мария", 3, False)]
+        data = json.loads(build_digest_data(DaySeats(d, 10, holders), SEATS, closed=False))
+        self.assertEqual((data["f"], data["c"]), (8, 10))
+        limited = json.loads(build_digest_data(DaySeats(d, 4, holders), SEATS, closed=False))
+        self.assertEqual((limited["f"], limited["c"]), (2, 4))
+        full = json.loads(build_digest_data(_full_day(d), SEATS, closed=False))
+        self.assertEqual((full["f"], full["c"]), (0, len(SEATS)))
 
     def test_digest_worst_case_fits(self):
         out = build_digest_data(_full_day(date(2026, 11, 10)), SEATS, closed=False)

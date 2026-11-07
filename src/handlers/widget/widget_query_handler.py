@@ -1,10 +1,14 @@
 """Запросы из виджетов (апдейт widget_query).
 
 Личный виджет:  d|b|c|q|lq:<дата>[:<место>][@<user_id сотрудника>]  → ответ — состояние дня (JSON)
+                n:<дата>:<место|b>[@<user_id>]                         → ответ — {"n": полное имя на месте}
                 x[@<user_id>]                                          → «Выйти»: виджет заменяется меню
                 o[@<user_id>]                                          → «Открыть заново»: новый виджет вместо устаревшего
-Дайджест:       s:<дата>:<место>                                       → ответ — {"m": текст, "e": ошибка, "b": кнопка бота,
-                                                                          "ok": успех, "h": вторая строка, "n": полное имя на чужом месте}
+Дайджест:       s:<дата>:<место|b>                                     → ответ — {"m": результат под датой,
+                                                                          "ok": успех (зелёным), "e": ошибка или нужен бот (красным),
+                                                                          "h": следующий шаг — нижней строкой, "b": ссылка на бота
+                                                                          нижней строкой (1 — встать в очередь, 2 — зарегистрироваться),
+                                                                          "n": полное имя на чужом месте — под датой}
 """
 import logging
 import re
@@ -23,8 +27,8 @@ from src.infrastructure.telegram.widgets import AnswerWidgetQuery, WidgetQuery
 from src.services.feature_flags import FeatureFlags
 from src.services.exceptions import (BookingError, BookingIsAlreadyExist, CancelIsAlreadyExist,
                                      FreePlaceIsAvailable, FreePlaceIsNotFound, NoCapacityInfo,
-                                     SeatNotFound, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
-from src.ui.widgets.layout import SEATS
+                                     SeatIsTaken, SeatNotFound, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
+from src.ui.widgets.layout import BOSS_SEAT, SEATS
 from src.ui.widgets.render import WidgetTooLarge
 from src.ui.widgets.state import MAX_DATA_BYTES, data_size, dumps, short_name
 from src.use_cases.booking_use_case import BookingUseCase
@@ -35,21 +39,22 @@ from src.utils.db_exc_wrapper import DBError
 
 logger = logging.getLogger(__name__)
 
-PRIVATE_RE = re.compile(r"^(d|b|c|q|lq):(\d{4}-\d{2}-\d{2})(?::(\d{1,3}))?(?:@(\d{1,20}))?$")
-GROUP_RE = re.compile(r"^s:(\d{4}-\d{2}-\d{2}):(\d{1,3})$")
+PRIVATE_RE = re.compile(r"^(d|b|c|q|lq|n):(\d{4}-\d{2}-\d{2})(?::(\d{1,3}|b))?(?:@(\d{1,20}))?$")
+GROUP_RE = re.compile(r"^s:(\d{4}-\d{2}-\d{2}):(\d{1,3}|b)$")
 
 EXIT_CMD = "x"     # кнопка «Выйти» в календаре
 REOPEN_CMD = "o"   # кнопка «Открыть заново» в устаревшем или закрытом окне
 DB_ERROR_TEXT = "Не удалось выполнить действие, попробуйте ещё раз"
 REGISTER_TEXT = "Чтобы бронировать, зарегистрируйтесь в боте"
-UNDO_HINT = "Для отмены нажмите на своё место ещё раз"   # вторая строка под «Подтверждено» / «Забронировано»
+UNDO_HINT = "Нажмите на своё место ещё раз, чтобы отменить"   # дайджест: после «Подтверждено» / «Забронировано»
+GROUP_ERROR = {"m": "Ошибка", "e": 1, "h": "Попробуйте ещё раз"}   # дайджест: ошибка БД или необработанное исключение
 
 
 @dataclass(frozen=True)
 class PrivateRequest:
     cmd: str
     cal_date: date
-    seat: Optional[int]
+    seat: Optional[int | str]   # номер места или BOSS_SEAT
     target: Optional[int]
 
 
@@ -64,19 +69,23 @@ def parse_private(data: str) -> Optional[PrivateRequest]:
     return PrivateRequest(
         cmd=m.group(1),
         cal_date=cal_date,
-        seat=int(m.group(3)) if m.group(3) else None,
+        seat=_seat(m.group(3)) if m.group(3) else None,
         target=int(m.group(4)) if m.group(4) else None,
     )
 
 
-def parse_group(data: str) -> Optional[Tuple[date, int]]:
+def parse_group(data: str) -> Optional[Tuple[date, int | str]]:
     m = GROUP_RE.match(data or "")
     if not m:
         return None
     try:
-        return date.fromisoformat(m.group(1)), int(m.group(2))
+        return date.fromisoformat(m.group(1)), _seat(m.group(2))
     except ValueError:
         return None
+
+
+def _seat(raw: str) -> int | str:
+    return BOSS_SEAT if raw == BOSS_SEAT else int(raw)
 
 
 def widget_error_text(e: BookingError) -> str:
@@ -110,7 +119,7 @@ async def process_widget_query(query: WidgetQuery, bot: Bot, container: AsyncCon
     except Exception:
         logger.exception("widget_query failed | user=%s data=%s", query.from_user.id, query.data)
         if is_group:
-            answer = dumps({"m": DB_ERROR_TEXT, "e": 1})
+            answer = dumps(GROUP_ERROR)
     finally:
         if answer is not None and data_size(answer) > MAX_DATA_BYTES:
             logger.error("widget_query | ответ %s Б больше лимита: %s", data_size(answer), answer[:200])
@@ -157,7 +166,13 @@ async def _handle_private(query: WidgetQuery, bot: Bot, container: AsyncContaine
     user = await uc.user_or_none(subject)
     name = user.full_name if user else ""
 
-    if er is None and req.cmd != "d":
+    if req.cmd == "n":
+        # Нажатие на место с именем: полное имя серым под датой. Место успели освободить — свежая схема
+        full_name = await widgets.seat_holder_name(req.cal_date, req.seat) if req.seat else None
+        if full_name:
+            return dumps({"n": full_name})
+        er = er or "Место уже свободно"
+    elif er is None and req.cmd != "d":
         if user is None:
             er = REGISTER_TEXT
         elif not await widgets.is_bookable(req.cal_date):
@@ -259,9 +274,13 @@ async def _handle_group(query: WidgetQuery, bot: Bot, container: AsyncContainer)
 
     user_id = query.from_user.id
     if await uc.user_or_none(user_id) is None:
-        return {"m": REGISTER_TEXT, "e": 1, "b": 1}
+        return {"m": "Вы не зарегистрированы", "e": 1, "b": 2}
     if await uc.digest_message_id(d) != query.message_id:
-        return {"m": "Этот дайджест уже неактуален", "e": 1}
+        # На эту дату отправили дайджест новее (/digest_now): нажатия принимает только он
+        return {"m": "Этот дайджест устарел", "e": 1, "h": "Нажимайте в новом дайджесте на эту дату"}
+    if seat == BOSS_SEAT:
+        boss = await widgets.seat_holder_name(d, seat)
+        return {"n": boss} if boss else {"m": "Такого места нет", "e": 1}
     if seat not in SEATS:
         return {"m": "Такого места нет", "e": 1}
 
@@ -272,12 +291,12 @@ async def _handle_group(query: WidgetQuery, bot: Bot, container: AsyncContainer)
         # m/e — для дайджестов, отправленных до обновления (они не знают про n)
         return {"m": f"Место занято: {at_seat.full_name}", "e": 1, "n": at_seat.full_name}
     if not await widgets.is_bookable(d):
-        return {"m": "Бронирование на этот день закрыто", "e": 1}
+        return {"m": "Бронирование закрыто", "e": 1, "h": "На этот день записаться уже нельзя"}
 
     mine = day.holder(user_id)
     promoted: Optional[int] = None
-    # Успех: m — зелёным, h — второй строкой (только когда бронь осталась за человеком)
-    hint: Optional[str] = UNDO_HINT
+    # Успех: m — зелёным, h — второй строкой
+    hint = UNDO_HINT
 
     try:
         if at_seat:
@@ -288,24 +307,28 @@ async def _handle_group(query: WidgetQuery, bot: Bot, container: AsyncContainer)
                 promoted = await promote_user_after_cancel(
                     None, uc, d, bot, user_id, BookingStatus.CANCELED_CHANGED_MIND
                 )
-                text, hint = "Отменено", None
+                text, hint = "Отменено", "Вы освободили место"
         elif mine:
             await uc.move_seat(user_id, d, seat)
             if not mine.confirmed:
                 await uc.confirm_booking(user_id, d)
-            text, hint = "Место изменено", None
+            text, hint = "Место изменено", "Вы пересели на другое место"
         else:
             await uc.book_place(user_id, d, auto_confirm=True, seat_no=seat)
             text = "Забронировано"
     except FreePlaceIsNotFound:
-        return {"m": "Свободных мест нет. Встать в очередь можно в боте", "b": 1}
+        return {"m": "Свободных мест нет", "e": 1, "b": 1}
+    except SeatIsTaken:
+        return {"m": "Место уже заняли", "e": 1, "h": "Выберите другое свободное место"}
+    except NoCapacityInfo:
+        return {"m": "Нет данных о лимите мест", "e": 1, "h": "Напишите администратору"}
     except BookingError as e:
         return {"m": widget_error_text(e), "e": 1}
     except DBError:
-        return {"m": DB_ERROR_TEXT, "e": 1}
+        return GROUP_ERROR
 
     await widgets.refresh_digest(d)
     await widgets.refresh_user_widget(user_id)
     if promoted:
         await widgets.refresh_user_widget(promoted)
-    return {"m": text, "ok": 1, "h": hint} if hint else {"m": text, "ok": 1}
+    return {"m": text, "ok": 1, "h": hint}

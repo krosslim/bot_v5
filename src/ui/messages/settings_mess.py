@@ -3,7 +3,7 @@ from datetime import date
 from typing import List
 
 from src.dto.user_dto import UserDTO, UserStatisticsDTO
-from src.services.feature_flags import MODE_TITLES, WidgetsSetting, digest_title, months_title
+from src.services.feature_flags import MODE_TITLES, WidgetsSetting, boss_title, digest_title, months_title
 
 
 def render_auto_confirm_mess() -> str:
@@ -144,7 +144,8 @@ def render_widgets_settings_mess(setting: WidgetsSetting, api_supported: bool) -
             f"Бронирование в личке: <b>{MODE_TITLES[setting.mode]}</b>\n"
             f"Дайджест в группе: <b>{digest_title(setting.digest)}</b>\n"
             f"Календарь: назад <b>{months_title(setting.history_months)}</b>, "
-            f"вперёд <b>{months_title(setting.future_months)}</b>{changed}\n{api}\n\n"
+            f"вперёд <b>{months_title(setting.future_months)}</b>\n"
+            f"Руководитель на схеме: <b>{html.escape(boss_title(setting.boss_name))}</b>{changed}\n{api}\n\n"
             "<blockquote expandable><b>Бронирование в личке</b>\n"
             "• Выключены — у всех прежние экраны: недельное расписание и «Мои брони»\n"
             "• Только админам — виджет у админов, у остальных прежние экраны. Удобно проверить на проде\n"
@@ -154,10 +155,20 @@ def render_widgets_settings_mess(setting: WidgetsSetting, api_supported: bool) -
             "виджеты ботов в группы: если не пустит, дайджест уйдёт текстом, а в чат алертов придёт ошибка.\n\n"
             "<b>Календарь</b> — сколько прошлых месяцев можно посмотреть и на сколько месяцев вперёд листать. "
             "Бронь всё равно только в пределах горизонта бронирования. Если месяцев слишком много для лимита "
-            "Telegram, самые дальние отбрасываются.</blockquote>")
+            "Telegram, самые дальние отбрасываются.\n\n"
+            "<b>Руководитель на схеме</b> — чьё имя стоит на месте руководителя. По нажатию на место виджет "
+            "показывает полное имя. Не выбран — место закрашено штриховкой.</blockquote>")
 
 
 def render_widgets_months_mess(field: str, current: int) -> str:
     what = ("Сколько прошлых месяцев можно посмотреть в календаре (только просмотр)" if field == "history" else
             "На сколько месяцев после текущего можно листать календарь вперёд. Бронь — только в пределах горизонта")
     return f"<b>🧩 Виджеты → календарь</b>\n\n{what}.\nСейчас: <b>{months_title(current)}</b>"
+
+
+def render_widgets_boss_mess(current_name: str | None) -> str:
+    return ("<b>🧩 Виджеты → руководитель на схеме</b>\n\n"
+            "Выберите сотрудника: его короткое имя встанет на место руководителя, полное — покажется по нажатию.\n"
+            f"Сейчас: <b>{html.escape(boss_title(current_name))}</b>\n\n"
+            "<blockquote>Уже отправленные окна бронирования и дайджест сохранят прежнюю подпись: "
+            "новая появится в окнах, открытых после изменения, и в следующем дайджесте.</blockquote>")

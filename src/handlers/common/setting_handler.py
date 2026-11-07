@@ -1,6 +1,7 @@
 import logging
 
 from aiogram import Bot, Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from dishka import FromDishka
@@ -10,8 +11,8 @@ from src.utils.birthday import validate_birthday, birthday_str_to_date
 from src.handlers.user.booking_handler import render_booking_page, open_booking_widget
 from src.infrastructure.telegram.widgets import widgets_supported
 from src.services.exceptions import UserWarn
-from src.services.feature_flags import (FeatureFlags, MODE_TITLES, MONTHS_CHOICES, WidgetsMode, digest_title,
-                                        months_title)
+from src.services.feature_flags import (FeatureFlags, MODE_TITLES, MONTHS_CHOICES, WidgetsMode, boss_title,
+                                        digest_title, months_title)
 from src.services.tech_service import TechService
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
@@ -21,10 +22,11 @@ from src.ui.keyboard.settings_inline_kb import (render_settings_menu_kb,
                                                 render_lead_admin_menu_kb,
                                                 render_week_visits_count_kb,
                                                 render_profile_settings_kb, get_dict_with_back_kb,
-                                                render_widgets_settings_kb, render_widgets_months_kb)
+                                                render_widgets_settings_kb, render_widgets_months_kb,
+                                                render_widgets_boss_kb)
 from src.ui.messages.settings_mess import (render_auto_confirm_mess, render_employee_group_mess,
                                            visit_plan_report_mess, render_widgets_settings_mess,
-                                           render_widgets_months_mess)
+                                           render_widgets_months_mess, render_widgets_boss_mess)
 from src.ui.messages.start_mess import bot_menu_mess, incorrect_birthday_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
@@ -594,4 +596,62 @@ async def handle_settings_widgets_set(call: CallbackQuery, callback_data: Settin
     # (повторная отрисовка того же текста — ошибка Telegram «message is not modified»)
     if changed or any(k.endswith("_months") for k in change):
         await _render_widgets_screen(call, bot, flags)
+    await call.answer(label if changed else f"Уже так: {label[0].lower()}{label[1:]}")
+
+
+def _int_extra(extra: object) -> int:
+    try:
+        return int(extra or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+@router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.WIDGETS_BOSS})))
+async def handle_settings_widgets_boss(call: CallbackQuery, callback_data: SettingsCB,
+                                       uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags]):
+    """Список активных сотрудников для выбора руководителя на схеме зала"""
+    if await _admin_or_none(call, uc) is None:
+        return
+    try:
+        employees = await uc.get_users(200, 0)
+    except DBError:
+        await call.answer("⚠️ Не удалось получить сотрудников, попробуйте ещё раз", show_alert=True)
+        return
+    boss = flags.widgets
+    try:
+        await call.message.edit_text(text=render_widgets_boss_mess(boss.boss_name),
+                                     reply_markup=render_widgets_boss_kb(employees, _int_extra(callback_data.extra),
+                                                                         boss.boss_id))
+    except TelegramBadRequest as e:
+        if "not modified" not in (e.message or "").lower():   # нажали на номер текущей страницы
+            raise
+    await call.answer()
+
+
+@router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.WIDGETS_BOSS_SET})))
+async def handle_settings_widgets_boss_set(call: CallbackQuery, callback_data: SettingsCB, bot: Bot,
+                                           uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags]):
+    """Выбрать руководителя (extra — user_id) или убрать (extra — 0). Имя в виджетах берётся из users по id"""
+    user = await _admin_or_none(call, uc)
+    if user is None:
+        return
+    boss_id = _int_extra(callback_data.extra)
+    boss = None
+    if boss_id:
+        try:
+            boss = await uc.check_exists(boss_id)
+        except DBError:
+            await call.answer("⚠️ Не удалось проверить сотрудника, попробуйте ещё раз", show_alert=True)
+            return
+        if boss is None or not boss.is_active:
+            await call.answer("⚠️ Сотрудник не найден или неактивен", show_alert=True)
+            return
+    try:
+        changed = await flags.update_widgets(user.full_name, boss_id=boss.user_id if boss else None,
+                                             boss_name=boss.full_name if boss else None)
+    except DBError:
+        await call.answer("⚠️ Не удалось сохранить, попробуйте ещё раз", show_alert=True)
+        return
+    await _render_widgets_screen(call, bot, flags)
+    label = f"Руководитель на схеме: {boss_title(boss.full_name if boss else None)}"
     await call.answer(label if changed else f"Уже так: {label[0].lower()}{label[1:]}")

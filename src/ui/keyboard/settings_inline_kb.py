@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.dto.user_dto import UserDTO, DictDTO
 from src.services.feature_flags import (MODE_TITLES, MONTHS_CHOICES, WidgetsMode, WidgetsSetting,
-                                        digest_title, months_title)
+                                        boss_title, digest_title, months_title)
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.utils.idk import gen_idk
 
@@ -228,6 +228,8 @@ def render_widgets_settings_kb(setting: WidgetsSetting) -> InlineKeyboardMarkup:
                                 callback_data=_widgets_cb("history", SettingsStep.WIDGETS_PICK)))
     kb.row(InlineKeyboardButton(text=f"{MONTHS_FIELDS['future']}: {months_title(setting.future_months)}",
                                 callback_data=_widgets_cb("future", SettingsStep.WIDGETS_PICK)))
+    kb.row(InlineKeyboardButton(text=f"👤 Руководитель на схеме: {boss_title(setting.boss_name)}",
+                                callback_data=_widgets_cb("0", SettingsStep.WIDGETS_BOSS)))
     kb.row(InlineKeyboardButton(
         text="« Меню админа",
         callback_data=SettingsCB(step=SettingsStep.ADMIN_BLOCK, idk=gen_idk()).pack(),
@@ -242,5 +244,33 @@ def render_widgets_months_kb(field: str, current: int) -> InlineKeyboardMarkup:
         mark = "🔘" if n == current else "⚪️"
         kb.button(text=f"{mark} {months_title(n)}", callback_data=_widgets_cb(f"{field}={n}"))
     kb.adjust(3)
+    kb.row(InlineKeyboardButton(text="« Виджеты", callback_data=_widgets_cb("", SettingsStep.WIDGETS)))
+    return kb.as_markup()
+
+
+BOSS_PER_PAGE = 10
+
+
+def render_widgets_boss_kb(employees: List[UserDTO], page: int, current_id: int | None) -> InlineKeyboardMarkup:
+    """Сотрудники по два в ряд (текущий руководитель отмечен 🔘), листание, «убрать», возврат к виджетам"""
+    pages = max(1, -(-len(employees) // BOSS_PER_PAGE))
+    page = min(max(page, 0), pages - 1)
+    kb = InlineKeyboardBuilder()
+    for user in employees[page * BOSS_PER_PAGE:(page + 1) * BOSS_PER_PAGE]:
+        parts = user.full_name.split()
+        name = f"{parts[0]} {parts[1][0]}." if len(parts) >= 2 else user.full_name
+        mark = "🔘" if user.user_id == current_id else "⚪️"
+        kb.button(text=f"{mark} {name}", callback_data=_widgets_cb(str(user.user_id), SettingsStep.WIDGETS_BOSS_SET))
+    kb.adjust(2)
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="‹", callback_data=_widgets_cb(str(page - 1), SettingsStep.WIDGETS_BOSS)))
+        nav.append(InlineKeyboardButton(text=f"{page + 1} / {pages}", callback_data=_widgets_cb(str(page), SettingsStep.WIDGETS_BOSS)))
+        if page < pages - 1:
+            nav.append(InlineKeyboardButton(text="›", callback_data=_widgets_cb(str(page + 1), SettingsStep.WIDGETS_BOSS)))
+        kb.row(*nav)
+    if current_id:
+        kb.row(InlineKeyboardButton(text="✖️ Убрать руководителя", callback_data=_widgets_cb("0", SettingsStep.WIDGETS_BOSS_SET)))
     kb.row(InlineKeyboardButton(text="« Виджеты", callback_data=_widgets_cb("", SettingsStep.WIDGETS)))
     return kb.as_markup()

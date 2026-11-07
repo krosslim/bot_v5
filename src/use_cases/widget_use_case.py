@@ -14,10 +14,11 @@ from config import Config
 from src.infrastructure.telegram.widgets import EditMessageWidgetData, SendWidget
 from src.services.feature_flags import FeatureFlags, WidgetsMode
 from src.services.tech_service import TechService
-from src.ui.widgets.layout import SEATS
+from src.dto.user_dto import UserDTO
+from src.ui.widgets.layout import BOSS_SEAT, SEATS
 from src.ui.widgets.render import render_booking_widget, render_digest_widget
 from src.ui.widgets.state import (build_calendar_data, build_day_state, build_digest_data,
-                                  build_expired_data, calendar_last_month, shift_month)
+                                  build_expired_data, calendar_last_month, shift_month, short_name)
 from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.get_week_range import week_range
 from src.utils.today import effective_today, widget_data_expiry
@@ -137,6 +138,29 @@ class WidgetUseCase:
         readonly = not (is_workday and self.in_window(cal_date))
         return build_day_state(day, SEATS, subject_id, subject_name, self_view, readonly, ok, er, today=d_tz())
 
+    # ---------------------------------------------------------------------------#
+    #  Руководитель на схеме и полные имена по нажатию на место
+    # ---------------------------------------------------------------------------#
+    async def boss(self) -> Optional[UserDTO]:
+        """Сотрудник, выбранный в «Меню админа → Виджеты». Удалённый или неактивный — как не выбран"""
+        boss_id = self.flags.widgets.boss_id
+        user = await self.uc.user_or_none(boss_id) if boss_id else None
+        return user if user and user.is_active else None
+
+    async def boss_label(self) -> str:
+        """Подпись на месте руководителя, вшивается в HTML при отправке виджета"""
+        boss = await self.boss()
+        return short_name(boss.full_name) if boss else ""
+
+    async def seat_holder_name(self, cal_date: date, seat: int | str) -> Optional[str]:
+        """Полное имя на месте: руководитель или тот, кто забронировал. None — место свободно"""
+        if seat == BOSS_SEAT:
+            boss = await self.boss()
+            return boss.full_name if boss else None
+        day, _ = await self.uc.widget_day(cal_date)
+        holder = day.by_seat().get(seat)
+        return holder.full_name if holder else None
+
     async def digest_data(self, cal_date: date) -> str:
         day, _ = await self.uc.widget_day(cal_date)
         return build_digest_data(day, SEATS, closed=cal_date < self.first_bookable())
@@ -151,7 +175,7 @@ class WidgetUseCase:
         old = await self.tech.get_booking_widget(chat_id)
         message = await self.bot(SendWidget(
             chat_id=chat_id,
-            html=render_booking_widget(target_id, target_name),
+            html=render_booking_widget(target_id, target_name, await self.boss_label()),
             allow_queries=True,
             chat_data=await self.calendar_data(target_id or owner_id),
         ))
@@ -203,7 +227,7 @@ class WidgetUseCase:
     async def send_digest(self, cal_date: date) -> Message:
         return await self.bot(SendWidget(
             chat_id=self.cfg.TG_CHAT_ID,
-            html=render_digest_widget(),
+            html=render_digest_widget(await self.boss_label()),
             allow_queries=True,
             chat_data=await self.digest_data(cal_date),
         ))
