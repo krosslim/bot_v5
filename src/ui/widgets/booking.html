@@ -1,6 +1,6 @@
 <!doctype html><style>
-:root{--tx:var(--tg-theme-text-color,#000);--bg:var(--tg-theme-bg-color,#fff);--hn:var(--tg-theme-hint-color,#8e8e93);--ac:var(--tg-theme-button-color,#3390ec);--at:var(--tg-theme-button-text-color,#fff);--s2:var(--tg-theme-secondary-bg-color,#f1f1f4);--ln:rgba(128,128,128,.32);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--gr:rgba(26,155,71,.55);--r:#d23a31;--y:#b58900}
-.dk{--g:#4cd964;--gl:rgba(76,217,100,.12);--gr:rgba(76,217,100,.5);--r:#ff6b63;--y:#ffd60a}
+:root{--tx:var(--tg-theme-text-color,#000);--bg:var(--tg-theme-bg-color,#fff);--hn:var(--tg-theme-hint-color,#8e8e93);--ac:var(--tg-theme-button-color,#3390ec);--at:var(--tg-theme-button-text-color,#fff);--s2:var(--tg-theme-secondary-bg-color,#f1f1f4);--ln:rgba(128,128,128,.32);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--r:#d23a31;--y:#b58900}
+.dk{--g:#4cd964;--gl:rgba(76,217,100,.12);--r:#ff6b63;--y:#ffd60a}
 *{box-sizing:border-box;margin:0}
 body{font:14px/1.3 system-ui,sans-serif;color:var(--tx);padding:10px 10px max(12px,env(safe-area-inset-bottom))}
 button{font:inherit;color:inherit;background:none;border:0;padding:0}
@@ -8,7 +8,7 @@ button:active{opacity:.6}
 .hd{display:flex;align-items:center;gap:8px;margin-bottom:14px;min-height:32px}
 .hd div{flex:1;min-width:0}
 .hd b,.xp b{display:block;font-size:16px}
-small{font-size:12px;color:var(--hn)}.hd div:first-child b{font-size:20px}.hd small{font-size:14px}
+small{font-size:12px;color:var(--hn)}.hd div:first-child b{font-size:18px}.hd small{font-size:13px}
 .ok{color:var(--g)}.er{color:var(--r)}
 .nv{width:30px;height:30px;border-radius:15px;background:var(--s2);color:var(--ac);font-size:17px;flex:none}
 .nv[disabled]{color:var(--ln)}
@@ -35,8 +35,8 @@ small{font-size:12px;color:var(--hn)}.hd div:first-child b{font-size:20px}.hd sm
 .s em{font-style:normal;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tk,.bs,.me{background:var(--s2);color:var(--hn)}
 div.s em{white-space:normal;line-height:1.15}
-.fr{background:var(--gl);box-shadow:inset 0 0 0 1.5px var(--gr);color:var(--g);font-weight:600}
-.mv{background:none;font-weight:400;font-size:11px}
+.fr{background:var(--gl);color:var(--g);font-weight:600}
+.mv{font-weight:400;font-size:11px}
 .o:only-child{height:22px}
 .me{color:var(--tx);font-weight:600}
 .sp{align-self:center;width:18px;height:18px;border:2px solid;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
