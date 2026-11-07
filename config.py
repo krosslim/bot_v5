@@ -65,7 +65,7 @@ class Config(BaseSettings):
 
     # --- HTML-виджеты (Bot API 10.4) ---
     TELEGRAM_API_BASE: str = "https://api.telegram.org"  # для беты: https://api.telegram.org/beta
-    WIDGETS_ENABLED: bool = False        # «Забронировать место» и бронь за сотрудника открывают виджет
+
     DIGEST_WIDGET_ENABLED: bool = False  # Дайджест в группе отправляется виджетом
     WIDGET_HISTORY_MONTHS: int = 0       # Сколько прошлых месяцев можно листать в календаре виджета (только просмотр)
     WIDGET_FUTURE_MONTHS: int = 0        # Сколько месяцев после текущего можно листать вперёд (только просмотр)

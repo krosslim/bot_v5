@@ -5,6 +5,7 @@ from src.infrastructure.dishka.alert_provider import AlertProvider
 from src.infrastructure.dishka.bot_provider import BotProvider
 from src.infrastructure.dishka.client_provider import ClientProvider
 from src.infrastructure.dishka.config_provider import ConfigProvider
+from src.infrastructure.dishka.feature_flags_provider import FeatureFlagsProvider
 from src.infrastructure.dishka.postgres_provider import PostgresProvider
 from src.infrastructure.dishka.redis_provider import RedisProvider
 from src.infrastructure.dishka.redis_store_provider import RedisStoreProvider
@@ -25,5 +26,5 @@ container = make_async_container(
     SchedulerProvider(),
     AlertProvider(),
     ClientProvider(),
-
+    FeatureFlagsProvider(),
 )

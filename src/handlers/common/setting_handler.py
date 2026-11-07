@@ -1,13 +1,16 @@
-from aiogram import Router, F
+import logging
+
+from aiogram import Bot, Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from dishka import FromDishka
 
-from config import settings
 from src.fsm.states import UpdateProfileState
 from src.utils.birthday import validate_birthday, birthday_str_to_date
 from src.handlers.user.booking_handler import render_booking_page, open_booking_widget
+from src.infrastructure.telegram.widgets import widgets_supported
 from src.services.exceptions import UserWarn
+from src.services.feature_flags import FeatureFlags, MODE_TITLES, WidgetsMode
 from src.services.tech_service import TechService
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
@@ -16,8 +19,10 @@ from src.ui.keyboard.settings_inline_kb import (render_settings_menu_kb,
                                                 render_settings_auto_confirm_kb,
                                                 render_lead_admin_menu_kb,
                                                 render_week_visits_count_kb,
-                                                render_profile_settings_kb, get_dict_with_back_kb)
-from src.ui.messages.settings_mess import render_auto_confirm_mess, render_employee_group_mess, visit_plan_report_mess
+                                                render_profile_settings_kb, get_dict_with_back_kb,
+                                                render_widgets_settings_kb)
+from src.ui.messages.settings_mess import (render_auto_confirm_mess, render_employee_group_mess,
+                                           visit_plan_report_mess, render_widgets_settings_mess)
 from src.ui.messages.start_mess import bot_menu_mess, incorrect_birthday_mess
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
@@ -27,6 +32,7 @@ from src.utils.get_week_range import week_range
 from src.utils.date_to_str import format_date_ru
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 # меню настроек
 @router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.INIT_SETTINGS})))
@@ -57,10 +63,10 @@ async def handle_settings_page(call: CallbackQuery, uc: FromDishka[UserUseCase],
 
 # выйти в меню
 @router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.GET_BACK_MENU})))
-async def handle_get_back_menu(call: CallbackQuery, state: FSMContext):
+async def handle_get_back_menu(call: CallbackQuery, flags: FromDishka[FeatureFlags], state: FSMContext):
     if await state.get_data():
         await state.clear()
-    await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
+    await call.message.edit_text(text=bot_menu_mess(), reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
 
 # меню авто подтверждения
 @router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.AUTO_CONFIRM})))
@@ -243,7 +249,7 @@ async def handle_settings_head_block(
              "<blockquote expandable><b>• Управление записями</b> - изменение статуса записей подчиненных\n"
              "<b>• Управление посещениями</b> - установка плана по кол-ву визитов в неделю\n"
              "<b>• Статистика по посещениям</b> - отчет по выполнению плана посещений по неделям</blockquote>",
-        reply_markup=render_lead_admin_menu_kb(profession_id)
+        reply_markup=render_lead_admin_menu_kb(profession_id, is_admin=callback_data.step == SettingsStep.ADMIN_BLOCK)
     )
 
 
@@ -290,13 +296,15 @@ async def handle_settings_employee(
         b_uc: FromDishka[BookingUseCase],
         widgets: FromDishka[WidgetUseCase],
         tech_svc: FromDishka[TechService],
+        flags: FromDishka[FeatureFlags],
         state: FSMContext
 ):
     try:
         employee_id = int(callback_data.extra)
         employee = await u_uc.check_exists(employee_id)
 
-        if settings.WIDGETS_ENABLED and await open_booking_widget(
+        # Режим смотрим у того, кто бронирует (админ или лид), а не у сотрудника
+        if await flags.widgets_for(call.from_user.id) and await open_booking_widget(
                 call, widgets, tech_svc, employee.user_id, employee.full_name, finish_session=False):
             # Виджет сам передаёт user_id сотрудника в каждом запросе, состояние FSM не нужно
             await call.answer(text=f"Бронирование за сотрудника:\n{employee.full_name}", show_alert=True)
@@ -492,3 +500,63 @@ async def _get_profile(
         "</blockquote>\n\n"
         "Доступно к обновлению ⤵︎"
     )
+
+
+# ---------------------------------------------------------------------------#
+#  Меню админа → Виджеты: режим выключены / только админам / всем (FeatureFlags)
+# ---------------------------------------------------------------------------#
+async def _admin_or_none(call: CallbackQuery, uc: UserUseCase):
+    """Права проверяем по БД на каждое нажатие: кнопка могла остаться у бывшего админа"""
+    try:
+        user = await uc.check_exists(call.from_user.id)
+    except DBError:
+        await call.answer("⚠️ Не удалось проверить права, попробуйте ещё раз", show_alert=True)
+        return None
+    if user is None or not user.is_admin:
+        await call.answer("⚠️ Доступно только администраторам", show_alert=True)
+        return None
+    return user
+
+
+async def _render_widgets_screen(call: CallbackQuery, bot: Bot, flags: FeatureFlags) -> None:
+    await call.message.edit_text(
+        text=render_widgets_settings_mess(flags.widgets, await widgets_supported(bot)),
+        reply_markup=render_widgets_settings_kb(flags.widgets_mode),
+    )
+
+
+@router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.WIDGETS})))
+async def handle_settings_widgets(call: CallbackQuery, bot: Bot, uc: FromDishka[UserUseCase],
+                                  flags: FromDishka[FeatureFlags]):
+    if await _admin_or_none(call, uc) is None:
+        return
+    await _render_widgets_screen(call, bot, flags)
+    await call.answer()
+
+
+@router.callback_query(SettingsCB.filter(F.step.in_({SettingsStep.WIDGETS_SET})))
+async def handle_settings_widgets_set(call: CallbackQuery, callback_data: SettingsCB, bot: Bot,
+                                      uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags]):
+    user = await _admin_or_none(call, uc)
+    if user is None:
+        return
+    try:
+        mode = WidgetsMode(str(callback_data.extra))
+    except ValueError:
+        await call.answer("⚠️ Неизвестный режим", show_alert=True)
+        return
+    if mode == flags.widgets_mode:
+        await call.answer(f"Уже: {MODE_TITLES[mode]}")
+        return
+    if mode != WidgetsMode.OFF and not await widgets_supported(bot):
+        await call.answer("⚠️ Bot API по этому адресу не знает виджеты.\n"
+                          "Нужен TELEGRAM_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота",
+                          show_alert=True)
+        return
+    try:
+        await flags.set_widgets_mode(mode, user.full_name)
+    except DBError:
+        await call.answer("⚠️ Не удалось сохранить, попробуйте ещё раз", show_alert=True)
+        return
+    await _render_widgets_screen(call, bot, flags)
+    await call.answer(f"Виджеты: {MODE_TITLES[mode]}")

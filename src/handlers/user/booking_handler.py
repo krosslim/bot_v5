@@ -11,6 +11,7 @@ from dishka import FromDishka
 from config import settings
 from src.dto.booking_dto import BookingStatus
 from src.services.exceptions import BookingError
+from src.services.feature_flags import FeatureFlags
 from src.services.tech_service import TechService
 from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.ui.keyboard.bookings_inline_kb import render_booking_week_kb
@@ -39,10 +40,11 @@ async def handle_booking_page(call: CallbackQuery,
                               uc: FromDishka[BookingUseCase],
                               widgets: FromDishka[WidgetUseCase],
                               tech_svc: FromDishka[TechService],
+                              flags: FromDishka[FeatureFlags],
                               state: FSMContext):
 
     # Виджет не отправился (например, Bot API без методов 10.4) — показываем недельный экран как раньше
-    if settings.WIDGETS_ENABLED and callback_data.step == BookingStep.INIT_BOOKING:
+    if callback_data.step == BookingStep.INIT_BOOKING and await flags.widgets_for(call.from_user.id):
         if await open_booking_widget(call, widgets, tech_svc):
             return
 
@@ -189,10 +191,10 @@ async def handle_booking_help(call: CallbackQuery, uc: FromDishka[BookingUseCase
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.GET_BACK_MENU})))
-async def handle_back_menu_button(call: CallbackQuery, state: FSMContext):
+async def handle_back_menu_button(call: CallbackQuery, flags: FromDishka[FeatureFlags], state: FSMContext):
     if await state.get_data():
         await state.clear()
-    await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
+    await call.message.edit_text(text=bot_menu_mess(), reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.INFO})))
@@ -250,6 +252,7 @@ async def handle_missed_booking_confirmation(
         call: CallbackQuery,
         uc: FromDishka[BookingUseCase],
         tech_svc: FromDishka[TechService],
+        flags: FromDishka[FeatureFlags],
         state: FSMContext
 ):
     state_data = await state.get_data()
@@ -259,7 +262,7 @@ async def handle_missed_booking_confirmation(
     if not choosen_dates_str:
         await call.message.edit_text(
             text=bot_menu_mess(),
-            reply_markup=get_menu_kb(),
+            reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)),
         )
         await call.answer("⚠️ Не удалось добавить записи.\nПопробуйте еще раз", show_alert=True)
         return
@@ -347,6 +350,7 @@ async def render_booking_page(
         if await state.get_data():
             await state.clear()
         try:
+            # Запасной путь после ошибки БД, контейнера здесь нет: меню с «Мои брони» работает в любом режиме
             await call.message.edit_text(
                 text=bot_menu_mess(),
                 reply_markup=get_menu_kb(),

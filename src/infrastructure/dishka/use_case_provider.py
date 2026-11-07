@@ -8,6 +8,7 @@ from src.clients.isdayoff_client import IsDayOffClient
 from src.services.alert_service import AlertService
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
+from src.services.feature_flags import FeatureFlags
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.services.user_service import UserService
@@ -37,8 +38,9 @@ class UseCaseProvider(Provider):
         return UserUseCase(user, session)
 
     @provide(scope=Scope.REQUEST)
-    def provide_widget_use_case(self, bot: Bot, uc: BookingUseCase, tech: TechService, cfg: Config) -> WidgetUseCase:
-        return WidgetUseCase(bot, uc, tech, cfg)
+    def provide_widget_use_case(self, bot: Bot, uc: BookingUseCase, tech: TechService, cfg: Config,
+                                flags: FeatureFlags) -> WidgetUseCase:
+        return WidgetUseCase(bot, uc, tech, cfg, flags)
 
     @provide(scope=Scope.REQUEST)
     def provide_calendar_sync_use_case(

@@ -18,6 +18,7 @@ from src.dto.booking_dto import BookingStatus
 from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
+from src.services.feature_flags import FeatureFlags, WidgetsMode
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.ui.keyboard.booking_remind_kb import confirm_kb
@@ -49,6 +50,7 @@ async def cleanup_booking_session_job(container: AsyncContainer) -> None:
     async with container() as req:
         bot: Bot = await req.get(Bot)
         svc: TechService = await req.get(TechService)
+        flags: FeatureFlags = await req.get(FeatureFlags)
 
         session_limit = int(time_func.time() - settings.BOOKING_SESSION_SEC)
         users = await svc.get_booking_session(session_limit)
@@ -62,7 +64,7 @@ async def cleanup_booking_session_job(container: AsyncContainer) -> None:
                     text=bot_menu_mess(),
                     chat_id=session.user_id,
                     message_id=session.message_id,
-                    reply_markup=get_menu_kb()
+                    reply_markup=get_menu_kb(await flags.widgets_for(session.user_id))
                 )
                 await svc.finish_booking_session(f"{session.user_id}:{session.message_id}")
             except TelegramBadRequest as e:
@@ -506,7 +508,8 @@ async def cancel_not_confirmed_booking_job(container: AsyncContainer) -> None:
             if promoted_id:
                 affected.append(promoted_id)
 
-        if settings.WIDGETS_ENABLED or settings.DIGEST_WIDGET_ENABLED:
+        flags: FeatureFlags = await req.get(FeatureFlags)
+        if flags.widgets_mode != WidgetsMode.OFF or settings.DIGEST_WIDGET_ENABLED:
             try:
                 widgets: WidgetUseCase = await req.get(WidgetUseCase)
                 await widgets.refresh_digest(tomorrow)

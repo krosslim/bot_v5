@@ -71,6 +71,8 @@ class SettingsStep(StrEnum):
     EMPLOYEE_STATISTICS = auto()
     EMPLOYEE_STATISTICS_INFO = auto()
     EMPLOYEE_STATISTICS_PAGE = auto()
+    WIDGETS = auto()          # меню админа → режим виджетов
+    WIDGETS_SET = auto()      # extra — WidgetsMode: off / admins / all
 
 
 class ChatBookingStep(StrEnum):

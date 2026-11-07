@@ -1,7 +1,9 @@
+import html
 from datetime import date
 from typing import List
 
 from src.dto.user_dto import UserDTO, UserStatisticsDTO
+from src.services.feature_flags import MODE_TITLES, WidgetsSetting
 
 
 def render_auto_confirm_mess() -> str:
@@ -128,3 +130,20 @@ def visit_plan_report_mess(
 
     message = "\n".join(part for part in sections if part is not None)
     return message.strip()
+
+
+def render_widgets_settings_mess(setting: WidgetsSetting, api_supported: bool) -> str:
+    changed = ""
+    if setting.changed_at:
+        who = f", {html.escape(setting.changed_by)}" if setting.changed_by else ""
+        changed = f"\nИзменено: {setting.changed_at:%d.%m.%Y %H:%M}{who}"
+    api = ("✅ Bot API поддерживает виджеты" if api_supported else
+           "⚠️ Bot API по этому адресу не знает виджеты — включить не получится. "
+           "Нужен TELEGRAM_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота")
+    return (f"<b>🧩 Виджеты бронирования</b>\n\n"
+            f"Сейчас: <b>{MODE_TITLES[setting.mode]}</b>{changed}\n{api}\n\n"
+            "<blockquote expandable><b>• Выключены</b> — у всех прежние экраны: недельное расписание и «Мои брони»\n"
+            "<b>• Только админам</b> — виджет у админов, у остальных прежние экраны. Удобно проверить на проде\n"
+            "<b>• Всем</b> — «Забронировать место» открывает календарь со схемой зала, «Мои брони» скрыта\n\n"
+            "Окна, уже открытые в чатах, при выключении не пропадают: любое нажатие в них заменит окно меню. "
+            "Групповой дайджест этот переключатель не затрагивает (DIGEST_WIDGET_ENABLED).</blockquote>")

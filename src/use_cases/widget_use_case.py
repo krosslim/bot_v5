@@ -12,6 +12,7 @@ from aiogram.types import Message
 
 from config import Config
 from src.infrastructure.telegram.widgets import EditMessageWidgetData, SendWidget
+from src.services.feature_flags import FeatureFlags, WidgetsMode
 from src.services.tech_service import TechService
 from src.ui.widgets.layout import SEATS
 from src.ui.widgets.render import render_booking_widget, render_digest_widget
@@ -86,11 +87,12 @@ async def _edit_loop(bot: Bot, key: Tuple[int, int]) -> None:
 
 
 class WidgetUseCase:
-    def __init__(self, bot: Bot, uc: BookingUseCase, tech: TechService, cfg: Config):
+    def __init__(self, bot: Bot, uc: BookingUseCase, tech: TechService, cfg: Config, flags: FeatureFlags):
         self.bot = bot
         self.uc = uc
         self.tech = tech
         self.cfg = cfg
+        self.flags = flags
 
     # ---------------------------------------------------------------------------#
     #  Окно бронирования
@@ -189,7 +191,7 @@ class WidgetUseCase:
 
     async def refresh_user_widget(self, user_id: int) -> None:
         """Обновить открытый виджет пользователя в его личном чате (бронь изменилась вне виджета)"""
-        if not self.cfg.WIDGETS_ENABLED:
+        if self.flags.widgets_mode == WidgetsMode.OFF:
             return
         pointer = await self.tech.get_booking_widget(user_id)
         if pointer and (pointer.target_id or user_id) == user_id:

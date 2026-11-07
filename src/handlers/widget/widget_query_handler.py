@@ -19,6 +19,7 @@ from config import settings
 from src.dto.booking_dto import BookingStatus
 from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.infrastructure.telegram.widgets import AnswerWidgetQuery, WidgetQuery
+from src.services.feature_flags import FeatureFlags
 from src.services.exceptions import (BookingError, BookingIsAlreadyExist, CancelIsAlreadyExist,
                                      FreePlaceIsAvailable, FreePlaceIsNotFound, NoCapacityInfo,
                                      SeatNotFound, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
@@ -123,8 +124,12 @@ async def process_widget_query(query: WidgetQuery, bot: Bot, container: AsyncCon
 # ---------------------------------------------------------------------------#
 async def _handle_private(query: WidgetQuery, bot: Bot, container: AsyncContainer) -> Optional[str]:
     cmd, _, raw_target = (query.data or "").partition("@")
-    if cmd == EXIT_CMD:
-        await _exit_to_menu(query, bot, container)
+    flags: FeatureFlags = await container.get(FeatureFlags)
+    enabled = await flags.widgets_for(query.from_user.id)
+    if cmd == EXIT_CMD or not enabled:
+        # «Выйти» или виджеты этому пользователю выключили из админки, пока окно висело в чате:
+        # любое нажатие заменяет окно меню
+        await _exit_to_menu(query, bot, container, widgets=enabled)
         return None
     if cmd == REOPEN_CMD:
         return await _reopen(query, bot, container, int(raw_target) if raw_target.isdigit() else None)
@@ -176,19 +181,15 @@ async def _handle_private(query: WidgetQuery, bot: Bot, container: AsyncContaine
     return state
 
 
-async def _exit_to_menu(query: WidgetQuery, bot: Bot, container: AsyncContainer) -> None:
-    """«Выйти»: виджет заменяется меню (сначала меню, потом удаление — чтобы чат не остался пустым)"""
-    widgets: WidgetUseCase = await container.get(WidgetUseCase)
-    await bot.send_message(chat_id=query.chat.id, text=bot_menu_mess(), reply_markup=get_menu_kb())
-    await widgets.close_booking_widget(query.chat.id, query.message_id)
+async def _exit_to_menu(query: WidgetQuery, bot: Bot, container: AsyncContainer, widgets: bool) -> None:
+    """Виджет заменяется меню (сначала меню, потом удаление — чтобы чат не остался пустым)"""
+    uc: WidgetUseCase = await container.get(WidgetUseCase)
+    await bot.send_message(chat_id=query.chat.id, text=bot_menu_mess(), reply_markup=get_menu_kb(widgets))
+    await uc.close_booking_widget(query.chat.id, query.message_id)
 
 
 async def _reopen(query: WidgetQuery, bot: Bot, container: AsyncContainer, target: Optional[int]) -> Optional[str]:
     """«Открыть заново». Ответ нужен только при ошибке: при успехе нажатое окно удаляется"""
-    if not settings.WIDGETS_ENABLED:          # виджеты выключили, пока окно висело в чате
-        await _exit_to_menu(query, bot, container)
-        return None
-
     uc: BookingUseCase = await container.get(BookingUseCase)
     widgets: WidgetUseCase = await container.get(WidgetUseCase)
     actor = query.from_user.id

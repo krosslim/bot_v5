@@ -6,7 +6,9 @@ from src.ui.keyboard.actions import MyBookingCB, MyBookingStep, BookingCB, Booki
 from src.utils.idk import gen_idk
 
 
-def get_menu_kb() -> InlineKeyboardMarkup:
+def get_menu_kb(widgets: bool = False) -> InlineKeyboardMarkup:
+    """widgets — пользователю включены виджеты (FeatureFlags.widgets_for): тогда «Мои брони» не нужна.
+    По умолчанию кнопка есть: лишняя кнопка ничего не ломает, пропавшая — оставит без экрана броней"""
     kb = InlineKeyboardBuilder()
     kb.row(
         InlineKeyboardButton(
@@ -18,7 +20,7 @@ def get_menu_kb() -> InlineKeyboardMarkup:
         width=1
     )
     # С виджетами брони видны и отменяются в календаре, отдельный экран не нужен
-    if not settings.WIDGETS_ENABLED:
+    if not widgets:
         kb.row(
             InlineKeyboardButton(
                 text="Мои брони",

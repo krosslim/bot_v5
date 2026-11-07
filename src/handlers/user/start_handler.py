@@ -9,6 +9,7 @@ from dishka import FromDishka
 
 from src.fsm.states import CreateUserState
 from src.services.exceptions import UserWarn, BookingError
+from src.services.feature_flags import FeatureFlags
 from src.services.tech_service import TechService
 from src.ui.keyboard.form_data_kb import get_dict_kb, get_confirmation_kb, get_skip_birthday_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
@@ -26,7 +27,7 @@ router = Router()
 
 
 @router.message(CommandStart())
-async def handle_start(msg: Message, uc: FromDishka[UserUseCase], state: FSMContext):
+async def handle_start(msg: Message, uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags], state: FSMContext):
 
     if await state.get_data():
         await state.clear()
@@ -38,14 +39,16 @@ async def handle_start(msg: Message, uc: FromDishka[UserUseCase], state: FSMCont
             await state.set_state(CreateUserState.full_name)
             await state.update_data(bot_msg_id=bot_msg.message_id)
             return
-        await msg.answer(text=bot_init_mess(user.full_name), reply_markup=get_menu_kb())
+        await msg.answer(text=bot_init_mess(user.full_name),
+                         reply_markup=get_menu_kb(await flags.widgets_for(msg.from_user.id)))
 
     except DBError:
         await msg.answer(text=start_db_exc_mess())
 
 
 @router.message(F.text == "/menu")
-async def handle_back_menu_command(msg: Message, uc: FromDishka[UserUseCase],  state: FSMContext):
+async def handle_back_menu_command(msg: Message, uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags],
+                                   state: FSMContext):
 
     if await state.get_data():
         await state.clear()
@@ -57,7 +60,7 @@ async def handle_back_menu_command(msg: Message, uc: FromDishka[UserUseCase],  s
             await msg.answer(text=bot_init_mess(""))
             await state.set_state(CreateUserState.full_name)
             return
-        await msg.answer(text=bot_menu_mess(), reply_markup=get_menu_kb())
+        await msg.answer(text=bot_menu_mess(), reply_markup=get_menu_kb(await flags.widgets_for(msg.from_user.id)))
 
     except DBError:
         await msg.answer(text=start_db_exc_mess())
@@ -186,7 +189,8 @@ async def handle_skip_birthday(call: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(CreateUserState.confirmation)
-async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], state: FSMContext):
+async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags],
+                              state: FSMContext):
     try:
         state_data = await state.get_data()
         full_name = state_data.get("full_name")
@@ -199,7 +203,8 @@ async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], 
             await uc.create_user(user_id=call.from_user.id, full_name=full_name,
                                  profession_id=profession_id, product_id=product_id, birth_date=birthday)
 
-            await call.message.edit_text(text= finish_start_reg_mess(), reply_markup=get_menu_kb())
+            await call.message.edit_text(text=finish_start_reg_mess(),
+                                         reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
             await state.clear()
 
         else:

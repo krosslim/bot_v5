@@ -9,6 +9,7 @@ from dishka import FromDishka
 from config import settings as s
 from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.exceptions import BookingError
+from src.services.feature_flags import FeatureFlags
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
 from src.ui.keyboard.menu_inline_kb import own_booking_kb, get_menu_kb
 from src.ui.messages.start_mess import bot_menu_mess
@@ -24,7 +25,8 @@ logger = logging.getLogger(__name__)
 @router.callback_query(ChatBookingCB.filter(F.step.in_(
     {ChatBookingStep.CONFIRM_BOOKING_IN_REMINDER, ChatBookingStep.CANCEL_BOOKING_IN_REMINDER}
 )))
-async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingCB, uc: FromDishka[BookingUseCase]):
+async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingCB, uc: FromDishka[BookingUseCase],
+                                flags: FromDishka[FeatureFlags]):
 
     step = callback_data.step
 
@@ -76,7 +78,8 @@ async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingC
             await call.message.edit_reply_markup(reply_markup=None)
             await call.answer(text="✅ Бронь на завтра отменена", show_alert=True)
             await call.bot.send_message(chat_id=call.from_user.id, text=f"<b>{str_tomorrow} → Отменено</b>")
-            await call.bot.send_message(chat_id=call.from_user.id, text=bot_menu_mess(), reply_markup=get_menu_kb())
+            await call.bot.send_message(chat_id=call.from_user.id, text=bot_menu_mess(),
+                                        reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
 
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)

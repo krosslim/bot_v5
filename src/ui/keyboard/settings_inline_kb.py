@@ -4,6 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.dto.user_dto import UserDTO, DictDTO
+from src.services.feature_flags import MODE_TITLES, WidgetsMode
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.utils.idk import gen_idk
 
@@ -112,7 +113,7 @@ def render_profile_settings_kb() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def render_lead_admin_menu_kb(profession_id: int = None) -> InlineKeyboardMarkup:
+def render_lead_admin_menu_kb(profession_id: int = None, is_admin: bool = False) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     kb.row(
@@ -139,6 +140,13 @@ def render_lead_admin_menu_kb(profession_id: int = None) -> InlineKeyboardMarkup
                                      idk=gen_idk()).pack()
         )
     )
+    if is_admin:
+        kb.row(
+            InlineKeyboardButton(
+                text="🧩 Виджеты",
+                callback_data=SettingsCB(step=SettingsStep.WIDGETS, idk=gen_idk()).pack()
+            )
+        )
 
     kb.row(
         InlineKeyboardButton(text="« Меню настроек",
@@ -195,4 +203,20 @@ def get_dict_with_back_kb(dict_data: List[DictDTO], dict_type: str) -> InlineKey
 
     kb.adjust(1)
 
+    return kb.as_markup()
+
+
+def render_widgets_settings_kb(current: WidgetsMode) -> InlineKeyboardMarkup:
+    """Режим виджетов: текущий отмечен 🔘. Нажатие на текущий ничего не меняет"""
+    kb = InlineKeyboardBuilder()
+    for mode in WidgetsMode:
+        mark = "🔘" if mode == current else "⚪️"
+        kb.row(InlineKeyboardButton(
+            text=f"{mark} {MODE_TITLES[mode].capitalize()}",
+            callback_data=SettingsCB(step=SettingsStep.WIDGETS_SET, extra=mode.value, idk=gen_idk()).pack(),
+        ))
+    kb.row(InlineKeyboardButton(
+        text="« Меню админа",
+        callback_data=SettingsCB(step=SettingsStep.ADMIN_BLOCK, idk=gen_idk()).pack(),
+    ))
     return kb.as_markup()

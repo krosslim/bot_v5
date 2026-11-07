@@ -19,6 +19,7 @@ from src.jobs.cron_jobs import sheet_template_job
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
 from src.middlewares.widget_query_middleware import WidgetQueryMiddleware
 from src.services.alert_service import AlertService
+from src.services.feature_flags import FeatureFlags, WidgetsMode
 from src.storage.redis.store import RedisStore
 from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
 from src.utils.app_configuration.register import init_system_tasks
@@ -50,7 +51,11 @@ async def main() -> None:
     dp.include_router(bot_combined_router)
     await bot.set_my_commands(get_commands_list(), scope=BotCommandScopeAllPrivateChats())
 
-    if (settings.WIDGETS_ENABLED or settings.DIGEST_WIDGET_ENABLED) and not await widgets_supported(bot):
+    # Режим виджетов (выключены / только админам / всем) переключает админ в боте, хранится в system_config
+    flags: FeatureFlags = await container.get(FeatureFlags)
+    await flags.load()
+    widgets_wanted = flags.widgets_mode != WidgetsMode.OFF or settings.DIGEST_WIDGET_ENABLED
+    if widgets_wanted and not await widgets_supported(bot):
         logger.error(
             "Bot API по адресу %s не знает методы виджетов (sendWidget). Bot API 10.4 сейчас доступен "
             "на бете: TELEGRAM_API_BASE=https://api.telegram.org/beta. Пока это не исправлено, "
@@ -83,11 +88,8 @@ async def main() -> None:
 
     try:
         logger.info("Инициализация бота: %s", bot_info)
-        if settings.WIDGETS_ENABLED or settings.DIGEST_WIDGET_ENABLED:
-            # widget_query aiogram не знает, поэтому сам его в allowed_updates не добавит
-            await dp.start_polling(bot, allowed_updates=[*dp.resolve_used_update_types(), WIDGET_QUERY_UPDATE])
-        else:
-            await dp.start_polling(bot)
+
+        await dp.start_polling(bot, allowed_updates=[*dp.resolve_used_update_types(), WIDGET_QUERY_UPDATE])
 
     finally:
         logger.info("Закрытие соединений…")

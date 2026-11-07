@@ -9,6 +9,7 @@ from dishka import FromDishka
 
 from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.exceptions import BookingError
+from src.services.feature_flags import FeatureFlags
 from src.ui.keyboard.actions import MyBookingCB, MyBookingStep
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.my_booking_inline_kb import render_my_booking_kb, render_book_day_kb
@@ -33,7 +34,8 @@ logger = logging.getLogger(__name__)
     MyBookingStep.LEAVE_QUEUE,
     MyBookingStep.CONFIRM_BOOKING
 })))
-async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB, uc: FromDishka[BookingUseCase]):
+async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB, uc: FromDishka[BookingUseCase],
+                                 flags: FromDishka[FeatureFlags]):
     step = callback_data.step
     user_id = call.from_user.id
 
@@ -83,7 +85,8 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
         await call.answer("⚠️ Ошибка: некорректный формат даты.", show_alert=True)
     except BookingError as e:
         try:
-            await call.message.edit_text(text=bot_menu_mess(), reply_markup=get_menu_kb())
+            await call.message.edit_text(text=bot_menu_mess(),
+                                         reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
             await call.answer(text=str(e), show_alert=True)
         except TelegramBadRequest:
             await call.answer(text=str(e), show_alert=True)
@@ -94,10 +97,10 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
         )
 
 @router.callback_query(MyBookingCB.filter(F.step.in_({MyBookingStep.GET_BACK_MENU})))
-async def handle_get_back_menu(call: CallbackQuery, state: FSMContext):
+async def handle_get_back_menu(call: CallbackQuery, flags: FromDishka[FeatureFlags], state: FSMContext):
     if await state.get_data():
         await state.clear()
-    await call.message.edit_text(text = bot_menu_mess(), reply_markup=get_menu_kb())
+    await call.message.edit_text(text=bot_menu_mess(), reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
 
 
 @router.callback_query(MyBookingCB.filter(F.step.in_(

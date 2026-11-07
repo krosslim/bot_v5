@@ -16,7 +16,7 @@ from src.dto.office_capacity_dto import OfficeCapacityDTO, AvailabilityDTO
 from src.dto.user_dto import UserDTO, DictDTO, UserStatisticsDTO
 from src.storage.postgres.models import (User, Booking, OfficeCapacityWeekday,
                                          CalendarDate, BookingEvent, Profession, Product,
-                                         DigestSchedule)
+                                         DigestSchedule, SystemConfig)
 from src.utils.db_exc_wrapper import with_db_errors, DBError
 from src.utils.work_calendar import DayFlags
 
@@ -966,3 +966,19 @@ class Repository:
             return None
 
         return DigestScheduleDTO.model_validate(message)
+
+
+    # -------------------- НАСТРОЙКИ В system_config (ключ–значение) --------------------
+    async def get_system_value(self, key: str) -> Optional[str]:
+        result = await self.session.execute(select(SystemConfig.value).where(SystemConfig.key == key))
+        return result.scalar_one_or_none()
+
+    async def set_system_value(self, key: str, value: str) -> None:
+        stmt = pg_insert(SystemConfig).values(key=key, value=value)
+        await self.session.execute(stmt.on_conflict_do_update(index_elements=[SystemConfig.key],
+                                                              set_={"value": value}))
+
+    async def active_admin_ids(self) -> List[int]:
+        result = await self.session.execute(
+            select(User.user_id).where(User.is_admin.is_(True), User.is_active.is_(True)))
+        return list(result.scalars().all())
