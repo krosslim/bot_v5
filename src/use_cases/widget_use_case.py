@@ -21,7 +21,7 @@ from src.ui.widgets.state import (build_calendar_data, build_day_state, build_di
                                   build_expired_data, calendar_last_month, shift_month, short_name)
 from src.use_cases.booking_use_case import BookingUseCase
 from src.utils.get_week_range import week_range
-from src.utils.today import effective_today, widget_data_expiry
+from src.utils.today import confirm_deadline, effective_today, widget_data_expiry
 from src.utils.tz_day import d_tz
 
 logger = logging.getLogger(__name__)
@@ -163,7 +163,8 @@ class WidgetUseCase:
 
     async def digest_data(self, cal_date: date) -> str:
         day, _ = await self.uc.widget_day(cal_date)
-        return build_digest_data(day, SEATS, closed=cal_date < self.first_bookable())
+        return build_digest_data(day, SEATS, closed=cal_date < self.first_bookable(),
+                                 deadline=int(confirm_deadline(cal_date).timestamp()))
 
     # ---------------------------------------------------------------------------#
     #  Личный виджет

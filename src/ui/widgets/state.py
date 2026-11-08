@@ -265,12 +265,13 @@ def build_day_state(
 # ---------------------------------------------------------------------------#
 #  Дайджест в группе
 # ---------------------------------------------------------------------------#
-def build_digest_data(day: DaySeats, seats: Sequence[int], closed: bool) -> str:
+def build_digest_data(day: DaySeats, seats: Sequence[int], closed: bool, deadline: Optional[int] = None) -> str:
     """chat_data дайджеста в группе. Она одна на всех: виджет сам находит в ней зрителя по TelegramWidget.viewer.
 
     d, t — дата и заголовок; f/c — «Свободно f из c» под датой, считается как в личном виджете (build_day_state):
-    места сверх лимита дня (capacity) не свободны и не входят в c; x — день закрыт (после WORK_END дня визита),
-    значение — строка под датой вместо «Свободно f из c» («Было 5 человек»).
+    места сверх лимита дня (capacity) не свободны и не входят в c; e — дедлайн подтверждения (unix-время,
+    deadline) для таймера у неподтверждённой брони, только в открытом дне; x — день закрыт (после WORK_END дня
+    визита), значение — строка под датой вместо «Свободно f из c» («Было 5 человек»).
     s — по элементу на место: 0 свободно, [короткое имя, подтверждено 0/1, user_id] занято, "u" сверх лимита дня.
     q — очередь в порядке продвижения: [короткое имя, user_id]; пустая очередь — поля нет.
     Не влезает в MAX_DATA_BYTES — имена укорачиваются до 14, 9, 6 символов, затем в q остаются только user_id
@@ -294,6 +295,8 @@ def build_digest_data(day: DaySeats, seats: Sequence[int], closed: bool) -> str:
         data = {"d": day.cal_date.isoformat(), "t": day_title(day.cal_date), "f": free_count, "c": total}
         if closed:
             data["x"] = was_people(len(day.holders))
+        elif deadline:
+            data["e"] = deadline
         data["s"] = s
         if day.queue:
             data["q"] = [[short_name(e.full_name, limit), e.user_id] if queue_names else e.user_id for e in day.queue]

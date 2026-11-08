@@ -194,13 +194,16 @@ class TemplatesTest(unittest.TestCase):
         self.assertNotIn("Бронирование закрыто", html)
         self.assertIn(".tk,.bs,.me{background:var(--bg);color:var(--hn)}", html)
 
-    def test_digest_confirm_deadline_from_config(self):
-        """Время в подсказке W — из CANCEL_BOOKING_JOB_HOUR/MINUTES, в шаблоне литерала нет"""
-        self.assertIn(f'DL="{settings.CANCEL_BOOKING_JOB_HOUR:02d}:{settings.CANCEL_BOOKING_JOB_MINUTES:02d}"',
-                      render_digest_widget())
-        source = (Path(render_module.__file__).parent / "digest.html").read_text(encoding="utf-8")
-        self.assertIn("Подтвердите до '+DL+', иначе бронь снимется", source)
-        self.assertNotIn(f"{settings.CANCEL_BOOKING_JOB_HOUR}:{settings.CANCEL_BOOKING_JOB_MINUTES:02d}", source)
+    def test_digest_timer_and_hint(self):
+        """W: таймер до отмены справа от даты, подсказка без времени. Дедлайн приходит в chat_data (e), не в HTML.
+        Раз в секунду обновляется только узел таймера, не весь виджет"""
+        html = render_digest_widget()
+        self.assertIn('<div class="nt"><i></i>Подтвердите, иначе бронь отменится</div>', html)
+        self.assertNotIn("DL", html.split("<script>")[1])
+        self.assertIn("(S=='W'&&C.e?'<span id=\"tm\" class=\"tm'+(rm()<900?' u':'')+'\">'+fm()+'</span>':'')", html)
+        self.assertIn("setInterval(function(){var n=document.getElementById('tm')", html)
+        self.assertEqual(html.count("setInterval"), 1)
+        self.assertRegex(html, r"\.tm\{[^}]*font-variant-numeric:tabular-nums")
 
     def test_digest_worst_case_size(self):
         """Цель ТЗ — не больше 3900 Б после zlib; всё, что меняется при отправке (руководитель), в худшем значении"""
@@ -488,6 +491,16 @@ class DigestDataTest(unittest.TestCase):
                          "Было 2 человека")
         self.assertEqual(json.loads(build_digest_data(DaySeats(d, 10), SEATS, closed=True))["x"], "Никого не было")
 
+    def test_deadline_only_in_open_day(self):
+        d = date(2026, 11, 12)
+        self.assertEqual(json.loads(build_digest_data(DaySeats(d, 10), SEATS, closed=False, deadline=1794342600))["e"],
+                         1794342600)
+        self.assertNotIn("e", json.loads(build_digest_data(DaySeats(d, 10), SEATS, closed=True, deadline=1794342600)))
+        self.assertNotIn("e", json.loads(build_digest_data(DaySeats(d, 10), SEATS, closed=False)))
+        out = build_digest_data(_worst_digest_day(), SEATS, closed=False, deadline=1794342600)
+        self.assertLessEqual(data_size(out), MAX_DATA_BYTES)
+        self.assertEqual(json.loads(out)["s"][0][0], "Александра К.")
+
     def test_queue_order_and_names(self):
         d = date(2026, 11, 12)
         q = [QueueEntry(31, "Лебедев Никита"), QueueEntry(32, "Фёдорова Дарья")]
@@ -510,7 +523,8 @@ const tick = () => new Promise(r => setTimeout(r, 0));
 function snap(r, A, store) {
   const h = A.innerHTML, all = re => [...h.matchAll(re)].map(m => m[1]);
   return {state: r.st(), buttons: all(/data-r="(\w)"/g), free: all(/data-s="(\d+)"/g), names: all(/data-n="(\w+)"/g),
-    queue: all(/data-u="(\d+)"/g), link: h.includes('data-l="1"'), hint: h.includes('Подтвердите до'),
+    queue: all(/data-u="(\d+)"/g), link: h.includes('data-l="1"'), hint: h.includes('иначе бронь отменится'),
+    timer: (m => m && {cls: m[1], text: m[2]})(h.match(/id="tm" class="([^"]*)">([^<]*)</)),
     sub: (h.match(/<small[^>]*>([^<]*)/) || [])[1], cls: (h.match(/<small class="(\w*)"/) || [])[1] ?? null,
     qline: ((h.match(/Очередь: (.*?)<\/div>/) || [])[1] || '').replace(/<[^>]+>/g, ''),
     qbold: [...((h.match(/Очередь: (.*?)<\/div>/) || [])[1] || '').matchAll(/<b>([^<]*)<\/b>/g)].map(m => m[1]),
@@ -524,10 +538,17 @@ function snap(r, A, store) {
     const T = {chatData: JSON.stringify(c.data), viewer: c.viewer, onEvent() {}, ready() {},
       HapticFeedback: {notificationOccurred: k => hap.push(k)}, openTelegramLink: u => opened.push(u),
       request: s => { sent.push(s); return Promise.resolve({result: c.answer == null ? null : JSON.stringify(c.answer)}); }};
-    const doc = {getElementById: () => A, documentElement: {}};
+    const clock = {t: c.now == null ? Date.now() : c.now * 1000}, intervals = [], tm = {textContent: '', className: 'tm'};
+    const doc = {getElementById: id => id == 'a' ? A : id == 'tm' && c.advance != null ? tm : null, documentElement: {}};
     const ls = {getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; }};
-    const r = new Function('window', 'document', 'localStorage', js + ';return {st: st};')({TelegramWidget: T}, doc, ls);
+    const r = new Function('window', 'document', 'localStorage', 'Date', 'setInterval', js + ';return {st: st};')(
+      {TelegramWidget: T}, doc, ls, {now: () => clock.t}, f => intervals.push(f));
     const res = snap(r, A, store);
+    if (c.advance != null) {
+      clock.t += c.advance * 1000;
+      intervals.forEach(f => f());
+      res.tick = {text: tm.textContent, cls: tm.className};
+    }
     if (c.click) {
       doc.onclick({target: {dataset: c.click, parentNode: A}});
       await tick(); await tick();
@@ -542,7 +563,7 @@ ME = 111
 D = "2026-11-12"
 
 
-def _digest(me=None, full=False, queue=(), closed=False, capacity=10) -> dict:
+def _digest(me=None, full=False, queue=(), closed=False, capacity=10, deadline=None) -> dict:
     """Схема дня через build_digest_data: заняты 1, 3 (не подтверждено), 5, 7, 9, 10; me — бронь зрителя на месте 4
     (True — подтверждена, False — нет); full — заняты и 2, 6, 8, а место 4 — чужое, если брони зрителя нет"""
     holders = [SeatHolder(200 + n, f"Сотрудник{n} Иван", n, n != 3) for n in (1, 3, 5, 7, 9, 10)]
@@ -553,7 +574,7 @@ def _digest(me=None, full=False, queue=(), closed=False, capacity=10) -> dict:
         if me is None:
             holders.append(SeatHolder(204, "Сотрудник4 Пётр", 4, True))
     q = [QueueEntry(uid, name) for uid, name in queue]
-    return json.loads(build_digest_data(DaySeats(date(2026, 11, 12), capacity, holders, q), SEATS, closed))
+    return json.loads(build_digest_data(DaySeats(date(2026, 11, 12), capacity, holders, q), SEATS, closed, deadline))
 
 
 QUEUE = ((351, "Лебедев Никита"), (352, "Фёдорова Дарья"))
@@ -617,6 +638,29 @@ class DigestStatesTest(unittest.TestCase):
         for s in (x, u, w, b, n):
             self.assertIn("3", s["unconfirmed"])
         self.assertTrue(all(not s["hint"] for s in (x, v, u, b, f, n, q0, q)))
+
+    def test_timer(self):
+        """Таймер только в W: часы и минуты, в последний час минуты и секунды, за 15 минут красный, ниже нуля 0:00.
+        Часы телефона — только для показа: состояние и кнопки по-прежнему из данных"""
+        e = 1794342600
+        w = lambda rem, **kw: self.case(_digest(me=False, deadline=e), now=e - rem, **kw)
+        long, hour, urgent, over, booked, no_deadline, ticking = self.run_cases(
+            w(19800), w(2820), w(540), w(-5),
+            self.case(_digest(me=True, deadline=e), now=e - 600),
+            self.case(_digest(me=False), now=e - 600),
+            w(3605, advance=10),
+        )
+        self.assertEqual(long["timer"], {"cls": "tm", "text": "5 ч 30 мин"})
+        self.assertEqual(hour["timer"], {"cls": "tm", "text": "47:00"})
+        self.assertEqual(urgent["timer"], {"cls": "tm u", "text": "9:00"})
+        self.assertEqual(over["timer"], {"cls": "tm u", "text": "0:00"})
+        self.assertEqual((over["state"], over["buttons"]), ("W", ["x", "c"]))   # кнопки решает сервер, не часы
+        self.assertIsNone(booked["timer"])
+        self.assertIsNone(no_deadline["timer"])
+        self.assertEqual(ticking["timer"]["text"], "1 ч 0 мин")
+        self.assertEqual(ticking["tick"], {"text": "59:55", "cls": "tm"})
+        (late,) = self.run_cases(w(905, advance=10))
+        self.assertEqual(late["tick"], {"text": "14:55", "cls": "tm u"})
 
     def test_data_overrides_unregistered_mark(self):
         """Бронь или место в очереди значат, что зритель зарегистрирован: отметка U не мешает"""

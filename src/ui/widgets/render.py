@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from config import settings
 from src.ui.widgets.layout import LAYOUT_TOP_ROWS, OFFICE_LAYOUT, LayoutCell, LayoutItem
 from src.ui.widgets.state import short_name
-from src.utils.today import confirm_time
 
 MAX_HTML_BYTES = 32768   # лимит Telegram на исходный HTML
 MAX_ZLIB_BYTES = 4096    # лимит Telegram на HTML после zlib -9
@@ -93,11 +92,10 @@ def render_booking_widget(
 @lru_cache(maxsize=4)
 def render_digest_widget(boss: str = "") -> str:
     """Дайджест в группе. Отправлять с allow_queries=True: без него у виджета нет TelegramWidget.viewer.
-    DL — время дедлайна подтверждения для подсказки «Подтвердите до 21:30, иначе бронь снимется»"""
+    Дедлайн подтверждения для таймера приходит в chat_data (поле e), а не в HTML: он свой у каждой даты"""
     return _checked(_fill(_template("digest"), {
         "LAYOUT": widget_layout(),
         "TOP": LAYOUT_TOP_ROWS,
         "BOSS": boss,
         "BOT": settings.BOT_USERNAME,
-        "DL": confirm_time().strftime("%H:%M"),
     }))
