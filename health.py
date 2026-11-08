@@ -1,27 +1,12 @@
-import asyncio
-import logging
+"""Healthcheck контейнера: бот жив, если недавно обновил метку (src/infrastructure/liveness.py).
+
+Без сети и тяжёлых импортов: проверка идёт миллисекунды и не зависит от доступности Telegram и загрузки CPU."""
 import sys
 
-from aiogram import Bot
-
-from config import settings as s
-
-
-async def check_health():
-    try:
-        bot = Bot(token=s.TOKEN)
-        await bot.get_me()
-        await bot.session.close()
-        return 0
-    except Exception as e:
-        logging.error("Health check failed: %s", e)
-        return 1
-
+from src.infrastructure.liveness import LIVENESS_FILE, MAX_AGE, is_alive
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.ERROR,
-        format="[healthcheck] %(levelname)s: %(message)s",
-        handlers=[logging.StreamHandler(sys.stderr)]
-    )
-    sys.exit(asyncio.run(check_health()))
+    if is_alive():
+        sys.exit(0)
+    print(f"[healthcheck] метка {LIVENESS_FILE} отсутствует или старше {MAX_AGE} с", file=sys.stderr)
+    sys.exit(1)

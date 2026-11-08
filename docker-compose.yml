@@ -10,11 +10,13 @@ services:
     volumes:
       - ./logs:/app/logs
     healthcheck:
+      # Возраст метки «жив» (src/infrastructure/liveness.py), без сети: проверка идёт миллисекунды
       test: ["CMD", "python", "health.py"]
-      interval: 60s
-      timeout: 10s
+      interval: 30s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 90s
+      start_interval: 5s
     restart: unless-stopped
     networks: [bot_network]
 

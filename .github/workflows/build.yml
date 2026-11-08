@@ -60,6 +60,8 @@ jobs:
 
           echo "🚀 Starting deployment process..."
           START_TIME=$(date +%s)
+          IMAGE=bot_v5-bot          # образ сервиса bot: <проект compose>-<сервис>
+          WAIT=180                  # секунд на старт и healthcheck
 
           cd bot_v5 || exit 1
           echo "✅ Changed to bot_v5 directory"
@@ -72,78 +74,52 @@ jobs:
           git reset --hard origin/main
           NEW_COMMIT=$(git rev-parse HEAD)
 
-          echo "2. Stopping containers..."
-          docker compose down
+          # Откат поднимает этот образ: после git reset без --build compose запустил бы только что собранный
+          echo "2. Saving current image for rollback..."
+          if docker image inspect "$IMAGE:latest" >/dev/null 2>&1; then
+            docker tag "$IMAGE:latest" "$IMAGE:rollback"
+          else
+            echo "No previous image, rollback will not be possible"
+          fi
 
-          echo "3. Cleaning up Docker..."
-          docker image prune -f
-
-          echo "4. Building and starting containers..."
-          if ! docker compose up --build -d; then
-            echo "❌ Build failed! Rolling back..."
+          # Старая версия работает, пока собирается новая
+          echo "3. Building..."
+          if ! docker compose build; then
+            echo "❌ Build failed, the old version keeps running"
             git reset --hard "$CURRENT_COMMIT"
-            docker compose up -d
             exit 1
           fi
 
-          echo "5. Waiting for containers..."
-          sleep 20
-
-          echo "6. Health check..."
-          MAX_ATTEMPTS=10
-          ATTEMPT=1
-
-          SERVICES=$(docker compose config --services)
-
-          all_ok=false
-          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "Health check attempt $ATTEMPT/$MAX_ATTEMPTS..."
-
-            all_ok=true
-            for s in $SERVICES; do
-              cid=$(docker compose ps -q "$s" || true)
-              if [ -z "$cid" ]; then
-                echo "Service: $s | container not found"
-                all_ok=false
-                continue
-              fi
-
-              state=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo "unknown")
-              health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo "none")
-
-              echo "Service: $s | state=$state | health=$health"
-
-              if [ "$state" != "running" ]; then all_ok=false; fi
-              if [ "$health" != "none" ] && [ "$health" != "healthy" ]; then all_ok=false; fi
-            done
-
-            if [ "$all_ok" = true ]; then
-              END_TIME=$(date +%s)
-              DURATION=$((END_TIME - START_TIME))
-
-              echo "✅ All services are up & healthy!"
-              echo "🎉 Deployment completed in ${DURATION}s!"
-              echo "Containers running: $(echo "$SERVICES" | wc -w)"
-              echo "Old commit: $CURRENT_COMMIT"
-              echo "New commit: $NEW_COMMIT"
-          
-              echo "==> Bot logs"
-              docker compose logs --no-color --tail=200 bot || true
-          
-              exit 0
-            fi
-
-            echo "⏳ Waiting 10s before retry..."
-            sleep 10
-            ATTEMPT=$((ATTEMPT + 1))
-          done
+          # --wait: compose ждёт running и healthy у всех сервисов с healthcheck, иначе код возврата не 0
+          echo "4. Starting and waiting for healthy (up to ${WAIT}s)..."
+          if docker compose up -d --wait --wait-timeout "$WAIT"; then
+            END_TIME=$(date +%s)
+            echo "✅ All services are up & healthy!"
+            echo "🎉 Deployment completed in $((END_TIME - START_TIME))s!"
+            echo "Old commit: $CURRENT_COMMIT"
+            echo "New commit: $NEW_COMMIT"
+            docker compose ps
+            echo "==> Bot logs"
+            docker compose logs --no-color --tail=200 bot || true
+            docker image prune -f
+            exit 0
+          fi
 
           echo "❌ Health check failed! Rolling back..."
-          git reset --hard "$CURRENT_COMMIT"
+          docker compose ps || true
           echo "==> Bot logs"
           docker compose logs --no-color --tail=200 bot || true
-          docker compose down
-          docker compose up -d
+          git reset --hard "$CURRENT_COMMIT"
+          if docker image inspect "$IMAGE:rollback" >/dev/null 2>&1; then
+            docker tag "$IMAGE:rollback" "$IMAGE:latest"
+            if docker compose up -d --wait --wait-timeout "$WAIT"; then
+              echo "↩️ Rolled back to $CURRENT_COMMIT"
+            else
+              echo "⚠️ The previous version is not healthy either, check the server"
+            fi
+          else
+            echo "⚠️ No previous image to roll back to"
+          fi
           exit 1
 
     - name: Send Telegram notification - Success

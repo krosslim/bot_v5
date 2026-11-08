@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import Config, setup_logging
 from src.handlers import bot_combined_router
 from src.infrastructure.dishka import container
+from src.infrastructure import liveness
 from src.infrastructure.log_alerts import AlertLogHandler
 from src.infrastructure.ops_alerts import RunMonitor, watch_missed_jobs
 from src.infrastructure.telegram.widgets import WIDGET_QUERY_UPDATE, widgets_supported
@@ -85,6 +86,9 @@ async def main() -> None:
     # Шаблоны листов в Google-таблице — в фоне через планировщик, чтобы не задерживать polling
     scheduler.add_job(partial(sheet_template_job, container), id="sheet_template_startup_job", replace_existing=True)
 
+    # Метка «жив» для healthcheck контейнера: обновляется, пока работает цикл событий
+    liveness_task = asyncio.create_task(liveness.beat_forever(), name="liveness")
+
     try:
         logger.info("Инициализация бота: %s", bot_info)
 
@@ -92,6 +96,8 @@ async def main() -> None:
 
     finally:
         logger.info("Закрытие соединений…")
+        liveness_task.cancel()
+        liveness.clear()
         await run_monitor.stop()
         logging.getLogger().removeHandler(alert_log_handler)
         await container.close()
