@@ -11,6 +11,16 @@ def work_end_time() -> time:
     return time(s.WORK_END_HOUR, s.WORK_END_MINUTES)
 
 
+def confirm_time() -> time:
+    """Время снятия неподтверждённых броней на завтра (cancel_not_confirmed_booking_job, каждый день)"""
+    return time(s.CANCEL_BOOKING_JOB_HOUR, s.CANCEL_BOOKING_JOB_MINUTES)
+
+
+def confirm_deadline(cal_date: date) -> datetime:
+    """До какого момента можно подтвердить бронь на cal_date: накануне в confirm_time()"""
+    return datetime.combine(cal_date - timedelta(days=1), confirm_time(), tzinfo=ZoneInfo(s.MSC_TZ))
+
+
 def is_after_work_end(now: datetime) -> bool:
     return now.time() >= work_end_time()
 

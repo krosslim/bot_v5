@@ -17,6 +17,7 @@ WEEKDAYS_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
 EXPIRED_TEXT = "Это окно закрыто"   # окно заменено новым или закрыто «Выйти», а удалить его Telegram не дал
 UNAVAILABLE_SEAT = "недоступно"
+DIGEST_UNAVAILABLE = "u"           # место сверх лимита дня в дайджесте
 
 
 def dumps(obj) -> str:
@@ -162,11 +163,20 @@ class SeatHolder:
 
 
 @dataclass(frozen=True)
+class QueueEntry:
+    user_id: int
+    full_name: str
+
+
+@dataclass(frozen=True)
 class DaySeats:
     cal_date: date
     capacity: int
     holders: List[SeatHolder] = field(default_factory=list)   # все BOOKED, в т.ч. без места
-    queue: List[int] = field(default_factory=list)            # user_id в порядке очереди
+    queue: List[QueueEntry] = field(default_factory=list)     # WAITLISTED в порядке продвижения
+
+    def queue_ids(self) -> List[int]:
+        return [e.user_id for e in self.queue]
 
     def by_seat(self) -> Dict[int, SeatHolder]:
         return {h.seat_no: h for h in self.holders if h.seat_no}
@@ -211,7 +221,8 @@ def build_day_state(
     """Подзаголовок h — короткая фраза без разделителей «·». today нужен для текстов закрытых дней.
     Отмена брони и выход из очереди — кнопками под схемой, поэтому подсказок «нажмите, чтобы отменить» нет"""
     me = day.holder(subject_id)
-    qp = day.queue.index(subject_id) + 1 if subject_id in day.queue else 0
+    queue = day.queue_ids()
+    qp = queue.index(subject_id) + 1 if subject_id in queue else 0
     ql = len(day.queue)
     booked = len(day.holders)
     limit = min(day.capacity, len(seats))
@@ -255,23 +266,37 @@ def build_day_state(
 #  Дайджест в группе
 # ---------------------------------------------------------------------------#
 def build_digest_data(day: DaySeats, seats: Sequence[int], closed: bool) -> str:
-    """f/c — «Свободно f из c» под датой, считается как в личном виджете (build_day_state):
-    места сверх лимита дня (capacity) не свободны и не входят в c"""
+    """chat_data дайджеста в группе. Она одна на всех: виджет сам находит в ней зрителя по TelegramWidget.viewer.
+
+    d, t — дата и заголовок; f/c — «Свободно f из c» под датой, считается как в личном виджете (build_day_state):
+    места сверх лимита дня (capacity) не свободны и не входят в c; x — день закрыт (после WORK_END дня визита),
+    значение — строка под датой вместо «Свободно f из c» («Было 5 человек»).
+    s — по элементу на место: 0 свободно, [короткое имя, подтверждено 0/1, user_id] занято, "u" сверх лимита дня.
+    q — очередь в порядке продвижения: [короткое имя, user_id]; пустая очередь — поля нет.
+    Не влезает в MAX_DATA_BYTES — имена укорачиваются до 14, 9, 6 символов, затем в q остаются только user_id
+    (виджет пишет «Очередь: N человек»).
+
+    Приватность: user_id сотрудников лежат в данных виджета, а их технически может прочитать любой участник группы.
+    Имена там и так есть, а id в Telegram не секретны. Брони без места (лимит дня больше числа мест на схеме)
+    в данные не попадают: такую настройку дайджест не поддерживает"""
     taken, free = day.by_seat(), set(day.free_seats(seats))
     total = min(day.capacity, len(seats))
     free_count = max(0, min(total - len(day.holders), len(free)))
-    for limit in (14, 9, 6):
+    out = ""
+    for limit, queue_names in ((14, True), (9, True), (6, True), (6, False)):
         s = []
         for n in range(1, max(seats) + 1):
             if n in taken:
-                s.append([short_name(taken[n].full_name, limit), 1 if taken[n].confirmed else 0])
-            elif n in free:
-                s.append(0)
+                h = taken[n]
+                s.append([short_name(h.full_name, limit), 1 if h.confirmed else 0, h.user_id])
             else:
-                s.append([UNAVAILABLE_SEAT, 1])
-        data = {"d": day.cal_date.isoformat(), "t": day_title(day.cal_date), "f": free_count, "c": total, "s": s}
+                s.append(0 if n in free else DIGEST_UNAVAILABLE)
+        data = {"d": day.cal_date.isoformat(), "t": day_title(day.cal_date), "f": free_count, "c": total}
         if closed:
-            data["x"] = 1
+            data["x"] = was_people(len(day.holders))
+        data["s"] = s
+        if day.queue:
+            data["q"] = [[short_name(e.full_name, limit), e.user_id] if queue_names else e.user_id for e in day.queue]
         out = dumps(data)
         if data_size(out) <= MAX_DATA_BYTES:
             return out

@@ -1,20 +1,22 @@
 """Проверки виджетов без БД и Telegram: python -m unittest discover -s tests"""
 import json
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from config import settings
-from src.utils.today import widget_data_expiry
+from src.utils.today import confirm_deadline, widget_data_expiry
 
-from src.handlers.widget.widget_query_handler import parse_group, parse_private
+from src.handlers.widget.widget_query_handler import DigestRequest, parse_digest, parse_private
 from src.ui.widgets.layout import OFFICE_LAYOUT, SEATS
 from src.ui.widgets import render as render_module
 from src.ui.widgets.render import (MAX_ZLIB_BYTES, _merge_foreign, render_booking_widget, render_digest_widget,
                                    widget_layout, widget_size)
-from src.ui.widgets.state import (MAX_DATA_BYTES, CalendarDay, DaySeats, SeatHolder, build_calendar_data,
+from src.ui.widgets.state import (MAX_DATA_BYTES, CalendarDay, DaySeats, QueueEntry, SeatHolder, build_calendar_data,
                                   build_day_state, build_digest_data, data_size, day_code, people,
                                   shift_month, short_name, was_people)
 
@@ -23,7 +25,8 @@ LONG_NAME = "Константинопольская Александра"   # «
 
 def _full_day(cal_date: date, confirmed: bool = False) -> DaySeats:
     holders = [SeatHolder(user_id=1000 + n, full_name=LONG_NAME, seat_no=n, confirmed=confirmed) for n in SEATS]
-    return DaySeats(cal_date=cal_date, capacity=len(SEATS), holders=holders, queue=list(range(2000, 2008)))
+    queue = [QueueEntry(user_id=2000 + i, full_name=LONG_NAME) for i in range(8)]
+    return DaySeats(cal_date=cal_date, capacity=len(SEATS), holders=holders, queue=queue)
 
 
 class TemplatesTest(unittest.TestCase):
@@ -113,7 +116,8 @@ class TemplatesTest(unittest.TestCase):
                (("booking", render_booking_widget()), ("digest", render_digest_widget()))}
         self.assertEqual(re.findall(r"([^{}]+)\{[^}]*opacity", css["booking"]),
                          ["[data-n]:active,[data-s]:active", ".bt:before"])
-        self.assertEqual(re.findall(r"([^{}]+)\{[^}]*opacity", css["digest"]), ["[data-s]:active"])
+        self.assertEqual(re.findall(r"([^{}]+)\{[^}]*opacity", css["digest"]),
+                         ["[data-n]:active,[data-s]:active,[data-u]:active", ".bt:before"])
 
     def test_seats_are_divs(self):
         """Места — <div>, не <button>: кнопки клиент рисует сам и скругляет одним радиусом, «стулья» пропадают
@@ -171,28 +175,46 @@ class TemplatesTest(unittest.TestCase):
         self.assertIn('B=""', render_booking_widget())
         digest = render_digest_widget("Дмитрий К.")
         self.assertIn('B="Дмитрий К."', digest)
-        self.assertIn('data-s="b"', digest)
+        self.assertIn("if(c=='b')return B?nm(B,'bs',tp):'<div class=\"s o\"></div>'", digest)   # нажатие → gn
         self.assertIn('B=""', render_digest_widget())
 
     def test_digest_header_and_status(self):
-        """Дайджест (вариант B): под датой «Свободно f из c» / «Все места заняты», ФИО или результат нажатия одной
-        строкой — успех зелёным, ошибка и «нужен бот» красным; нижняя строка — подсказка дня, следующий шаг (h)
-        или ссылка на бота (b). Результат 3 секунды, со ссылкой — 6. Лоадер только на свободном месте"""
+        """Дайджест v2: под датой «Свободно f из c» / «Все места заняты», в закрытом дне — текст из данных
+        («Было 5 человек»). Результат нажатия и полное имя заменяют эту строку на 3 секунды: успех зелёным,
+        ошибка красным, имя серым. Вибрация — только на результат действия"""
         html = render_digest_widget()
-        self.assertIn("'Свободно '+C.f+' из '+C.c:'Все места заняты'", html)
-        self.assertIn("esc(ts?ts.m:nv||(C.x?'Бронирование закрыто'", html)
-        self.assertIn("(ts?' class=\"'+(ts.ok?'ok':'er')+'\"':'')", html)
-        self.assertIn("(v?nm(v[0]):busy==c?'<i class=\"sp\"></i>'", html)       # занятое место — без лоадера
-        self.assertIn("if(j.n)fio(j.n);", html)
-        self.assertIn("j.b?6e3:3e3", html)
-        self.assertIn("(ts.b==2?'Зарегистрироваться':'Встать в очередь')+' в боте ›</button>'", html)
-        self.assertIn("ts&&ts.h?esc(ts.h)", html)
-        self.assertIn("'<i></i>Нажмите на своё место, чтобы подтвердить'", html)
-        self.assertIn("'Встать в очередь можно <button data-l=\"1\">в боте ›</button>'", html)
-        self.assertRegex(html, r"\.nt\{[^}]*height:19px")                       # нижняя часть — одна строка
-        self.assertNotIn("занято '", html)
-        self.assertIn(".tk,.bs{background:var(--bg);color:var(--hn)}", html)
-        self.assertNotIn("--nm", html)
+        self.assertIn("esc(fl?fl[1]:C.x||(C.f?'Свободно '+C.f+' из '+C.c:'Все места заняты'))", html)
+        self.assertIn("flash(j.er?['er',j.er]:j.ok?['ok',j.ok]:j.n?['',j.n]:['er',F])", html)
+        self.assertIn("(j.ok||j.er)&&H&&H.notificationOccurred(j.er?'error':'success')", html)
+        self.assertEqual(html.count("notificationOccurred"), 1)
+        self.assertIn("},3000)", html)
+        # Цвет результата перебивает серый .hd small: селектор специфичнее (0,2,0 против 0,1,1)
+        self.assertIn(".hd .ok{color:var(--g)}.hd .er{color:var(--r)}", html)
+        self.assertIn(".hd small{display:block;font-size:14px;line-height:19px;color:var(--hn)}", html)
+        self.assertNotIn("Бронирование закрыто", html)
+        self.assertIn(".tk,.bs,.me{background:var(--bg);color:var(--hn)}", html)
+
+    def test_digest_confirm_deadline_from_config(self):
+        """Время в подсказке W — из CANCEL_BOOKING_JOB_HOUR/MINUTES, в шаблоне литерала нет"""
+        self.assertIn(f'DL="{settings.CANCEL_BOOKING_JOB_HOUR:02d}:{settings.CANCEL_BOOKING_JOB_MINUTES:02d}"',
+                      render_digest_widget())
+        source = (Path(render_module.__file__).parent / "digest.html").read_text(encoding="utf-8")
+        self.assertIn("Подтвердите до '+DL+', иначе бронь снимется", source)
+        self.assertNotIn(f"{settings.CANCEL_BOOKING_JOB_HOUR}:{settings.CANCEL_BOOKING_JOB_MINUTES:02d}", source)
+
+    def test_digest_worst_case_size(self):
+        """Цель ТЗ — не больше 3900 Б после zlib; всё, что меняется при отправке (руководитель), в худшем значении"""
+        packed = widget_size(render_digest_widget(short_name("Константинопольский Александр")))[1]
+        self.assertLessEqual(packed, MAX_ZLIB_BYTES - 80)
+        self.assertLessEqual(packed, 3900)
+
+    def test_digest_commands(self):
+        """Каждое действие — явная команда g*: сервер не угадывает намерение по месту"""
+        html = render_digest_widget()
+        for cmd in ("rq('gn'+d+':'+t.n,'n')", "rq('gu'+d+':'+t.u,'n')", "rq('gb'+d+':'+t.s,'s'+t.s)",
+                    "rq('g'+t.r+d,t.r)"):
+            self.assertIn(cmd, html)
+        self.assertNotIn("'s:'", html)
 
     def test_full_name_on_tap(self):
         """Места с именами — кнопки: запрос n:<дата>:<место>, ответ {"n": ФИО} серым вместо подсказки дня"""
@@ -234,11 +256,22 @@ class RequestParsingTest(unittest.TestCase):
             self.assertIsNone(parse_private(bad), bad)
         self.assertLessEqual(len("lq:2026-11-12:10@12345678901234567890".encode()), 64)
 
-    def test_group(self):
-        self.assertEqual(parse_group("s:2026-11-10:5"), (date(2026, 11, 10), 5))
-        self.assertIsNone(parse_group("b:2026-11-10:5"))
-        self.assertEqual(parse_group("s:2026-11-10:b"), (date(2026, 11, 10), "b"))
-        self.assertIsNone(parse_group("s:2026-11-10:x"))
+    def test_digest(self):
+        d = date(2026, 11, 12)
+        self.assertEqual(parse_digest("gn:2026-11-12:7"), DigestRequest("n", d, seat=7))
+        self.assertEqual(parse_digest("gn:2026-11-12:b"), DigestRequest("n", d, seat="b"))
+        self.assertEqual(parse_digest("gu:2026-11-12:1234567890"), DigestRequest("u", d, user_id=1234567890))
+        self.assertEqual(parse_digest("gb:2026-11-12:10"), DigestRequest("b", d, seat=10))
+        for cmd in "cxql":
+            self.assertEqual(parse_digest(f"g{cmd}:2026-11-12"), DigestRequest(cmd, d))
+        for bad in ("", "g", "gb:2026-11-12", "gb:2026-11-12:b", "gb:2026-11-12:1234", "gn:2026-11-12",
+                    "gn:2026-11-12:bb", "gu:2026-11-12", "gu:2026-11-12:b", "gu:2026-11-12:123456789012345678901",
+                    "gc:2026-11-12:1", "gx:2026-11-12:b", "gz:2026-11-12", "gn:2026-13-40:1", "gc:2026-11-12 ",
+                    "gx:2026-11-12@1", "s:2026-11-12:1", "Gc:2026-11-12", "gc:2026-11-12\n"):
+            self.assertIsNone(parse_digest(bad), bad)
+        longest = "gu:2026-11-12:" + "9" * 20
+        self.assertIsNotNone(parse_digest(longest))
+        self.assertLessEqual(len(longest.encode()), 64)
 
 
 class StateTest(unittest.TestCase):
@@ -283,11 +316,6 @@ class StateTest(unittest.TestCase):
         self.assertEqual((limited["f"], limited["c"]), (2, 4))
         full = json.loads(build_digest_data(_full_day(d), SEATS, closed=False))
         self.assertEqual((full["f"], full["c"]), (0, len(SEATS)))
-
-    def test_digest_worst_case_fits(self):
-        out = build_digest_data(_full_day(date(2026, 11, 10)), SEATS, closed=False)
-        self.assertLessEqual(data_size(out), MAX_DATA_BYTES)
-        self.assertEqual(json.loads(out)["s"][0], ["Александра К.", 0])
 
     def test_day_codes(self):
         first, horizon = date(2026, 11, 10), date(2026, 12, 6)
@@ -417,6 +445,221 @@ class StateTest(unittest.TestCase):
         for state in (own, admin, free, full):
             self.assertNotIn("·", state["h"])
             self.assertNotIn("7", state["h"])
+
+def _worst_digest_day(queue: int = 8) -> DaySeats:
+    """Худший случай из ТЗ: 10 мест с длинными именами и 10-значными id, очередь"""
+    holders = [SeatHolder(1_000_000_000 + n, LONG_NAME, n, False) for n in SEATS]
+    q = [QueueEntry(2_000_000_000 + i, LONG_NAME) for i in range(queue)]
+    return DaySeats(date(2026, 11, 12), len(SEATS), holders, q)
+
+
+class DigestDataTest(unittest.TestCase):
+    def test_worst_case_fits_without_shortening(self):
+        out = build_digest_data(_worst_digest_day(), SEATS, closed=True)
+        self.assertLessEqual(data_size(out), MAX_DATA_BYTES)
+        data = json.loads(out)
+        self.assertEqual(data["s"][0], ["Александра К.", 0, 1_000_000_001])
+        self.assertEqual(data["q"][0], ["Александра К.", 2_000_000_000])
+        self.assertEqual(len(data["q"]), 8)
+
+    def test_long_queue_keeps_ids_only(self):
+        """Не влезает даже с именами по 6 символов — в q остаются только id, по порядку"""
+        out = build_digest_data(_worst_digest_day(queue=40), SEATS, closed=False)
+        self.assertLessEqual(data_size(out), MAX_DATA_BYTES)
+        data = json.loads(out)
+        self.assertEqual(data["q"], [2_000_000_000 + i for i in range(40)])
+        self.assertEqual(len(data["s"][0][0]), 6)
+        self.assertEqual(data["s"][0][2], 1_000_000_001)
+
+    def test_format(self):
+        d = date(2026, 11, 12)
+        holders = [SeatHolder(11, "Смирнов Алексей", 1, True), SeatHolder(12, "Кузнецова Мария", 3, False)]
+        data = json.loads(build_digest_data(DaySeats(d, 10, holders), SEATS, closed=False))
+        self.assertEqual((data["d"], data["t"]), ("2026-11-12", "Чт, 12 ноября"))
+        self.assertEqual(data["s"][:4], [["Алексей С.", 1, 11], 0, ["Мария К.", 0, 12], 0])
+        self.assertNotIn("q", data)
+        self.assertNotIn("x", data)
+        # Лимит дня выбран: остальные стулья недоступны
+        limited = json.loads(build_digest_data(DaySeats(d, 2, holders), SEATS, closed=False))
+        self.assertEqual((limited["f"], limited["c"]), (0, 2))
+        self.assertEqual([v for i, v in enumerate(limited["s"]) if i not in (0, 2)], ["u"] * 8)
+        # Закрытый день: строка под датой — сколько было людей, как в личном виджете
+        self.assertEqual(json.loads(build_digest_data(DaySeats(d, 10, holders), SEATS, closed=True))["x"],
+                         "Было 2 человека")
+        self.assertEqual(json.loads(build_digest_data(DaySeats(d, 10), SEATS, closed=True))["x"], "Никого не было")
+
+    def test_queue_order_and_names(self):
+        d = date(2026, 11, 12)
+        q = [QueueEntry(31, "Лебедев Никита"), QueueEntry(32, "Фёдорова Дарья")]
+        data = json.loads(build_digest_data(DaySeats(d, 0, [], q), SEATS, closed=False))
+        self.assertEqual(data["q"], [["Никита Л.", 31], ["Дарья Ф.", 32]])
+
+    def test_confirm_deadline(self):
+        """Подтвердить можно до снятия неподтверждённых броней: накануне в CANCEL_BOOKING_JOB_HOUR:MINUTES"""
+        tz = ZoneInfo(settings.MSC_TZ)
+        self.assertEqual(confirm_deadline(date(2026, 11, 12)),
+                         datetime(2026, 11, 11, settings.CANCEL_BOOKING_JOB_HOUR,
+                                  settings.CANCEL_BOOKING_JOB_MINUTES, tzinfo=tz))
+
+
+# Шаблон дайджеста запускается в Node с заглушкой TelegramWidget: data-* в разметке — то, что можно нажать
+_HARNESS = r"""
+const {html, cases} = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const js = html.split('<script>')[1].split('</script>')[0];
+const tick = () => new Promise(r => setTimeout(r, 0));
+function snap(r, A, store) {
+  const h = A.innerHTML, all = re => [...h.matchAll(re)].map(m => m[1]);
+  return {state: r.st(), buttons: all(/data-r="(\w)"/g), free: all(/data-s="(\d+)"/g), names: all(/data-n="(\w+)"/g),
+    queue: all(/data-u="(\d+)"/g), link: h.includes('data-l="1"'), hint: h.includes('Подтвердите до'),
+    sub: (h.match(/<small[^>]*>([^<]*)/) || [])[1], cls: (h.match(/<small class="(\w*)"/) || [])[1] ?? null,
+    qline: ((h.match(/Очередь: (.*?)<\/div>/) || [])[1] || '').replace(/<[^>]+>/g, ''),
+    qbold: [...((h.match(/Очередь: (.*?)<\/div>/) || [])[1] || '').matchAll(/<b>([^<]*)<\/b>/g)].map(m => m[1]),
+    take: h.includes('>занять<'), move: h.includes('>пересесть<'), mine: all(/data-n="(\d+)" class="s me/g),
+    unconfirmed: all(/data-n="(\d+)" class="s \w+ r"/g), stored: store.u ?? null};
+}
+(async () => {
+  const out = [];
+  for (const c of cases) {
+    const A = {innerHTML: ''}, store = c.ur ? {u: '1'} : {}, sent = [], hap = [], opened = [];
+    const T = {chatData: JSON.stringify(c.data), viewer: c.viewer, onEvent() {}, ready() {},
+      HapticFeedback: {notificationOccurred: k => hap.push(k)}, openTelegramLink: u => opened.push(u),
+      request: s => { sent.push(s); return Promise.resolve({result: c.answer == null ? null : JSON.stringify(c.answer)}); }};
+    const doc = {getElementById: () => A, documentElement: {}};
+    const ls = {getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; }};
+    const r = new Function('window', 'document', 'localStorage', js + ';return {st: st};')({TelegramWidget: T}, doc, ls);
+    const res = snap(r, A, store);
+    if (c.click) {
+      doc.onclick({target: {dataset: c.click, parentNode: A}});
+      await tick(); await tick();
+      res.after = {...snap(r, A, store), sent, hap, opened};
+    }
+    out.push(res);
+  }
+  process.stdout.write(JSON.stringify(out), () => process.exit(0));
+})();
+"""
+ME = 111
+D = "2026-11-12"
+
+
+def _digest(me=None, full=False, queue=(), closed=False, capacity=10) -> dict:
+    """Схема дня через build_digest_data: заняты 1, 3 (не подтверждено), 5, 7, 9, 10; me — бронь зрителя на месте 4
+    (True — подтверждена, False — нет); full — заняты и 2, 6, 8, а место 4 — чужое, если брони зрителя нет"""
+    holders = [SeatHolder(200 + n, f"Сотрудник{n} Иван", n, n != 3) for n in (1, 3, 5, 7, 9, 10)]
+    if me is not None:
+        holders.append(SeatHolder(ME, "Иванов Иван", 4, me))
+    if full:
+        holders += [SeatHolder(200 + n, f"Сотрудник{n} Пётр", n, True) for n in (2, 6, 8)]
+        if me is None:
+            holders.append(SeatHolder(204, "Сотрудник4 Пётр", 4, True))
+    q = [QueueEntry(uid, name) for uid, name in queue]
+    return json.loads(build_digest_data(DaySeats(date(2026, 11, 12), capacity, holders, q), SEATS, closed))
+
+
+QUEUE = ((351, "Лебедев Никита"), (352, "Фёдорова Дарья"))
+
+
+@unittest.skipUnless(shutil.which("node"), "нужен Node.js")
+class DigestStatesTest(unittest.TestCase):
+    """Раздел 7 ТЗ: что видит и может нажать каждый зритель"""
+
+    @staticmethod
+    def run_cases(*cases):
+        html = render_digest_widget("Дмитрий К.")
+        res = subprocess.run([shutil.which("node"), "-e", _HARNESS], input=json.dumps({"html": html, "cases": cases}),
+                             capture_output=True, text=True, timeout=30)
+        if res.returncode:
+            raise AssertionError(res.stderr)
+        return json.loads(res.stdout)
+
+    def case(self, data, viewer=ME, **kw):
+        return {"data": data, "viewer": {"id": viewer, "first_name": "Иван"} if viewer else None, **kw}
+
+    def test_states(self):
+        x, v, u, w, b, f, n, q0, q = self.run_cases(
+            self.case(_digest(me=True, closed=True)),
+            self.case(_digest(full=True, queue=QUEUE), viewer=None),
+            self.case(_digest(), ur=1),
+            self.case(_digest(me=False)),
+            self.case(_digest(me=True)),
+            self.case(_digest(me=True, full=True, queue=QUEUE)),
+            self.case(_digest()),
+            self.case(_digest(full=True, queue=QUEUE)),
+            self.case(_digest(full=True, queue=QUEUE[:1] + ((ME, "Иванов Иван"),) + QUEUE[1:])),
+        )
+        self.assertEqual([s["state"] for s in (x, v, u, w, b, f, n, q0, q)], ["X", "V", "U", "W", "B", "F", "N", "Q0", "Q"])
+        # X: свободные места не нажимаются, кнопок нет, имена нажимаются; под датой — сколько было людей
+        self.assertEqual((x["buttons"], x["free"], x["sub"]), ([], [], "Было 7 человек"))
+        self.assertIn("1", x["names"])
+        # V: не нажимается ничего, даже имена в очереди, и нет ссылки на регистрацию
+        self.assertEqual((v["buttons"], v["free"], v["names"], v["queue"], v["link"]), ([], [], [], [], False))
+        self.assertEqual(v["qline"], "Никита Л., Дарья Ф.")
+        # U: только ссылка на бота, места не занимаются, имена нажимаются
+        self.assertEqual((u["buttons"], u["free"], u["link"]), ([], [], True))
+        self.assertIn("b", u["names"])
+        # W: подтвердить или отменить, подсказка с дедлайном, свободные места пустые
+        self.assertEqual((w["buttons"], w["free"], w["hint"], w["take"]), (["x", "c"], [], True, False))
+        self.assertEqual(w["mine"], ["4"])
+        self.assertIn("4", w["unconfirmed"])
+        # B: пересесть одним нажатием, отменить кнопкой
+        self.assertEqual((b["buttons"], b["free"], b["move"]), (["x"], ["2", "6", "8"], True))
+        self.assertEqual((b["sub"], b["mine"]), ("Свободно 3 из 10", ["4"]))
+        # F: только отмена
+        self.assertEqual((f["buttons"], f["free"], f["sub"]), (["x"], [], "Все места заняты"))
+        self.assertEqual(f["queue"], ["351", "352"])
+        # N: занять одним нажатием, кнопок нет
+        self.assertEqual((n["buttons"], n["free"], n["take"], n["link"]), ([], ["2", "4", "6", "8"], True, False))
+        # Q0 и Q: встать или выйти; сам зритель в очереди — своё короткое имя полужирным, не нажимается
+        self.assertEqual((q0["buttons"], q0["free"], q0["qbold"]), (["q"], [], []))
+        self.assertEqual((q["buttons"], q["qline"], q["queue"]), (["l"], "Никита Л., Иван И., Дарья Ф.", ["351", "352"]))
+        self.assertEqual(q["qbold"], ["Иван И."])
+        # Неподтверждённые места помечены у всех
+        for s in (x, u, w, b, n):
+            self.assertIn("3", s["unconfirmed"])
+        self.assertTrue(all(not s["hint"] for s in (x, v, u, b, f, n, q0, q)))
+
+    def test_data_overrides_unregistered_mark(self):
+        """Бронь или место в очереди значат, что зритель зарегистрирован: отметка U не мешает"""
+        booked, queued = self.run_cases(self.case(_digest(me=True), ur=1),
+                                        self.case(_digest(full=True, queue=((ME, "Иванов Иван"),)), ur=1))
+        self.assertEqual((booked["state"], queued["state"]), ("B", "Q"))
+
+    def test_ids_only_queue(self):
+        data = _digest(full=True)
+        data["q"] = [351, ME, 352]
+        (res,) = self.run_cases(self.case(data))
+        self.assertEqual((res["state"], res["qline"], res["queue"]), ("Q", "3 человека, вы №2", []))
+
+    def test_requests_and_answers(self):
+        take, unreg, link, confirm, cancel, join, leave, name, queue_name, silent = self.run_cases(
+            self.case(_digest(), click={"s": "2"}, answer={"ok": "Место забронировано"}),
+            self.case(_digest(), click={"s": "2"}, answer={"er": "Вы не зарегистрированы", "u": 1}),
+            self.case(_digest(), ur=1, click={"l": "1"}),
+            self.case(_digest(me=False), click={"r": "c"}, answer={"ok": "Бронь подтверждена"}),
+            self.case(_digest(me=True), click={"r": "x"}, answer={"er": "Бронирование на этот день закрыто"}),
+            self.case(_digest(full=True), click={"r": "q"}, answer={"ok": "Вы в очереди"}),
+            self.case(_digest(full=True, queue=((ME, "Иванов Иван"),)), click={"r": "l"}, answer={"ok": "Вы вышли из очереди"}),
+            self.case(_digest(), click={"n": "1"}, answer={"n": "Сотрудник1 Иван"}),
+            self.case(_digest(full=True, queue=QUEUE), click={"u": "351"}, answer={"n": "Лебедев Никита"}),
+            self.case(_digest(), click={"n": "1"}, answer=None),
+        )
+        a = take["after"]
+        self.assertEqual((a["sent"], a["sub"], a["cls"], a["hap"]), ([f"gb:{D}:2"], "Место забронировано", "ok", ["success"]))
+        a = unreg["after"]
+        self.assertEqual((a["state"], a["stored"], a["cls"], a["hap"]), ("U", "1", "er", ["error"]))
+        a = link["after"]
+        self.assertEqual((a["state"], a["stored"], a["sent"]), ("N", None, []))
+        self.assertEqual(a["opened"], [f"https://t.me/{settings.BOT_USERNAME}?start="])
+        self.assertEqual(confirm["after"]["sent"], [f"gc:{D}"])
+        self.assertEqual((cancel["after"]["sent"], cancel["after"]["cls"]), ([f"gx:{D}"], "er"))
+        self.assertEqual(join["after"]["sent"], [f"gq:{D}"])
+        self.assertEqual(leave["after"]["sent"], [f"gl:{D}"])
+        a = name["after"]
+        self.assertEqual((a["sent"], a["sub"], a["cls"], a["hap"]), ([f"gn:{D}:1"], "Сотрудник1 Иван", "", []))
+        self.assertEqual(queue_name["after"]["sent"], [f"gu:{D}:351"])
+        a = silent["after"]
+        self.assertEqual((a["sub"], a["cls"]), ("Не получилось, попробуйте ещё раз", "er"))
+
 
 if __name__ == "__main__":
     unittest.main()

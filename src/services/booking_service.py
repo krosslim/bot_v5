@@ -147,13 +147,15 @@ class BookingService:
         await self.repo.insert_event(booking_id, BookingStatus.WAITLISTED, BookingStatus.WAITLISTED_MANUAL, user_id)
         return True
 
-    async def leave_from_queue(self, user_id: int, cal_date: date) -> None:
+    async def leave_from_queue(
+            self, user_id: int, cal_date: date, sub_status: str = BookingStatus.CANCELED_CHANGED_MIND
+    ) -> None:
 
-        booking_id = await self.repo.leave_waitlist(user_id, cal_date)
+        booking_id = await self.repo.leave_waitlist(user_id, cal_date, sub_status)
         if not booking_id:
             raise UserIsAlreadyLeaveQueue("ℹ️ Вы уже вышли из очереди!")
 
-        await self.repo.insert_event(booking_id, BookingStatus.CANCELED, BookingStatus.CANCELED_CHANGED_MIND, user_id)
+        await self.repo.insert_event(booking_id, BookingStatus.CANCELED, sub_status, user_id)
 
 
     async def confirm_booking(self, user_id: int, cal_date: date) -> Optional[int]:

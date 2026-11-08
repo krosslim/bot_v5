@@ -8,6 +8,7 @@ from dishka import FromDishka
 from config import settings as s
 from src.dto.booking_dto import BookingStatus
 from src.handlers.user.booking_handler import promote_user_after_cancel
+from src.services.exceptions import UserIsAlreadyLeaveQueue
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
 from src.utils.today import effective_today
@@ -73,13 +74,11 @@ async def handle_left_chat_member(
             )
             continue
 
-        await b_uc.update_by_status(
-            i.cal_date,
-            BookingStatus.WAITLISTED,  # текущий
-            BookingStatus.WAITLISTED_MANUAL,
-            BookingStatus.CANCELED,  # Новый
-            BookingStatus.CANCELED_LEFT_CHAT,
-        )
+        try:
+            # Только этого человека: очередь остальных на эту дату не трогаем
+            await b_uc.cancel_waitlist_place(member, i.cal_date, BookingStatus.CANCELED_LEFT_CHAT)
+        except UserIsAlreadyLeaveQueue:
+            continue
 
 
 # ----------------------------------------------helpers----------------------------------------------

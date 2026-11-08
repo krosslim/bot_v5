@@ -19,7 +19,7 @@ from src.services.exceptions import UserWarn, CalDateIsNotFound, NoCapacityInfo
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.services.user_service import UserService
-from src.ui.widgets.state import CalendarDay, DaySeats, SeatHolder
+from src.ui.widgets.state import CalendarDay, DaySeats, QueueEntry, SeatHolder
 from src.utils.is_autoconfirm import is_in_autoconfirm_period
 
 
@@ -94,9 +94,12 @@ class BookingUseCase:
         if not is_join:
             raise FreePlaceIsAvailable("✅ Место освободилось — вы записаны!")
 
-    async def cancel_waitlist_place(self, user_id: int, cal_date: date) -> None:
+    async def cancel_waitlist_place(
+        self, user_id: int, cal_date: date, sub_status: str = BookingStatus.CANCELED_CHANGED_MIND
+    ) -> None:
+        """Выйти из очереди. UserIsAlreadyLeaveQueue — человека в очереди на эту дату нет"""
         async with self.session.begin():
-            await self.booking.leave_from_queue(user_id, cal_date)
+            await self.booking.leave_from_queue(user_id, cal_date, sub_status)
 
     async def week_state(self, start: date, end: date) -> tuple:
         async with self.session.begin():
@@ -188,19 +191,6 @@ class BookingUseCase:
                 start, end, status_list, sub_status_list
             )
 
-    async def update_by_status(
-        self,
-        cal_date: date,
-        current_status: BookingStatus,
-        current_sub_status: BookingStatus,
-        status: BookingStatus,
-        sub_status: BookingStatus,
-    ) -> int:
-        async with self.session.begin():
-            return await self.booking.update_booking_status(
-                cal_date, current_status, current_sub_status, status, sub_status
-            )
-
     async def cache_key(self, bookings: List[OwnBookingDTO]) -> str:
         date_list = [d.cal_date.isoformat() for d in bookings]
         key = await self.tech.cache_cal_dates(date_list)
@@ -263,7 +253,8 @@ class BookingUseCase:
                        confirmed=r.sub_status == BookingStatus.CONFIRMED)
             for r in rows if r.status == BookingStatus.BOOKED
         ]
-        queue = [r.user_id for r in rows if r.status == BookingStatus.WAITLISTED]
+        queue = [QueueEntry(user_id=r.user_id, full_name=r.full_name)
+                 for r in rows if r.status == BookingStatus.WAITLISTED]
         day = DaySeats(cal_date=cal_date, capacity=capacity, holders=holders, queue=queue)
         return day, bool(info and info.is_workday)
 

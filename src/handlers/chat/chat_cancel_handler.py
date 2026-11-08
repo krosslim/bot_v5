@@ -127,13 +127,8 @@ async def handle_cancel_reason(
                     is_promoted = True
             elif i.status == BookingStatus.WAITLISTED:
                 has_waitlist = True
-                await uc.update_by_status(
-                    i.cal_date,
-                    BookingStatus.WAITLISTED,  # текущий
-                    BookingStatus.WAITLISTED_MANUAL,
-                    BookingStatus.CANCELED,  # Новый
-                    cancel_sub_status
-                )
+                # Только этого человека: очередь остальных на эту дату не трогаем
+                await uc.cancel_waitlist_place(user_id, i.cal_date, cancel_sub_status)
             else:
                 error_count += 1
         except (BookingError, DBError) as e:

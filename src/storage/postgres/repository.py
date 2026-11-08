@@ -456,7 +456,9 @@ class Repository:
         head_sub_q = (
             select(Booking.booking_id)
             .where(Booking.cal_date == cal_date, Booking.status == BookingStatus.WAITLISTED)
-            .order_by(Booking.created_at, Booking.booking_id)
+            # updated_at — время входа в очередь: при повторной записи строка переиспользуется (upsert_waitlisted),
+            # и created_at остаётся от первой брони. Тот же порядок в day_seat_rows и position_in_waitlist
+            .order_by(Booking.updated_at, Booking.booking_id)
             .with_for_update(skip_locked=True)
             .limit(1)
             .scalar_subquery()
@@ -528,7 +530,8 @@ class Repository:
         return int(row[0])
 
     async def day_seat_rows(self, cal_date: date) -> List[DaySeatRowDTO]:
-        """Брони (BOOKED) и очередь (WAITLISTED) на день. Очередь — в порядке повышения, как в cancel_booking"""
+        """Брони (BOOKED) и очередь (WAITLISTED) на день. Очередь — в порядке повышения, как в cancel_booking:
+        по времени входа в очередь (updated_at)"""
         res = await self.session.execute(
             select(Booking.user_id, User.full_name, Booking.status, Booking.sub_status, Booking.seat_no)
             .join(User, User.user_id == Booking.user_id)
@@ -536,7 +539,7 @@ class Repository:
                 Booking.cal_date == cal_date,
                 Booking.status.in_([BookingStatus.BOOKED, BookingStatus.WAITLISTED]),
             )
-            .order_by(Booking.created_at, Booking.booking_id)
+            .order_by(Booking.updated_at, Booking.booking_id)
         )
         return [DaySeatRowDTO.model_validate(r) for r in res.all()]
 
@@ -674,7 +677,10 @@ class Repository:
         return int(row[0]) if row else None
 
     # -------------------- ВЫЙТИ ИЗ ОЧЕРЕДИ --------------------
-    async def leave_waitlist(self, user_id: int, cal_date: date) -> Optional[int]:
+    async def leave_waitlist(
+            self, user_id: int, cal_date: date, sub_status: str = BookingStatus.CANCELED_CHANGED_MIND
+    ) -> Optional[int]:
+        """Снять из очереди одного человека. sub_status — причина: передумал, вышел из чата, отмена через чат"""
         stmt = (
             update(Booking)
             .where(
@@ -682,7 +688,7 @@ class Repository:
                 Booking.cal_date == cal_date,
                 Booking.status == BookingStatus.WAITLISTED,
             )
-            .values(status=BookingStatus.CANCELED, sub_status=BookingStatus.CANCELED_CHANGED_MIND, updated_at=func.now())
+            .values(status=BookingStatus.CANCELED, sub_status=sub_status, updated_at=func.now())
             .returning(Booking.booking_id)
         )
         res = await self.session.execute(stmt)
