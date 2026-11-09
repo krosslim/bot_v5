@@ -1,6 +1,6 @@
 <!doctype html><style>
-:root{--ol:rgba(224,134,0,.12);--rl:rgba(210,58,49,.1);--tx:var(--tg-theme-text-color);--bg:var(--tg-theme-bg-color);--hn:var(--tg-theme-hint-color);--ac:var(--tg-theme-button-color);--at:var(--tg-theme-button-text-color);--ln:rgba(128,128,128,.32);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--o:#e08600;--r:#d23a31}
-.dk{--ol:rgba(255,179,64,.14);--rl:rgba(255,107,99,.14);--g:#4cd964;--gl:rgba(76,217,100,.12);--o:#ffb340;--r:#ff6b63}
+:root{--ol:rgba(224,134,0,.12);--rl:rgba(210,58,49,.1);--tx:var(--tg-theme-text-color);--bg:var(--tg-theme-bg-color);--hn:var(--tg-theme-hint-color);--ac:var(--tg-theme-button-color);--at:var(--tg-theme-button-text-color);--ln:var(--tg-theme-section-separator-color);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--o:#e08600;--r:var(--tg-theme-destructive-text-color)}
+.dk{--ol:rgba(255,179,64,.14);--rl:rgba(255,107,99,.14);--g:#4cd964;--gl:rgba(76,217,100,.12);--o:#ffb340}
 *{box-sizing:border-box;margin:0}
 body{color:var(--tx);padding:10px 10px max(12px,env(safe-area-inset-bottom))}
 [data-n]:active,[data-s]:active,[data-u]:active{opacity:.7}
@@ -72,7 +72,7 @@ function rq(s,p){busy=1;pd=p;draw();
  T.request(s).then(function(r){busy=pd=0;var j={};try{j=JSON.parse(r.result)||{}}catch(e){}
   if(j.u){UR=1;try{localStorage.setItem('u',1)}catch(e){}}
   flash(j.er?['er',j.er]:j.ok?['ok',j.ok]:j.n?['',j.n]:['er',F]);(j.ok||j.er)&&H&&H.notificationOccurred(j.er?'error':'success');draw()},
- function(e){busy=pd=0;flash(['er',/rate/i.test(e&&e.message)?'Слишком часто, подождите':F]);draw()})}
+ function(e){busy=pd=0;flash(['er',e&&e.code=='RATE_LIMITED'?'Слишком часто, подождите':F]);draw()})}
 document.onclick=function(e){for(var n=e.target,t;n&&n!=A;n=n.parentNode)if(n.dataset&&Object.keys(t=n.dataset).length)break;
  if(!n||n==A||busy||!T.request)return;var d=':'+C.d;
  if(t.l){UR=0;try{localStorage.removeItem('u')}catch(e){}draw();T.openTelegramLink&&T.openTelegramLink('https://t.me/'+BOT+'?start=')}

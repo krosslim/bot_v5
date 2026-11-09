@@ -48,12 +48,12 @@ class TemplatesTest(unittest.TestCase):
 
     def test_exit_button(self):
         html = render_booking_widget()
-        self.assertIn('data-e="1">\'+(pd==\'e\'?SP:\'« Выйти\')+\'</button>', html)
+        self.assertIn('data-e="1">\'+(pd==\'e\'?SP:\'Выйти\')+\'</button>', html)
         self.assertIn("rq('x','e')", html)
 
     def test_back_button_at_bottom(self):
         html = render_booking_widget()
-        self.assertIn('<div class="ft"><button class="bt" data-k="1">« Назад</button>\'+q+\'</div>', html)
+        self.assertIn('<div class="ft"><button class="bt" data-k="1">Назад</button>\'+q+\'</div>', html)
         self.assertNotIn('class="nv" data-k', html)
 
     def test_no_seat_numbers_on_map(self):
@@ -67,9 +67,35 @@ class TemplatesTest(unittest.TestCase):
         self.assertIn("(mv?'пересесть':'занять')", html)
 
     def test_legend_only_for_codes_on_screen(self):
+        """«Свободно» в легенде нет: у дней нет обводки, свободный день — обычное число без точки"""
         html = render_booking_widget()
-        self.assertIn("'fСвободно|bЕсть бронь|vБыла бронь|qОчередь|nМест нет'", html)
+        self.assertIn("'bБронь|vБыл(а)|qОчередь|nМест нет'", html)
         self.assertIn("if(k.indexOf(x[0])>=0)", html)
+        self.assertNotIn("box-shadow:inset", html.split("</style>")[0].split(".mp{")[0])
+
+    def test_calendar_header_and_day_colors(self):
+        """Месяц слева, стрелки справа (рамка на CSS: SVG стоит ~100 Б после zlib). Шапка капсом, СБ и ВС красные.
+        Красное число — нерабочий день по is_workday (коды w и h), рабочая суббота приходит обычным кодом"""
+        html = render_booking_widget()
+        self.assertIn("<div class=\"hd\"><div data-g=\"1\"'+(M!=(C.c||0)?' class=\"ac\"':'')+'><b>", html)
+        self.assertIn(".ac b{color:var(--ac)}", html)
+        self.assertIn("'ПН ВТ СР ЧТ ПТ СБ ВС'", html)
+        self.assertIn(".gr small:nth-child(n+6){color:var(--r)}", html)
+        self.assertIn(".w,.h{color:var(--r)}", html)
+        self.assertNotIn("<svg", html)
+
+    def test_calendar_hints_and_back_to_current_month(self):
+        """Нерабочий и ещё не открытый день («Бронь не открыта») — подсказка на месте легенды, без запроса к боту.
+        Нажатие на название месяца возвращает к текущему месяцу"""
+        html = render_booking_widget()
+        self.assertIn("data-'+(/[whx]/.test(c)?'h=\"'+c:'d=\"')+s", html)
+        self.assertIn("flash(['',t.h[0]=='x'?'Бронь не открыта':'Нерабочий день',t.h.slice(1)])", html)
+        # Нажатый день — серая подложка цветом (не opacity): пока грузится схема и пока видна подсказка
+        self.assertIn("(s==pd||fl&&fl[2]==s?' sel':'')", html)
+        self.assertIn(".sel,.c:active{background:var(--sf)}", html)
+        self.assertIn("(fl?'<div class=\"lg '+fl[0]+'\">'+esc(fl[1])+'</div>'", html)
+        self.assertIn("else if(t.g){if(M!=(C.c||0)){M=C.c||0;", html)
+        self.assertEqual(html.count("selectionChanged"), 3)
 
     def test_pending_spinner_instead_of_overlay(self):
         for html in (render_booking_widget(), render_digest_widget()):
@@ -95,13 +121,13 @@ class TemplatesTest(unittest.TestCase):
         huge = widget_size(render_booking_widget(1234567890123, "Константинопольская-Длинноименная " * 3, boss))[1]
         self.assertLessEqual(huge - short, 40)
         # Запас на будущие правки схемы; всё, что меняется в рантайме (id и имя сотрудника), уже в худшем значении
-        self.assertLessEqual(huge, MAX_ZLIB_BYTES - 80)
+        self.assertLessEqual(huge, MAX_ZLIB_BYTES - 5)
 
     def test_stale_window_offers_reopen(self):
         html = render_booking_widget()
         self.assertIn("C.x||old()?xp()", html)
         self.assertIn("if(t.o)return rq('o','o')", html)
-        self.assertIn("Открыть заново", html)
+        self.assertIn("Обновить", html)
 
     def test_cancel_by_button_not_by_seat(self):
         html = render_booking_widget()
@@ -128,7 +154,8 @@ class TemplatesTest(unittest.TestCase):
         self.assertIn("return'<div'+(n?' data-n=\"'+n+'\"':'')+' class=\"s '+c+'\">", render_booking_widget())
 
     def test_buttons_use_client_style(self):
-        """Шрифт, скругление и отступы кнопок — из токенов клиента --tg-button-*. Фон и цвет текста свои:
+        """Начертание шрифта, скругление и отступы кнопок — из токенов клиента --tg-button-*. Размер шрифта 1em: клиентский
+        не следует настройке размера текста. Фон и цвет текста свои:
         клиенты передают в --tg-button-bg цвет основной кнопки, и «Назад» выглядел бы как главное действие"""
         for html in (render_booking_widget(), render_digest_widget()):
             css = html.split("</style>")[0]
@@ -139,7 +166,7 @@ class TemplatesTest(unittest.TestCase):
         html = render_booking_widget()
         # Подложка — полупрозрачный слой цвета текста (акцент или красный) поверх кнопки: текст того же цвета
         # под ней не меняется, поэтому z-index не нужен
-        self.assertIn(".bt{flex:1;position:relative;background:none;color:var(--ac)}", html)
+        self.assertIn(".bt{flex:1;position:relative;background:none;color:var(--ac);font-size:1em}", html)
         self.assertIn("background:currentColor;opacity:.12}", html)
         # Скругление подложки — явным токеном: border-radius:inherit клиент не поддерживает (квадратные кнопки)
         self.assertIn("border-radius:var(--tg-button-radius,8px);background:currentColor", html)

@@ -1,29 +1,31 @@
 <!doctype html><style>
-:root{--tx:var(--tg-theme-text-color);--bg:var(--tg-theme-bg-color);--hn:var(--tg-theme-hint-color);--ac:var(--tg-theme-button-color);--at:var(--tg-theme-button-text-color);--s2:var(--tg-theme-secondary-bg-color);--ln:rgba(128,128,128,.32);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--r:#d23a31;--y:#b58900}
-.dk{--g:#4cd964;--gl:rgba(76,217,100,.12);--r:#ff6b63;--y:#ffd60a}
+:root{--tx:var(--tg-theme-text-color);--bg:var(--tg-theme-bg-color);--hn:var(--tg-theme-hint-color);--ac:var(--tg-theme-button-color);--at:var(--tg-theme-button-text-color);--ln:var(--tg-theme-section-separator-color);--sf:rgba(128,128,128,.1);--g:#1a9b47;--gl:rgba(26,155,71,.1);--r:var(--tg-theme-destructive-text-color);--y:#b58900}
+.dk{--g:#4cd964;--gl:rgba(76,217,100,.12);--y:#ffd60a}
 *{box-sizing:border-box;margin:0}
 body{color:var(--tx);padding:10px 10px max(12px,env(safe-area-inset-bottom))}
 .nv,.c{font:inherit;color:inherit;background:none;padding:0;min-height:0}
 [data-n]:active,[data-s]:active{opacity:.7}
 .hd{display:flex;align-items:center;gap:8px;margin-bottom:14px;min-height:32px}
 .hd div{flex:1;min-width:0}
-.hd b,.xp b{display:block;font-size:16px}
-small{font-size:12px;color:var(--hn)}.hd div:first-child b{font-size:17px;line-height:22px}.hd small{font-size:14px;line-height:19px}
+.hd b,.xp b{display:block;font-size:1.07em}
+small{font-size:.8em;color:var(--hn)}.hd div:first-child b{font-size:1.13em;line-height:1.3;font-weight:600}.hd small{font-size:.93em;line-height:1.35}
 .ok{color:var(--g)}.er{color:var(--r)}
-.nv{width:30px;height:30px;border-radius:15px;background:var(--s2);color:var(--ac);font-size:17px;flex:none}
+.nv{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:var(--ac);flex:none}
+.nv:before{content:"";width:9px;height:9px;margin-left:4px;border:solid;border-width:0 0 2.4px 2.4px;border-radius:0 0 0 2px;transform:rotate(45deg)}
+.nv+.nv:before{margin:0 4px 0 0;transform:rotate(-135deg)}
 .nv[disabled]{color:var(--ln)}
+.ac b{color:var(--ac)}
 .gr{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-.gr small{font-size:11px;text-align:center;padding-bottom:2px}
-.c{height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;position:relative;font-size:15px}
+.gr small{font-size:.68em;font-weight:500;letter-spacing:.04em;text-align:center;padding-bottom:4px}
+.gr small:nth-child(n+6){color:var(--r)}
+.c{height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;position:relative}
 .c:after{content:"";position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:3px;background:var(--dt,transparent)}
-.f,.b,.q,.n{box-shadow:inset 0 0 0 1px var(--ln)}
 .b{--dt:var(--g)}.v{--dt:var(--hn)}.q{--dt:var(--y)}.n{--dt:var(--r)}
-.p,.v{box-shadow:inset 0 0 0 1px rgba(128,128,128,.16)}
-.w,.p,.x,.v{color:var(--hn)}.h{color:var(--r)}
-.t{background:var(--tx);color:var(--bg);font-weight:600;box-shadow:none}
-.lg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;font-size:11px;color:var(--hn)}
-.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-.lg i:not(.f){width:8px;height:8px;border-radius:4px;box-shadow:none;background:var(--dt)}
+.p,.x,.v{color:var(--hn)}.w,.h{color:var(--r)}
+.sel,.c:active{background:var(--sf)}
+.c.t{background:var(--tx);color:var(--bg);font-weight:600}
+.lg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;font-size:.73em;color:var(--hn)}
+.lg i{display:inline-block;width:8px;height:8px;border-radius:4px;margin-right:5px;background:var(--dt)}
 .mp{font-size:10px;color:var(--hn)}
 .or{display:flex;justify-content:space-between;margin:12px 2px;font-size:11px}
 .o,.no{background:repeating-linear-gradient(135deg,transparent,transparent 4px,var(--sf) 4px,var(--sf) 8px)}
@@ -43,7 +45,7 @@ small{font-size:12px;color:var(--hn)}.hd div:first-child b{font-size:17px;line-h
 @keyframes sp{to{transform:rotate(360deg)}}
 .xp{padding-top:16px;text-align:center}
 .ft{display:flex;gap:8px;margin-top:12px}
-.bt{flex:1;position:relative;background:none;color:var(--ac)}.bt:before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:var(--tg-button-radius,8px);background:currentColor;opacity:.12}
+.bt{flex:1;position:relative;background:none;color:var(--ac);font-size:1em}.bt:before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:var(--tg-button-radius,8px);background:currentColor;opacity:.12}
 .bt+.bt{flex:2}
 .pr{background:var(--ac);color:var(--at)}.pr:before{content:none}
 .lv{color:var(--r)}
@@ -58,13 +60,13 @@ function th(){document.documentElement.className=T.colorScheme=='dark'?'dk':''}
 function old(){var n=Date.now();return C.e&&n>C.e*1e3&&n-FS>6e4&&n-LT>3e5}
 function cal(){var m=C.m[M],h=AS?'<p><small>'+esc(AS)+'</small></p>':'',i,lg='';if(!m)return h;
  var y=m[0].slice(0,4),mo=m[0].slice(5),k=m[2],o=(new Date(y,mo-1,1).getDay()+6)%7;
- h+='<div class="hd"><button class="nv" data-m="-1"'+(M>0?'':' disabled')+'>‹</button><div style="text-align:center"><b>'+esc(m[1])+'</b></div><button class="nv" data-m="1"'+(C.m[M+1]?'':' disabled')+'>›</button></div><div class="gr">';
- 'пн вт ср чт пт сб вс'.split(' ').forEach(function(w){h+='<small>'+w+'</small>'});
+ h+='<div class="hd"><div data-g="1"'+(M!=(C.c||0)?' class="ac"':'')+'><b>'+esc(m[1])+'</b></div><button class="nv" data-m="-1"'+(M>0?'':' disabled')+'></button><button class="nv" data-m="1"'+(C.m[M+1]?'':' disabled')+'></button></div><div class="gr">';
+ 'ПН ВТ СР ЧТ ПТ СБ ВС'.split(' ').forEach(function(w){h+='<small>'+w+'</small>'});
  for(i=0;i<o;i++)h+='<span></span>';
- for(i=1;i<=k.length;i++){var s=m[0]+'-'+(i<10?'0':'')+i,c=k[i-1],go=!/[whx]/.test(c),tg=go?'button':'div';
-  h+='<'+tg+(go?' data-d="'+s+'"':'')+' class="c '+c+(s==C.t?' t':'')+'">'+(s==pd?SP:i)+'</'+tg+'>'}
- 'fСвободно|bЕсть бронь|vБыла бронь|qОчередь|nМест нет'.split('|').forEach(function(x){if(k.indexOf(x[0])>=0)lg+='<span><i class="'+x[0]+'"></i>'+x.slice(1)+'</span>'});
- return h+'</div>'+(lg&&'<div class="lg">'+lg+'</div>')+'<div class="ft"><button class="bt" data-e="1">'+(pd=='e'?SP:'« Выйти')+'</button></div>'}
+ for(i=1;i<=k.length;i++){var s=m[0]+'-'+(i<10?'0':'')+i,c=k[i-1];
+  h+='<button data-'+(/[whx]/.test(c)?'h="'+c:'d="')+s+'" class="c '+c+(s==C.t?' t':'')+(s==pd||fl&&fl[2]==s?' sel':'')+'">'+(s==pd?SP:i)+'</button>'}
+ 'bБронь|vБыл(а)|qОчередь|nМест нет'.split('|').forEach(function(x){if(k.indexOf(x[0])>=0)lg+='<span><i class="'+x[0]+'"></i>'+x.slice(1)+'</span>'});
+ return h+'</div>'+(fl?'<div class="lg '+fl[0]+'">'+esc(fl[1])+'</div>':lg&&'<div class="lg">'+lg+'</div>')+'<div class="ft"><button class="bt" data-e="1">'+(pd=='e'?SP:'Выйти')+'</button></div>'}
 function nm(v,c,n){var z=v.split(' ')[0].length+(c=='me');return'<div'+(n?' data-n="'+n+'"':'')+' class="s '+c+'"><em style="font-size:'+(z>11?9:z>10?10:z>9?11:12)+'px">'+esc(v)+'</em></div>'}
 function cell(c){var mv=D.m||/^s/.test(pd);if(c=='b')return B?nm(B,'bs','b'):'<div class="s o"></div>';var v=D.s[c-1];if(c[0]=='x'||!v&&D.ro)return'<div class="s '+(c[0]=='x'?'o" style="grid-column:span '+c.slice(1):'no')+'"></div>';
  return v?nm(v,c==D.m?'me':'tk',c):'<div class="s fr'+(mv?' mv':'')+'" data-s="'+c+'">'+('s'+c==pd?SP:'<em>'+(mv?'пересесть':'занять')+'</em>')+'</div>'}
@@ -72,19 +74,21 @@ function rw(r){var h='';r.forEach(function(c){h+=cell(c)});return h?'<div class=
 function pt(e){return typeof e=='string'?'<div class="rm">'+esc(e)+'</div>':'<div class="is">'+rw(e[0])+'<div class="tb">'+esc(e[1])+'</div>'+rw(e[2])+'</div>'}
 function map(){var h='';L.forEach(function(e,i){h+=pt(e)+(i==TOP?'<div class="or"><span>← Окно</span><span>Коридор →</span></div>':'')});return'<div class="mp">'+h+'</div>'}
 function day(){var b=function(c,r,t){return'<button class="bt '+c+'" data-r="'+r+'">'+(pd=='r'?SP:t)+'</button>'},
- q=D.ro?'':D.st=='Q'?b('lv','lq','Выйти из очереди'):D.st=='B'?b('lv','c','Отменить бронь'):D.s.indexOf(0)<0?b('','q','Встать в очередь'):'';
- return'<div class="hd"><div><b>'+esc(D.t)+'</b><small'+(fl?' class="'+fl[0]+'"':'')+'>'+esc(fl?fl[1]:D.h)+'</small></div></div>'+map()+'<div class="ft"><button class="bt" data-k="1">« Назад</button>'+q+'</div>'}
-function xp(){return'<div class="xp"><b>'+esc(C.x||'Окно устарело')+'</b>'+(fl?'<small class="er">'+esc(fl[1])+'</small>':'')+'<div class="ft"><button class="bt pr" data-o="1">'+(pd=='o'?SP:'Открыть заново')+'</button></div></div>'}
+ q=D.ro?'':D.st=='Q'?b('lv','lq','Выйти из очереди'):D.st=='B'?b('lv','c','Отменить бронь'):D.s.indexOf(0)<0?b('','q','В очередь'):'';
+ return'<div class="hd"><div><b>'+esc(D.t)+'</b><small'+(fl?' class="'+fl[0]+'"':'')+'>'+esc(fl?fl[1]:D.h)+'</small></div></div>'+map()+'<div class="ft"><button class="bt" data-k="1">Назад</button>'+q+'</div>'}
+function xp(){return'<div class="xp"><b>'+esc(C.x||'Окно устарело')+'</b>'+(fl?'<small class="er">'+esc(fl[1])+'</small>':'')+'<div class="ft"><button class="bt pr" data-o="1">'+(pd=='o'?SP:'Обновить')+'</button></div></div>'}
 function draw(){A.innerHTML=C.x||old()?xp():D?day():cal()}
 function flash(f){fl=f;clearTimeout(ft);if(f)ft=setTimeout(function(){fl=null;draw()},3000)}
 function rq(s,p){busy=1;pd=p;draw();
  T.request(s+(U?'@'+U:'')).then(function(r){busy=0;pd=null;var j=JSON.parse(r.result||'0');if(j){if(j.d)D=j;flash(j.er?['er',j.er]:j.ok?['ok',j.ok]:j.n?['',j.n]:null);(j.ok||j.er)&&H&&H.notificationOccurred(j.er?'error':'success')}else if(!/^[xo]/.test(s))flash(['er',F]);draw()},
- function(e){busy=0;pd=null;flash(['er',/rate/i.test(e&&e.message)?'Слишком часто, подождите':F]);draw()})}
+ function(e){busy=0;pd=null;flash(['er',e&&e.code=='RATE_LIMITED'?'Слишком часто':F]);draw()})}
 document.onclick=function(e){for(var n=e.target,t;n&&n!=A;n=n.parentNode)if(n.dataset&&Object.keys(t=n.dataset).length)break;
  if(!n||n==A||n.disabled||busy)return;
  if(t.o)return rq('o','o');
  LT=Date.now();
- if(t.m){M+=+t.m;H&&H.selectionChanged();draw()}
+ if(t.m){M+=+t.m;fl=null;H&&H.selectionChanged();draw()}
+ else if(t.g){if(M!=(C.c||0)){M=C.c||0;fl=null;H&&H.selectionChanged();draw()}}
+ else if(t.h){H&&H.selectionChanged();flash(['',t.h[0]=='x'?'Бронь не открыта':'Нерабочий день',t.h.slice(1)]);draw()}
  else if(t.e)rq('x','e');else if(t.d)rq('d:'+t.d,t.d);
  else if(t.k){D=null;flash(null);draw()}
  else if(t.r)rq(t.r+':'+D.d,'r');

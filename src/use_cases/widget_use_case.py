@@ -189,7 +189,7 @@ class WidgetUseCase:
             self, chat_id: int, owner_id: int, tapped_id: int,
             target_id: Optional[int] = None, target_name: Optional[str] = None,
     ) -> None:
-        """«Открыть заново» в устаревшем окне: свежий виджет новым сообщением.
+        """«Обновить» в устаревшем окне: свежий виджет новым сообщением.
         send_booking_widget удаляет окно из указателя; нажатое окно удаляем отдельно, если это не оно"""
         old = await self.tech.get_booking_widget(chat_id)
         message = await self.send_booking_widget(chat_id, owner_id, target_id, target_name)
