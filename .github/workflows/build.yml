@@ -24,9 +24,6 @@ jobs:
       name: production
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
     - name: Send Telegram notification - Start
       if: always()
       continue-on-error: true
