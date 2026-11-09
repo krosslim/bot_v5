@@ -137,13 +137,13 @@ class TemplatesTest(unittest.TestCase):
     def test_no_mass_opacity(self):
         """Не больше 16 элементов с opacity < 1 одновременно, иначе «Paint limit exceeded». Нажатую кнопку
         затемняет UA-стиль клиента (--tg-button-pressed-opacity), нажатое место — своё правило :active (тоже одно).
-        Ещё opacity у подложки кнопок действий под схемой (их не больше двух)"""
+        Ещё opacity у подложки красных кнопок под схемой (одна на экране)"""
         css = {k: html.split("</style>")[0] for k, html in
                (("booking", render_booking_widget()), ("digest", render_digest_widget()))}
         self.assertEqual(re.findall(r"([^{}]+)\{[^}]*opacity", css["booking"]),
-                         ["[data-n]:active,[data-s]:active", ".bt:before"])
+                         ["[data-n]:active,[data-s]:active", ".lv:before"])
         self.assertEqual(re.findall(r"([^{}]+)\{[^}]*opacity", css["digest"]),
-                         ["[data-n]:active,[data-s]:active,[data-u]:active", ".bt:before"])
+                         ["[data-n]:active,[data-s]:active,[data-u]:active", ".lv:before"])
 
     def test_seats_are_divs(self):
         """Места — <div>, не <button>: кнопки клиент рисует сам и скругляет одним радиусом, «стулья» пропадают
@@ -164,13 +164,15 @@ class TemplatesTest(unittest.TestCase):
             self.assertNotRegex(css, r"var\(--tg-theme-[a-z-]+,")      # палитру рендерер задаёт всегда
             self.assertNotIn("\n", css.split("<style>")[1])               # переносы в CSS убираются при сборке
         html = render_booking_widget()
-        # Подложка — полупрозрачный слой цвета текста (акцент или красный) поверх кнопки: текст того же цвета
-        # под ней не меняется, поэтому z-index не нужен
-        self.assertIn(".bt{flex:1;position:relative;background:none;color:var(--ac);font-size:1em}", html)
-        self.assertIn("background:currentColor;opacity:.12}", html)
-        # Скругление подложки — явным токеном: border-radius:inherit клиент не поддерживает (квадратные кнопки)
-        self.assertIn("border-radius:var(--tg-button-radius,8px);background:currentColor", html)
-        self.assertNotIn("inherit;background:currentColor", html)
+        # Фон вторичных кнопок — цвет темы secondary_bg, текст — акцент. Красные (отмена, выход из очереди) — свой тон:
+        # полупрозрачный слой цвета текста поверх кнопки (как раньше), на secondary_bg красный читается хуже
+        # Скругление и отступы остаются клиентскими
+        self.assertIn(".bt{flex:1;background:var(--tg-theme-secondary-bg-color);color:var(--ac);font-size:1em}", html)
+        self.assertIn(".bt{flex:1;background:var(--tg-theme-secondary-bg-color);color:var(--ac)}", render_digest_widget())
+        for h in (html, render_digest_widget()):
+            self.assertNotIn(".bt:before", h)
+            self.assertIn(".lv{position:relative;color:var(--r);background:none}", h)
+            self.assertIn("border-radius:var(--tg-button-radius,8px);background:currentColor;opacity:.12}", h)
 
     def test_templates_join_safely(self):
         """Переносы в <script> убираются при сборке: строки должны заканчиваться на ; { } , или + и не начинаться
@@ -729,7 +731,7 @@ class DigestStatesTest(unittest.TestCase):
         self.assertEqual((a["sent"], a["sub"], a["cls"], a["hap"]), ([f"gn:{D}:1"], "Сотрудник1 Иван", "", []))
         self.assertEqual(queue_name["after"]["sent"], [f"gu:{D}:351"])
         a = silent["after"]
-        self.assertEqual((a["sub"], a["cls"]), ("Не получилось, попробуйте ещё раз", "er"))
+        self.assertEqual((a["sub"], a["cls"]), ("Попробуйте ещё раз", "er"))
 
 
 if __name__ == "__main__":

@@ -32,13 +32,13 @@ body{color:var(--tx);padding:10px 10px max(12px,env(safe-area-inset-bottom))}
 .nt b{font-weight:600}
 .nt i{position:static;display:inline-block;margin:0 6px 1.5px 0}
 .ft{display:flex;gap:8px;margin-top:12px}
-.bt{flex:1;position:relative;background:none;color:var(--ac)}.bt:before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:var(--tg-button-radius,8px);background:currentColor;opacity:.12}
-.pr{flex:2;background:var(--ac);color:var(--at)}.pr:before{content:none}
-.lv{color:var(--r)}
+.bt{flex:1;background:var(--tg-theme-secondary-bg-color);color:var(--ac)}
+.pr{flex:2;background:var(--ac);color:var(--at)}
+.lv{position:relative;color:var(--r);background:none}.lv:before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:var(--tg-button-radius,8px);background:currentColor;opacity:.12}
 </style><div id="a"></div><script>
 var T=window.TelegramWidget||{},H=T.HapticFeedback,A=document.getElementById('a'),
 L=__LAYOUT__,TOP=__TOP__,B=__BOSS__,BOT=__BOT__,
-C={},me=T.viewer&&T.viewer.id,UR=0,busy=0,pd=null,fl=null,ft,F='Не получилось, попробуйте ещё раз',SP='<i class="sp"></i>';
+C={},me=T.viewer&&T.viewer.id,UR=0,busy=0,pd=null,fl=null,ft,F='Попробуйте ещё раз',SP='<i class="sp"></i>';
 try{UR=+localStorage.getItem('u')}catch(e){}
 function esc(s){return String(s).replace(/[<>&"]/g,function(c){return'&#'+c.charCodeAt(0)+';'})}
 function rd(){try{C=JSON.parse(T.chatData||'{}')}catch(e){C={}}C.s=C.s||[];C.q=C.q||[]}
@@ -65,14 +65,14 @@ function fm(){var s=rm(),h=s/3600|0,m=s/60%60|0;return h?h+' ч '+m+' мин':m+
 function bt(c,r,t){return'<button class="bt '+c+'" data-r="'+r+'">'+(pd==r?SP:t)+'</button>'}
 function fb(S){if(S=='W')return'<div class="nt"><i></i>Подтвердите, иначе бронь отменится</div><div class="ft">'+bt('lv','x','Отменить')+bt('pr','c','Подтвердить')+'</div>';
  if(S=='U')return'<div class="nt" data-l="1">Зарегистрироваться в боте ›</div>';
- return/[BFQ]/.test(S)?'<div class="ft">'+(S=='Q'?bt('lv','l','Выйти из очереди'):S=='Q0'?bt('','q','Встать в очередь'):bt('lv','x','Отменить бронь'))+'</div>':''}
+ return/[BFQ]/.test(S)?'<div class="ft">'+(S=='Q'?bt('lv','l','Выйти из очереди'):S=='Q0'?bt('pr','q','В очередь'):bt('lv','x','Отменить бронь'))+'</div>':''}
 function draw(){var S=st();A.innerHTML=C.d?'<div class="hd"><div><b>'+esc(C.t)+'</b><small'+(fl?' class="'+fl[0]+'"':'')+'>'+esc(fl?fl[1]:C.x||(C.f?'Свободно '+C.f+' из '+C.c:'Все места заняты'))+'</small></div>'+(S=='W'&&C.e?'<span id="tm" class="tm'+(rm()<900?' u':'')+'">'+fm()+'</span>':'')+'</div>'+map(S)+qu(S)+fb(S):''}
 function flash(f){fl=f;clearTimeout(ft);ft=setTimeout(function(){fl=null;draw()},3000)}
 function rq(s,p){busy=1;pd=p;draw();
  T.request(s).then(function(r){busy=pd=0;var j={};try{j=JSON.parse(r.result)||{}}catch(e){}
   if(j.u){UR=1;try{localStorage.setItem('u',1)}catch(e){}}
   flash(j.er?['er',j.er]:j.ok?['ok',j.ok]:j.n?['',j.n]:['er',F]);(j.ok||j.er)&&H&&H.notificationOccurred(j.er?'error':'success');draw()},
- function(e){busy=pd=0;flash(['er',e&&e.code=='RATE_LIMITED'?'Слишком часто, подождите':F]);draw()})}
+ function(e){busy=pd=0;flash(['er',e&&e.code=='RATE_LIMITED'?'Слишком часто':F]);draw()})}
 document.onclick=function(e){for(var n=e.target,t;n&&n!=A;n=n.parentNode)if(n.dataset&&Object.keys(t=n.dataset).length)break;
  if(!n||n==A||busy||!T.request)return;var d=':'+C.d;
  if(t.l){UR=0;try{localStorage.removeItem('u')}catch(e){}draw();T.openTelegramLink&&T.openTelegramLink('https://t.me/'+BOT+'?start=')}

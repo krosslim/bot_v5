@@ -45,14 +45,14 @@ small{font-size:.8em;color:var(--hn)}.hd div:first-child b{font-size:1.13em;line
 @keyframes sp{to{transform:rotate(360deg)}}
 .xp{padding-top:16px;text-align:center}
 .ft{display:flex;gap:8px;margin-top:12px}
-.bt{flex:1;position:relative;background:none;color:var(--ac);font-size:1em}.bt:before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:var(--tg-button-radius,8px);background:currentColor;opacity:.12}
+.bt{flex:1;background:var(--tg-theme-secondary-bg-color);color:var(--ac);font-size:1em}
 .bt+.bt{flex:2}
-.pr{background:var(--ac);color:var(--at)}.pr:before{content:none}
-.lv{color:var(--r)}
+.pr{background:var(--ac);color:var(--at)}
+.lv{position:relative;color:var(--r);background:none}.lv:before{content:"";position:absolute;top:0;right:0;bottom:0;left:0;border-radius:var(--tg-button-radius,8px);background:currentColor;opacity:.12}
 </style><div id="a"></div><script>
 var T=window.TelegramWidget||{},H=T.HapticFeedback,A=document.getElementById('a'),
 L=__LAYOUT__,TOP=__TOP__,B=__BOSS__,U=__USER__,AS=__AS__,
-C={},M=-1,D=null,busy=0,pd=null,fl=null,ft,LT=0,FS=0,F='Не получилось, попробуйте ещё раз',SP='<i class="sp"></i>';
+C={},M=-1,D=null,busy=0,pd=null,fl=null,ft,LT=0,FS=0,F='Попробуйте ещё раз',SP='<i class="sp"></i>';
 try{FS=+localStorage.getItem('fs');if(!FS)localStorage.setItem('fs',FS=Date.now())}catch(e){}
 function esc(s){return String(s).replace(/[<>&"]/g,function(c){return'&#'+c.charCodeAt()+';'})}
 function rd(){try{C=JSON.parse(T.chatData||'{}')}catch(e){C={}}C.m=C.m||[];if(M<0)M=C.c||0;M=Math.min(M,C.m.length-1)}
@@ -74,7 +74,7 @@ function rw(r){var h='';r.forEach(function(c){h+=cell(c)});return h?'<div class=
 function pt(e){return typeof e=='string'?'<div class="rm">'+esc(e)+'</div>':'<div class="is">'+rw(e[0])+'<div class="tb">'+esc(e[1])+'</div>'+rw(e[2])+'</div>'}
 function map(){var h='';L.forEach(function(e,i){h+=pt(e)+(i==TOP?'<div class="or"><span>← Окно</span><span>Коридор →</span></div>':'')});return'<div class="mp">'+h+'</div>'}
 function day(){var b=function(c,r,t){return'<button class="bt '+c+'" data-r="'+r+'">'+(pd=='r'?SP:t)+'</button>'},
- q=D.ro?'':D.st=='Q'?b('lv','lq','Выйти из очереди'):D.st=='B'?b('lv','c','Отменить бронь'):D.s.indexOf(0)<0?b('','q','В очередь'):'';
+ q=D.ro?'':D.st=='Q'?b('lv','lq','Выйти из очереди'):D.st=='B'?b('lv','c','Отменить бронь'):D.s.indexOf(0)<0?b('pr','q','В очередь'):'';
  return'<div class="hd"><div><b>'+esc(D.t)+'</b><small'+(fl?' class="'+fl[0]+'"':'')+'>'+esc(fl?fl[1]:D.h)+'</small></div></div>'+map()+'<div class="ft"><button class="bt" data-k="1">Назад</button>'+q+'</div>'}
 function xp(){return'<div class="xp"><b>'+esc(C.x||'Окно устарело')+'</b>'+(fl?'<small class="er">'+esc(fl[1])+'</small>':'')+'<div class="ft"><button class="bt pr" data-o="1">'+(pd=='o'?SP:'Обновить')+'</button></div></div>'}
 function draw(){A.innerHTML=C.x||old()?xp():D?day():cal()}
