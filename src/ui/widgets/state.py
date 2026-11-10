@@ -16,8 +16,8 @@ MONTHS_GEN = ["января", "февраля", "марта", "апреля", "�
 WEEKDAYS_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
 EXPIRED_TEXT = "Это окно закрыто"   # окно заменено новым или закрыто «Выйти», а удалить его Telegram не дал
-UNAVAILABLE_SEAT = "недоступно"
-DIGEST_UNAVAILABLE = "u"           # место сверх лимита дня в дайджесте
+UNAVAILABLE_SEAT = "u"   # место сверх лимита дня (в т.ч. занято бронью без seat_no): штриховка, без нажатия
+DIGEST_UNAVAILABLE = UNAVAILABLE_SEAT
 
 
 def dumps(obj) -> str:

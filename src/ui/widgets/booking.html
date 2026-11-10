@@ -68,7 +68,7 @@ function cal(){var m=C.m[M],h=AS?'<p><small>'+esc(AS)+'</small></p>':'',i,lg='';
  'bБронь|vБыл(а)|qОчередь|nМест нет'.split('|').forEach(function(x){if(k.indexOf(x[0])>=0)lg+='<span><i class="'+x[0]+'"></i>'+x.slice(1)+'</span>'});
  return h+'</div>'+(fl?'<div class="lg '+fl[0]+'">'+esc(fl[1])+'</div>':lg&&'<div class="lg">'+lg+'</div>')+'<div class="ft"><button class="bt" data-e="1">'+(pd=='e'?SP:'Выйти')+'</button></div>'}
 function nm(v,c,n){var z=v.split(' ')[0].length+(c=='me');return'<div'+(n?' data-n="'+n+'"':'')+' class="s '+c+'"><em style="font-size:'+(z>11?9:z>10?10:z>9?11:12)+'px">'+esc(v)+'</em></div>'}
-function cell(c){var mv=D.m||/^s/.test(pd);if(c=='b')return B?nm(B,'bs','b'):'<div class="s o"></div>';var v=D.s[c-1];if(c[0]=='x'||!v&&D.ro)return'<div class="s '+(c[0]=='x'?'o" style="grid-column:span '+c.slice(1):'no')+'"></div>';
+function cell(c){var mv=D.m||/^s/.test(pd);if(c=='b')return B?nm(B,'bs','b'):'<div class="s o"></div>';var v=D.s[c-1];if(c[0]=='x'||v=='u'||!v&&D.ro)return'<div class="s '+(c[0]=='x'?'o" style="grid-column:span '+c.slice(1):'no')+'"></div>';
  return v?nm(v,c==D.m?'me':'tk',c):'<div class="s fr'+(mv?' mv':'')+'" data-s="'+c+'">'+('s'+c==pd?SP:'<em>'+(mv?'пересесть':'занять')+'</em>')+'</div>'}
 function rw(r){var h='';r.forEach(function(c){h+=cell(c)});return h?'<div class="rw">'+h+'</div>':''}
 function pt(e){return typeof e=='string'?'<div class="rm">'+esc(e)+'</div>':'<div class="is">'+rw(e[0])+'<div class="tb">'+esc(e[1])+'</div>'+rw(e[2])+'</div>'}

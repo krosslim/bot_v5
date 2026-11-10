@@ -336,7 +336,7 @@ class StateTest(unittest.TestCase):
         holders = [SeatHolder(1, "Иванов Иван", 3, True), SeatHolder(2, "Петров Пётр", None, True)]
         state = json.loads(build_day_state(DaySeats(d, 2, holders), SEATS, 9, "Сидоров Сидор", True, False))
         self.assertEqual(state["s"][2], "Иван И.")
-        self.assertTrue(all(v == "недоступно" for i, v in enumerate(state["s"]) if i != 2))
+        self.assertTrue(all(v == "u" for i, v in enumerate(state["s"]) if i != 2))
 
     def test_digest_free_and_total(self):
         """«Свободно f из c» под датой — как в личном виджете: места сверх лимита дня не считаются"""
