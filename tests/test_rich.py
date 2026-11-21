@@ -16,8 +16,9 @@ from src.infrastructure.telegram.rich import emoji_ids, missing_emoji, rich_supp
 from src.services.tech_service import TechService
 from src.ui.keyboard.actions import RichCB
 from src.ui.rich.booking import (CHAIR, MAX_RICH_CHARS, UNAVAILABLE, day_emoji_id, month_legend, render_calendar,
-                                 render_day, settings_kb)
-from src.ui.rich.emoji import DAY_EMOJI, DESK_EMOJI, LEGEND_EMOJI, LOOK, SIDE_CORRIDOR, SIDE_WINDOW, WH_TODAY_IDS
+                                 render_day)
+from src.ui.rich.emoji import (DAY_EMOJI, DESK_EMOJI, LEGEND_EMOJI, LOOK, SETTINGS_ICON, SIDE_CORRIDOR, SIDE_WINDOW,
+                               TODAY_ICON, WH_TODAY_IDS)
 from src.ui.widgets.layout import OFFICE_LAYOUT, SEATS
 from src.ui.widgets.state import DaySeats, QueueEntry, SeatHolder, build_day_state
 
@@ -27,10 +28,20 @@ BIG_ID = 10 ** 20 - 1            # длиннее любого user_id Telegram
 LONG_NAME = "Константинопольская Александра"
 
 
-def buttons(page: str):
-    """(callback_data, подпись) всех кнопок callback_data"""
+def all_buttons(page: str):
+    """(callback_data, подпись) всех кнопок callback_data, в том числе «Настройки» (SettingsCB)"""
     return [(html.unescape(d), label) for d, label in
             re.findall(r'<tg-button type="callback_data" data="([^"]*)"[^>]*>(.*?)</tg-button>', page)]
+
+
+def buttons(page: str):
+    """Кнопки Rich-календаря (RichCB)"""
+    return [(d, label) for d, label in all_buttons(page) if d.startswith("r:")]
+
+
+def bar(page: str) -> str:
+    """Нижний ряд календаря: последний tg-button-row"""
+    return re.findall(r"<tg-button-row[^>]*>.*?</tg-button-row>", page)[-1]
 
 
 def unpack(data: str) -> RichCB:
@@ -105,25 +116,46 @@ class CalendarTest(unittest.TestCase):
         self.assertNotIn("Бронь", only_queue)
         self.assertNotIn("<p>", only_queue)                     # <p> в <footer> сервер выбросит
 
-    def test_month_buttons_at_range_edges(self):
-        def nav(prev, nxt):
-            page = render_calendar(NOV, self.codes, TODAY, prev, nxt)
-            return [(unpack(d).day, label) for d, label in buttons(page) if unpack(d).cmd == "month"], page
+    def test_bottom_row(self):
+        """Один ряд во всю ширину: «Сегодня» и «Настройки» иконками без стиля, «←» и «→» primary"""
+        row = bar(self.page)
+        self.assertTrue(row.startswith("<tg-button-row><tg-button"))      # align не задан
+        self.assertTrue(self.page.endswith(row))
+        cells = re.findall(r"<tg-button ([^>]*)>(.*?)</tg-button>", row)
+        self.assertEqual([label for _, label in cells], [TODAY_ICON, SETTINGS_ICON, "←", "→"])
+        self.assertNotIn("style", cells[0][0] + cells[1][0])
+        self.assertTrue(all('style="primary"' in attrs for attrs, _ in cells[2:]))
+        today = unpack(html.unescape(re.search(r'data="([^"]*)"', cells[0][0]).group(1)))
+        self.assertEqual((today.cmd, today.day, today.target), ("today", TODAY.isoformat(), None))
+        self.assertTrue(re.search(r'data="([^"]*)"', cells[1][0]).group(1).startswith("s:INIT_SETTINGS"))
+        months = [unpack(d).day for d, _ in buttons(row) if unpack(d).cmd == "month"]
+        self.assertEqual(months, ["2026-10-01", "2026-12-01"])
+        self.assertNotIn("Октябрь", row)                                   # названий месяцев на кнопках нет
+        self.assertNotIn("Декабрь", row)
+        self.assertEqual(self.page.count("<tg-button-row"), 1)
+        self.assertEqual(TODAY_ICON, '<tg-emoji emoji-id="5193122438803665781">🔄</tg-emoji>')
+        self.assertEqual(SETTINGS_ICON, '<tg-emoji emoji-id="5192757126065336227">⚙</tg-emoji>')
 
-        both, page = nav(date(2026, 10, 1), date(2026, 12, 1))
-        self.assertEqual(both, [("2026-10-01", "← Октябрь"), ("2026-12-01", "Декабрь →")])
-        self.assertIn("<tg-button-row><tg-button", page)                # во всю ширину: align не задан
-        self.assertNotIn('<tg-button-row align=', page)
-        self.assertEqual(nav(None, date(2026, 12, 1))[0], [("2026-12-01", "Декабрь →")])
-        self.assertEqual(nav(date(2026, 10, 1), None)[0], [("2026-10-01", "← Октябрь")])
-        none, page = nav(None, None)
-        self.assertEqual(none, [])
-        self.assertNotIn("<tg-button-row", page)
-        self.assertNotIn('type="disabled"', page)              # неактивных кнопок нет
+    def test_month_arrows_at_range_edges(self):
+        """Недоступный месяц: стрелка на месте неактивной кнопкой без стиля, ряд не прыгает"""
+        def row(prev, nxt):
+            return bar(render_calendar(NOV, self.codes, TODAY, prev, nxt))
+
+        first = row(None, date(2026, 12, 1))
+        self.assertIn('<tg-button type="disabled">←</tg-button>', first)
+        self.assertIn('style="primary">→</tg-button>', first)
+        last = row(date(2026, 10, 1), None)
+        self.assertIn('style="primary">←</tg-button>', last)
+        self.assertIn('<tg-button type="disabled">→</tg-button>', last)
+        only = row(None, None)
+        self.assertEqual(only.count('type="disabled"'), 2)
+        for r in (first, last, only):
+            self.assertEqual(r.count("<tg-button "), 4)
 
     def test_target_in_every_button(self):
         page = render_calendar(NOV, self.codes, TODAY, date(2026, 10, 1), date(2026, 12, 1), BIG_ID, LONG_NAME)
         self.assertTrue(page.startswith("<h5>Бронь за сотрудника: Александра К.</h5><h2>"))
+        self.assertEqual({unpack(d).cmd for d, _ in buttons(bar(page))}, {"today", "month"})  # и «Сегодня»
         self.assertTrue(all(unpack(d).target == BIG_ID for d, _ in buttons(page)))
         self.assertNotIn("Бронь за сотрудника", render_calendar(NOV, self.codes, TODAY, None, None))
 
@@ -214,14 +246,12 @@ class LimitsTest(unittest.TestCase):
 
     def test_callback_data_fits_64_bytes(self):
         cal, day = self.heaviest()
-        found = buttons(cal) + buttons(day)
+        found = all_buttons(cal) + all_buttons(day)
         self.assertTrue(found)
         for data, _ in found:
-            self.assertLessEqual(len(data.encode()), 64, data)
+            self.assertLessEqual(len(data.encode()), 64, data)          # и «Настройки» (SettingsCB)
+        for data, _ in buttons(cal) + buttons(day):
             self.assertEqual(unpack(data).target, BIG_ID)
-        for row in settings_kb(BIG_ID, TODAY).inline_keyboard:
-            for b in row:
-                self.assertLessEqual(len(b.callback_data.encode()), 64, b.callback_data)
 
     def test_size_within_rich_limit(self):
         for page in self.heaviest():
@@ -236,18 +266,6 @@ class LimitsTest(unittest.TestCase):
 def short_name_boss() -> str:
     from src.ui.widgets.state import short_name
     return short_name(LONG_NAME)
-
-
-class KeyboardTest(unittest.TestCase):
-    def test_today_and_settings(self):
-        kb = settings_kb(BIG_ID, TODAY)
-        self.assertEqual([[b.text for b in row] for row in kb.inline_keyboard], [["Сегодня", "Настройки"]])
-        today, settings = kb.inline_keyboard[0]
-        cb = unpack(today.callback_data)
-        self.assertEqual((cb.cmd, cb.target), ("today", BIG_ID))      # бронь за сотрудника: календарь его
-        self.assertIsNone(unpack(settings_kb().inline_keyboard[0][0].callback_data).target)
-        self.assertTrue(settings.callback_data.startswith("s:INIT_SETTINGS"))
-        self.assertTrue(all(b.style is None for b in kb.inline_keyboard[0]))   # без цвета, как в пробе
 
 
 class EmojiCheckTest(unittest.TestCase):

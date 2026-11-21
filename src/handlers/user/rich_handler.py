@@ -1,7 +1,7 @@
 """Нажатия в Rich-календаре (RichCB, src/ui/rich/booking.py). Только личные сообщения с ботом.
 
-Каждое нажатие правит то же сообщение (editMessageText с rich_message) и сохраняет клавиатуру «Сегодня» и
-«Настройки».
+Каждое нажатие правит то же сообщение (editMessageText с rich_message, без reply_markup: все кнопки в самом
+сообщении). «Настройки» в нижнем ряду календаря обрабатывает экран настроек (SettingsCB).
 Результат действия («Место забронировано», «Бронь отменена», ошибка) приходит только тостом answerCallbackQuery,
 в сообщении текущее состояние. Действия идут через те же методы, что у виджета (private_action), тексты те же.
 
@@ -27,7 +27,7 @@ from src.handlers.widget.widget_query_handler import (DAY_CLOSED_TEXT, DB_ERROR_
 from src.services.exceptions import BookingError
 from src.services.feature_flags import BookingUi, FeatureFlags
 from src.ui.keyboard.actions import RichCB
-from src.ui.rich.booking import DAY_OFF_TEXT, NOT_OPEN_TEXT, OPEN_CODES, READONLY_CODES
+from src.ui.rich.booking import DAY_OFF_TEXT, NOT_OPEN_TEXT, OPEN_CODES, READONLY_CODES, TODAY_TEXT
 from src.ui.widgets.layout import BOSS_SEAT
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.widget_use_case import RichFailed, WidgetUseCase
@@ -98,8 +98,9 @@ async def handle_rich(
         if cmd == "month":
             view = await widgets.rich_calendar(subject, cal_date, target, target_name)
         elif cmd == "today":
-            # «Сегодня» под сообщением: текущий месяц на момент нажатия, не на момент отрисовки кнопки
+            # «Сегодня» в нижнем ряду: текущий месяц на момент нажатия, не на момент отрисовки кнопки
             view = await widgets.rich_calendar(subject, None, target, target_name)
+            toast = toast or TODAY_TEXT
         elif cmd == "day":
             code = await widgets.rich_day_code(subject, cal_date)
             if code in OPEN_CODES or code in READONLY_CODES:
@@ -146,6 +147,8 @@ async def handle_rich(
         try:
             await widgets.show_rich(actor, html, view_key, target, message_id)
         except RichFailed as e:
+            if toast == TODAY_TEXT:
+                toast = None                          # календарь не обновился: не обещаем обратного
             if e.retry:
                 toast, alert = toast or DB_ERROR_TEXT, True
             elif e.gone:

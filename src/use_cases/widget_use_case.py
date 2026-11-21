@@ -21,7 +21,7 @@ from src.services.feature_flags import BookingUi, FeatureFlags
 from src.services.tech_service import TechService
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.messages.start_mess import bot_menu_mess
-from src.ui.rich.booking import render_calendar, render_day, settings_kb
+from src.ui.rich.booking import render_calendar, render_day
 from src.ui.widgets.layout import BOSS_SEAT, SEATS
 from src.ui.widgets.render import render_booking_widget, render_digest_widget
 from src.ui.widgets.state import (build_calendar_data, build_day_state, build_digest_data,
@@ -308,23 +308,19 @@ class WidgetUseCase:
             self, chat_id: int, html: str, view: str, target_id: Optional[int] = None,
             message_id: Optional[int] = None,
     ) -> Optional[Message]:
-        """Отправить Rich-окно (message_id None) или поправить сообщение message_id на месте. Под
-        календарём клавиатура «Сегодня» и «Настройки» (передаётся при каждой правке: без reply_markup она
-        снимается), у экрана дня клавиатуры нет. «message is not modified» не ошибка.
+        """Отправить Rich-окно (message_id None) или поправить сообщение message_id на месте. Без reply_markup:
+        «Сегодня», «Настройки» и листание в самом календаре, а inline-клавиатура старого окна при правке снимается.
+        «message is not modified» не ошибка.
         После отправки и правки сверяет кастомные эмодзи в ответе Telegram с отправленными (missing_emoji).
         Запоминает окно в указателе, прежнее Rich-окно в этом чате удаляет. RichFailed: окно не показалось"""
         rich = InputRichMessage(html=html)
-        # Клавиатура «Сегодня» и «Настройки» только под календарём; у экрана дня её нет (правка без reply_markup
-        # её снимает), «Назад» вернёт календарь вместе с ней
-        markup = None if view.startswith("d") else settings_kb(target_id, d_tz())
         where = f"chat={chat_id} message={message_id} view={view}"
         result = None
         try:
             if message_id is None:
-                result = await self.bot(SendRichMessage(chat_id=chat_id, rich_message=rich, reply_markup=markup))
+                result = await self.bot(SendRichMessage(chat_id=chat_id, rich_message=rich))
             else:
-                result = await self.bot(EditMessageText(chat_id=chat_id, message_id=message_id, rich_message=rich,
-                                                        reply_markup=markup))
+                result = await self.bot(EditMessageText(chat_id=chat_id, message_id=message_id, rich_message=rich))
         except TelegramRetryAfter as e:
             logger.warning("rich | %s | Telegram просит подождать %s с", where, e.retry_after)
             raise RichFailed(str(e), retry=True) from e

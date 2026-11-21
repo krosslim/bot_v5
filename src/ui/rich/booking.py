@@ -4,8 +4,8 @@
 Эталон вида: «предфинальное 2» из прототипа scripts/rich_booking_probe.py (final_calendar(second=True), day_view).
 Календарь: заголовок <h2> «Месяц год», шапка «Пн ... Вс» отдельной компактной таблицей без сетки, даты второй
 компактной таблицей с сеткой, каждая дата кнопкой link с одним кастомным эмодзи (цвет числа передаёт состояние),
-легенда в <footer>, листание месяцев рядом кнопок во всю ширину, только доступные месяцы.
-Под календарём inline-клавиатура «Сегодня» и «Настройки», у экрана дня её нет.
+легенда в <footer>, внизу один ряд кнопок во всю ширину: «Сегодня» и «Настройки» иконками, «←» и «→» листают
+месяцы. Inline-клавиатуры под сообщением нет: календарь отправляется и правится без reply_markup.
 Экран дня: дата <h2>, состояние <h5> (тексты build_day_state), схема мест рядами кнопок, <hr/>, «Назад» и действие.
 
 Ограничения Rich Messages: цвета текста нет (цвет только у стилей кнопок), <b> внутри кнопки в ряду Telegram
@@ -15,11 +15,9 @@ import html
 from datetime import date, timedelta
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
 from src.ui.keyboard.actions import RichCB, SettingsCB, SettingsStep
-from src.ui.rich.emoji import (CHAIR, DAY_EMOJI, DESK_EMOJI, LEGEND, LEGEND_EMOJI, LOOK, SIDE_CORRIDOR, SIDE_WINDOW,
-                               emoji, emoji_strip)
+from src.ui.rich.emoji import (CHAIR, DAY_EMOJI, DESK_EMOJI, LEGEND, LEGEND_EMOJI, LOOK, SETTINGS_ICON, SIDE_CORRIDOR,
+                               SIDE_WINDOW, TODAY_ICON, emoji, emoji_strip)
 from src.ui.widgets.layout import BOSS_SEAT, LAYOUT_TOP_ROWS, OFFICE_LAYOUT, LayoutCell
 from src.ui.widgets.state import MONTHS_NOM, UNAVAILABLE_SEAT, day_title, short_name
 from src.utils.idk import gen_idk
@@ -27,10 +25,10 @@ from src.utils.idk import gen_idk
 MAX_RICH_CHARS = 32768
 WEEK_TITLE = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 UNAVAILABLE = "—"   # подпись неактивной кнопки недоступного места (в виджете штриховка)
-# Листание месяцев: ряд во всю ширину (align не задан), только доступный месяц словом со стрелкой
-# («← Ноябрь», «Декабрь →»); если доступен один месяц, его кнопка занимает всю ширину
-NAV_ALIGN = None
+# Листание месяцев в нижнем ряду: только стрелки, без названий месяцев. Недоступный месяц: стрелка остаётся
+# на месте неактивной кнопкой, чтобы ряд не прыгал
 NAV_BACK, NAV_FORWARD = "←", "→"
+NAV_STYLE = "primary"
 DATES_TABLE = "compact bordered"   # даты в сетке; шапка отдельной таблицей «compact» без сетки
 
 # Коды дней (day_code): какие открывают экран дня, какие отвечают только тостом
@@ -38,6 +36,7 @@ OPEN_CODES = frozenset("fbqn")       # можно занять, пересест
 READONLY_CODES = frozenset("vp")     # закрытый день: только посмотреть, кто был в офисе
 NOT_OPEN_TEXT = "Бронь не открыта"   # x
 DAY_OFF_TEXT = "Нерабочий день"      # w, h
+TODAY_TEXT = "Календарь обновлён"    # тост на «Сегодня»: открыт текущий месяц по свежим данным
 
 
 def esc(s: str) -> str:
@@ -62,19 +61,6 @@ def button(label: str, data: Optional[str] = None, style: Optional[str] = None) 
 def button_row(buttons: Sequence[str], align: Optional[str] = None) -> str:
     al = f' align="{align}"' if align else ""
     return f"<tg-button-row{al}>" + "".join(buttons) + "</tg-button-row>"
-
-
-def settings_kb(target: Optional[int] = None, today: Optional[date] = None) -> InlineKeyboardMarkup:
-    """Обычная inline-клавиатура под календарём: «Сегодня» и «Настройки». У экрана дня её нет: там «Назад». Правка без reply_markup
-    её снимает, поэтому она передаётся при каждой правке.
-    «Сегодня» из любого месяца и с экрана дня открывает текущий месяц, на текущем месяце перерисовывает его по свежим
-    данным. Месяц берётся на сервере в момент нажатия (day в кнопке не используется): кнопка в календаре, нарисованном
-    месяц назад, всё равно ведёт в текущий. target: бронь админом за сотрудника, календарь остаётся его"""
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Сегодня", callback_data=callback("today", today or date.today(), target)),
-        InlineKeyboardButton(text="Настройки",
-                             callback_data=SettingsCB(step=SettingsStep.INIT_SETTINGS, idk=gen_idk()).pack()),
-    ]])
 
 
 def target_line(target_name: Optional[str]) -> List[str]:
@@ -117,15 +103,26 @@ def month_legend(codes: str) -> List[str]:
     return [f"<footer>{'  '.join(items)}</footer>"] if items else []
 
 
-def month_nav(month: date, prev_month: Optional[date], next_month: Optional[date],
-              target: Optional[int] = None) -> List[str]:
-    """Кнопки только доступных месяцев, неактивных нет. Нет ни одного → ряда нет"""
-    items = []
-    if prev_month:
-        items.append(button(f"{NAV_BACK} {MONTHS_NOM[prev_month.month - 1]}", callback("month", prev_month, target)))
-    if next_month:
-        items.append(button(f"{MONTHS_NOM[next_month.month - 1]} {NAV_FORWARD}", callback("month", next_month, target)))
-    return [button_row(items, NAV_ALIGN)] if items else []
+def settings_data() -> str:
+    """Та же кнопка, что «Настройки» в главном меню: экран настроек встаёт на место календаря"""
+    return SettingsCB(step=SettingsStep.INIT_SETTINGS, idk=gen_idk()).pack()
+
+
+def calendar_bar(today: date, prev_month: Optional[date], next_month: Optional[date],
+                 target: Optional[int] = None) -> List[str]:
+    """Нижний ряд календаря во всю ширину, всегда четыре кнопки:
+    «Сегодня» иконкой: текущий месяц из любого месяца, на текущем перерисовывает его по свежим данным. Месяц берётся
+    на сервере в момент нажатия (day в кнопке не используется), поэтому кнопка в календаре, нарисованном месяц назад,
+    всё равно ведёт в текущий;
+    «Настройки» иконкой: экран настроек на месте календаря;
+    «←» и «→» (primary): соседний месяц. Месяц вне диапазона: стрелка неактивна и без стиля, ряд не прыгает.
+    target: бронь админом за сотрудника, календарь остаётся его"""
+    back = (button(NAV_BACK, callback("month", prev_month, target), NAV_STYLE) if prev_month
+            else button(NAV_BACK))
+    forward = (button(NAV_FORWARD, callback("month", next_month, target), NAV_STYLE) if next_month
+               else button(NAV_FORWARD))
+    return [button_row([button(TODAY_ICON, callback("today", today, target)),
+                        button(SETTINGS_ICON, settings_data()), back, forward])]
 
 
 def render_calendar(
@@ -138,7 +135,7 @@ def render_calendar(
     out.append(f"<h2>{month_title(month)}</h2>")
     out += month_tables(month, codes, today, target)
     out += month_legend(codes)
-    out += month_nav(month, prev_month, next_month, target)
+    out += calendar_bar(today, prev_month, next_month, target)
     return "".join(out)
 
 
