@@ -15,12 +15,13 @@ from src.infrastructure.dishka import container
 from src.infrastructure import liveness
 from src.infrastructure.log_alerts import AlertLogHandler
 from src.infrastructure.ops_alerts import RunMonitor, watch_missed_jobs
+from src.infrastructure.telegram.rich import rich_supported
 from src.infrastructure.telegram.widgets import WIDGET_QUERY_UPDATE, widgets_supported
 from src.jobs.cron_jobs import sheet_template_job
 from src.middlewares import setup_inner_middlewares, setup_outer_middlewares
 from src.middlewares.widget_query_middleware import WidgetQueryMiddleware
 from src.services.alert_service import AlertService
-from src.services.feature_flags import FeatureFlags
+from src.services.feature_flags import BookingUi, FeatureFlags
 from src.storage.redis.store import RedisStore
 from src.use_cases.calendar_sync_use_case import CalendarSyncUseCase
 from src.utils.app_configuration.register import init_system_tasks
@@ -52,10 +53,17 @@ async def main() -> None:
     dp.include_router(bot_combined_router)
     await bot.set_my_commands(get_commands_list(), scope=BotCommandScopeAllPrivateChats())
 
-    # Настройки виджетов (режим в личке, дайджест, месяцы календаря) меняет админ в боте, хранятся в system_config
+    # Настройки виджетов (способ бронирования в личке, дайджест, месяцы календаря) меняет админ в боте,
+    # хранятся в system_config
     flags: FeatureFlags = await container.get(FeatureFlags)
     await flags.load()
-    if flags.any_widgets and not await widgets_supported(bot):
+    if flags.booking_ui == BookingUi.RICH and not await rich_supported(bot):
+        logger.error(
+            "Bot API по адресу %s не знает Rich Messages (sendRichMessage). Нужен TG_API_BASE=https://api.telegram.org/beta. "
+            "Пока это не исправлено, вместо календаря открывается базовый экран.",
+            settings.TG_API_BASE,
+        )
+    if (flags.booking_ui == BookingUi.WIDGETS or flags.digest_widget) and not await widgets_supported(bot):
         logger.error(
             "Bot API по адресу %s не знает методы виджетов (sendWidget). Bot API 10.4 сейчас доступен "
             "на бете: TG_API_BASE=https://api.telegram.org/beta. Пока это не исправлено, "

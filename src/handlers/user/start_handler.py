@@ -8,18 +8,20 @@ from aiogram.types import Message
 from dishka import FromDishka
 
 from src.fsm.states import CreateUserState
+from src.handlers.user.home_screen import send_home
 from src.services.exceptions import UserWarn, BookingError
-from src.services.feature_flags import FeatureFlags
+from src.services.feature_flags import BookingUi, FeatureFlags
 from src.services.tech_service import TechService
 from src.ui.keyboard.form_data_kb import get_dict_kb, get_confirmation_kb, get_skip_birthday_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.missed_days_booking_kb import render_missed_booking_kb
 from src.ui.messages.missed_days_booking_mess import render_missed_booking_mess
 from src.ui.messages.start_mess import (start_db_exc_mess, bot_init_mess,
-                                        bot_menu_mess, finish_start_reg_mess, incorrect_full_name_mess, form_data_mess,
+                                        finish_start_reg_mess, incorrect_full_name_mess, form_data_mess,
                                         incorrect_birthday_mess)
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.user_use_case import UserUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.birthday import validate_birthday, birthday_str_to_date
 from src.utils.db_exc_wrapper import DBError
 
@@ -27,7 +29,8 @@ router = Router()
 
 
 @router.message(CommandStart())
-async def handle_start(msg: Message, uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags], state: FSMContext):
+async def handle_start(msg: Message, uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags],
+                       widgets: FromDishka[WidgetUseCase], state: FSMContext):
 
     if await state.get_data():
         await state.clear()
@@ -39,8 +42,8 @@ async def handle_start(msg: Message, uc: FromDishka[UserUseCase], flags: FromDis
             await state.set_state(CreateUserState.full_name)
             await state.update_data(bot_msg_id=bot_msg.message_id)
             return
-        await msg.answer(text=bot_init_mess(user.full_name),
-                         reply_markup=get_menu_kb(await flags.widgets_for(msg.from_user.id)))
+        # В Rich вместо меню календарь
+        await send_home(msg.bot, msg.from_user.id, flags, widgets, bot_init_mess(user.full_name))
 
     except DBError:
         await msg.answer(text=start_db_exc_mess())
@@ -48,7 +51,7 @@ async def handle_start(msg: Message, uc: FromDishka[UserUseCase], flags: FromDis
 
 @router.message(F.text == "/menu")
 async def handle_back_menu_command(msg: Message, uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags],
-                                   state: FSMContext):
+                                   widgets: FromDishka[WidgetUseCase], state: FSMContext):
 
     if await state.get_data():
         await state.clear()
@@ -60,7 +63,7 @@ async def handle_back_menu_command(msg: Message, uc: FromDishka[UserUseCase], fl
             await msg.answer(text=bot_init_mess(""))
             await state.set_state(CreateUserState.full_name)
             return
-        await msg.answer(text=bot_menu_mess(), reply_markup=get_menu_kb(await flags.widgets_for(msg.from_user.id)))
+        await send_home(msg.bot, msg.from_user.id, flags, widgets)
 
     except DBError:
         await msg.answer(text=start_db_exc_mess())
@@ -190,7 +193,7 @@ async def handle_skip_birthday(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(CreateUserState.confirmation)
 async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], flags: FromDishka[FeatureFlags],
-                              state: FSMContext):
+                              widgets: FromDishka[WidgetUseCase], state: FSMContext):
     try:
         state_data = await state.get_data()
         full_name = state_data.get("full_name")
@@ -203,8 +206,13 @@ async def handle_confirmation(call: CallbackQuery, uc: FromDishka[UserUseCase], 
             await uc.create_user(user_id=call.from_user.id, full_name=full_name,
                                  profession_id=profession_id, product_id=product_id, birth_date=birthday)
 
-            await call.message.edit_text(text=finish_start_reg_mess(),
-                                         reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
+            ui = await flags.booking_ui_for(call.from_user.id)
+            if ui == BookingUi.RICH:
+                # Описание бота остаётся, под ним новым сообщением календарь (или меню, если он не открылся)
+                await call.message.edit_text(text=finish_start_reg_mess())
+                await send_home(call.bot, call.from_user.id, flags, widgets)
+            else:
+                await call.message.edit_text(text=finish_start_reg_mess(), reply_markup=get_menu_kb(ui))
             await state.clear()
 
         else:

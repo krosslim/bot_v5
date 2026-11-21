@@ -20,6 +20,7 @@ from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.exceptions import CacheCalDate, BookingError
 from src.ui.inline_query.cancel_articles import build_cancel_reasons
 from src.use_cases.booking_use_case import BookingUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.input_validator import (
     validate_and_parse_dates,
@@ -82,7 +83,7 @@ async def handle_cancel_query(q: InlineQuery, bot: Bot, uc: FromDishka[BookingUs
 
 @router.chosen_inline_result()
 async def handle_cancel_reason(
-    res: ChosenInlineResult, bot: Bot, uc: FromDishka[BookingUseCase]
+    res: ChosenInlineResult, bot: Bot, uc: FromDishka[BookingUseCase], widgets: FromDishka[WidgetUseCase]
 ):
     result = res.result_id
     user_id = res.from_user.id
@@ -111,6 +112,7 @@ async def handle_cancel_reason(
     is_promoted = False
     has_waitlist = False
     error_count = 0
+    promoted_ids = []
 
     for i in bookings:
         try:
@@ -125,6 +127,7 @@ async def handle_cancel_reason(
                 )
                 if promote_user_id:
                     is_promoted = True
+                    promoted_ids.append(promote_user_id)
             elif i.status == BookingStatus.WAITLISTED:
                 has_waitlist = True
                 # Только этого человека: очередь остальных на эту дату не трогаем
@@ -145,6 +148,13 @@ async def handle_cancel_reason(
 
     if real_cancel_count == 0:
         return
+
+    # Отмена из группы: открытые календари (виджет или Rich) того, кто отменил, и тех, кому ушло место
+    for refresh_id in dict.fromkeys([user_id, *promoted_ids]):
+        try:
+            await widgets.refresh_user_widget(refresh_id)
+        except DBError as e:
+            logger.warning("handle_cancel_reason | окно %s не обновлено | %s", refresh_id, e)
 
     if cancel_dates_count == 1:
         if is_promoted or has_waitlist:

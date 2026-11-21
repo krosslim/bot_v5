@@ -53,6 +53,14 @@ class FakeBot:
         pass
 
 
+class FakeWidgets:
+    def __init__(self):
+        self.refreshed = []
+
+    async def refresh_user_widget(self, user_id):
+        self.refreshed.append(user_id)
+
+
 def _bookings():
     return [SimpleNamespace(cal_date=D1, status=BookingStatus.BOOKED),
             SimpleNamespace(cal_date=D2, status=BookingStatus.WAITLISTED),
@@ -72,10 +80,12 @@ class ChatQueueCancelTest(unittest.IsolatedAsyncioTestCase):
         uc = FakeUC(_bookings())
         res = SimpleNamespace(result_id=f"key|{BookingStatus.CANCELED_ILL}", from_user=SimpleNamespace(id=USER),
                               inline_message_id="m1")
-        await handle_cancel_reason(res, FakeBot(), uc)
+        widgets = FakeWidgets()
+        await handle_cancel_reason(res, FakeBot(), uc, widgets)
         self.assertEqual(uc.calls, [("cancel", USER, D1, BookingStatus.CANCELED_ILL),
                                     ("leave", USER, D2, BookingStatus.CANCELED_ILL),
                                     ("leave", USER, D3, BookingStatus.CANCELED_ILL)])
+        self.assertEqual(widgets.refreshed, [USER])   # открытый календарь того, кто отменил, обновлён
 
 
 class FakeRepo:

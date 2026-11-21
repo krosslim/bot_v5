@@ -1,15 +1,17 @@
-"""Режим виджетов из админки без БД и Telegram: python -m unittest discover -s tests -t ."""
+"""Способ бронирования в личке и настройки виджетов из админки без БД и Telegram:
+python -m unittest discover -s tests -t ."""
 import json
 import unittest
 from contextlib import asynccontextmanager
 from unittest.mock import patch
 
 from src.services import feature_flags as module
-from src.services.feature_flags import ADMINS_TTL, FeatureFlags, WidgetsMode, WidgetsSetting
+from src.services.feature_flags import ADMINS_TTL, Audience, BookingUi, FeatureFlags, WidgetsSetting
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.handlers.common.setting_handler import parse_widgets_change
 from src.ui.keyboard.settings_inline_kb import (render_lead_admin_menu_kb, render_widgets_boss_kb,
                                                 render_widgets_months_kb, render_widgets_settings_kb)
+from src.ui.messages.settings_mess import render_widgets_settings_mess
 from src.utils.db_exc_wrapper import DBError
 
 
@@ -99,42 +101,75 @@ class FeatureFlagsTest(unittest.IsolatedAsyncioTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    async def test_no_row_means_off(self):
+    async def test_no_row_means_basic(self):
         await self.flags.load()
-        self.assertEqual(self.flags.widgets_mode, WidgetsMode.OFF)
-        self.assertFalse(await self.flags.widgets_for(1))
+        self.assertEqual(self.flags.booking_ui, BookingUi.BASIC)
+        self.assertEqual(await self.flags.booking_ui_for(1), BookingUi.BASIC)
+        self.assertFalse(self.flags.any_widgets)
 
-    async def test_db_down_on_start_means_off(self):
+    async def test_db_down_on_start_means_basic(self):
         self.db.fail = True
         await self.flags.load()
-        self.assertEqual(self.flags.widgets_mode, WidgetsMode.OFF)
+        self.assertEqual(self.flags.booking_ui, BookingUi.BASIC)
 
-    async def test_modes(self):
-        await self.flags.update_widgets("Админ", mode=WidgetsMode.ADMINS)
-        self.assertTrue(await self.flags.widgets_for(1))         # админ
-        self.assertFalse(await self.flags.widgets_for(2))        # обычный сотрудник
-        await self.flags.update_widgets("Админ", mode=WidgetsMode.ALL)
-        self.assertTrue(await self.flags.widgets_for(2))
-        await self.flags.update_widgets("Админ", mode=WidgetsMode.OFF)
-        self.assertFalse(await self.flags.widgets_for(1))
+    async def test_ui_and_audience(self):
+        await self.flags.update_widgets("Админ", ui=BookingUi.WIDGETS)          # аудитория по умолчанию: админы
+        self.assertEqual(await self.flags.booking_ui_for(1), BookingUi.WIDGETS)   # админ
+        self.assertEqual(await self.flags.booking_ui_for(2), BookingUi.BASIC)     # обычный сотрудник
+        await self.flags.update_widgets("Админ", audience=Audience.ALL)
+        self.assertEqual(await self.flags.booking_ui_for(2), BookingUi.WIDGETS)
+        await self.flags.update_widgets("Админ", ui=BookingUi.RICH)
+        self.assertEqual(await self.flags.booking_ui_for(2), BookingUi.RICH)
+        self.assertTrue(self.flags.any_widgets)
+        await self.flags.update_widgets("Админ", audience=Audience.ADMINS)
+        self.assertEqual(await self.flags.booking_ui_for(1), BookingUi.RICH)
+        self.assertEqual(await self.flags.booking_ui_for(2), BookingUi.BASIC)
+        await self.flags.update_widgets("Админ", ui=BookingUi.BASIC)
+        self.assertEqual(await self.flags.booking_ui_for(1), BookingUi.BASIC)
 
-    async def test_set_mode_persists_and_alerts(self):
-        self.assertTrue(await self.flags.update_widgets("Иванов Иван", mode=WidgetsMode.ALL))
+    async def test_set_ui_persists_and_alerts(self):
+        self.assertTrue(await self.flags.update_widgets("Иванов Иван", ui=BookingUi.WIDGETS, audience=Audience.ALL))
         saved = json.loads(self.db.value)
-        self.assertEqual((saved["mode"], saved["by"]), ("all", "Иванов Иван"))
+        self.assertEqual((saved["ui"], saved["audience"], saved["mode"], saved["by"]),
+                         ("widgets", "all", "all", "Иванов Иван"))           # mode: для отката на старую версию
         self.assertEqual([a.title for a in self.alerts.sent], ["Настройки виджетов изменены"])
-        self.assertEqual(self.alerts.sent[0].text, "Виджеты в личке: выключены → всем")
+        self.assertEqual(self.alerts.sent[0].text.splitlines(), [
+            "Способ бронирования в личке: базовый → виджеты",
+            "Кому способ бронирования: только админам → всем",
+        ])
         self.assertNotIn("Иванов", self.alerts.sent[0].text)                # имя только в БД, не в алерте
-        # после перезапуска режим тот же
+        # после перезапуска способ тот же
         again = FeatureFlags(FakeSessionFactory(self.db), FakeAlerts())
         await again.load()
-        self.assertEqual(again.widgets_mode, WidgetsMode.ALL)
+        self.assertEqual((again.widgets.ui, again.widgets.audience), (BookingUi.WIDGETS, Audience.ALL))
         self.assertEqual(again.widgets.changed_by, "Иванов Иван")
+
+    async def test_rich_is_off_for_old_version(self):
+        await self.flags.update_widgets("Админ", ui=BookingUi.RICH, audience=Audience.ALL)
+        saved = json.loads(self.db.value)
+        self.assertEqual((saved["ui"], saved["audience"], saved["mode"]), ("rich", "all", "off"))
+        self.assertEqual(self.alerts.sent[-1].text.splitlines()[0], "Способ бронирования в личке: базовый → Rich")
+
+    async def test_old_row_becomes_new(self):
+        """Строка старой версии читается без потерь, первая же правка пишет новые поля и сохраняет остальное"""
+        self.db.value = json.dumps({"mode": "admins", "digest": True, "history_months": 3, "future_months": 2,
+                                    "boss_id": 42, "boss_name": "Петров Дмитрий", "by": "Старый Админ",
+                                    "at": "2026-11-09T23:33:35+03:00"})
+        await self.flags.load()
+        w = self.flags.widgets
+        self.assertEqual((w.ui, w.audience, w.digest, w.history_months, w.future_months, w.boss_id),
+                         (BookingUi.WIDGETS, Audience.ADMINS, True, 3, 2, 42))
+        self.assertEqual(await self.flags.booking_ui_for(1), BookingUi.WIDGETS)
+        await self.flags.update_widgets("Админ", ui=BookingUi.RICH)
+        saved = json.loads(self.db.value)
+        self.assertEqual((saved["ui"], saved["audience"], saved["mode"], saved["digest"], saved["boss_id"]),
+                         ("rich", "admins", "off", True, 42))
+        self.assertEqual(self.alerts.sent[-1].text, "Способ бронирования в личке: виджеты → Rich")
 
     async def test_digest_and_months_persist(self):
         await self.flags.update_widgets("Админ", digest=True, history_months=3, future_months=2)
         self.assertTrue(self.flags.digest_widget and self.flags.any_widgets)
-        self.assertEqual(self.flags.widgets_mode, WidgetsMode.OFF)              # режим в личке не тронут
+        self.assertEqual(self.flags.booking_ui, BookingUi.BASIC)                # способ в личке не тронут
         self.assertEqual(self.alerts.sent[-1].text.splitlines(), [
             "Дайджест в группе: текстом → виджетом",
             "Прошлые месяцы в календаре: нет → 3 мес.",
@@ -165,70 +200,128 @@ class FeatureFlagsTest(unittest.IsolatedAsyncioTestCase):
         await self.flags.update_widgets("Админ", history_months=100, future_months=-5)
         self.assertEqual((self.flags.widgets.history_months, self.flags.widgets.future_months), (12, 0))
 
-    async def test_same_mode_is_noop(self):
-        self.assertFalse(await self.flags.update_widgets("Админ", mode=WidgetsMode.OFF))
+    async def test_same_ui_is_noop(self):
+        self.assertFalse(await self.flags.update_widgets("Админ", ui=BookingUi.BASIC))
+        self.assertFalse(await self.flags.update_widgets("Админ", audience=Audience.ADMINS))
         self.assertIsNone(self.db.value)
         self.assertEqual(self.alerts.sent, [])
 
-    async def test_failed_save_keeps_old_mode(self):
+    async def test_failed_save_keeps_old_ui(self):
         self.db.fail = True
         with self.assertRaises(DBError):
-            await self.flags.update_widgets("Админ", mode=WidgetsMode.ALL)
-        self.assertEqual(self.flags.widgets_mode, WidgetsMode.OFF)
+            await self.flags.update_widgets("Админ", ui=BookingUi.RICH)
+        self.assertEqual(self.flags.booking_ui, BookingUi.BASIC)
         self.assertEqual(self.alerts.sent, [])
 
     async def test_admin_list_is_cached(self):
-        await self.flags.update_widgets("Админ", mode=WidgetsMode.ADMINS)
+        await self.flags.update_widgets("Админ", ui=BookingUi.RICH, audience=Audience.ADMINS)
         for _ in range(5):
-            await self.flags.widgets_for(1)
+            await self.flags.booking_ui_for(1)
         self.assertEqual(self.db.admin_queries, 1)
-        self.db.admins = [2]                                     # назначили нового админа
-        self.assertFalse(await self.flags.widgets_for(2))        # пока кэш живой — по-старому
+        self.db.admins = [2]                                                  # назначили нового админа
+        self.assertEqual(await self.flags.booking_ui_for(2), BookingUi.BASIC)  # пока кэш живой — по-старому
         self.clock.now += ADMINS_TTL
-        self.assertTrue(await self.flags.widgets_for(2))
+        self.assertEqual(await self.flags.booking_ui_for(2), BookingUi.RICH)
         self.assertEqual(self.db.admin_queries, 2)
 
     async def test_admin_list_survives_db_error(self):
-        await self.flags.update_widgets("Админ", mode=WidgetsMode.ADMINS)
-        self.assertTrue(await self.flags.widgets_for(1))
+        await self.flags.update_widgets("Админ", ui=BookingUi.WIDGETS, audience=Audience.ADMINS)
+        self.assertEqual(await self.flags.booking_ui_for(1), BookingUi.WIDGETS)
         self.db.fail = True
         self.clock.now += ADMINS_TTL
-        self.assertTrue(await self.flags.widgets_for(1))         # прежний список
+        self.assertEqual(await self.flags.booking_ui_for(1), BookingUi.WIDGETS)   # прежний список
 
 
 class SettingParseTest(unittest.TestCase):
-    def test_plain_and_broken_values(self):
-        self.assertEqual(WidgetsSetting.loads("all").mode, WidgetsMode.ALL)          # записали руками
-        self.assertEqual(WidgetsSetting.loads(" ADMINS ").mode, WidgetsMode.ADMINS)
-        self.assertEqual(WidgetsSetting.loads('{"mode": "nope"}').mode, WidgetsMode.OFF)
-        self.assertEqual(WidgetsSetting.loads(None).mode, WidgetsMode.OFF)
+    def assert_ui(self, raw, ui, audience):
+        w = WidgetsSetting.loads(raw)
+        self.assertEqual((w.ui, w.audience), (ui, audience), raw)
+
+    def test_old_values(self):
+        self.assert_ui('{"mode": "off"}', BookingUi.BASIC, Audience.ADMINS)
+        self.assert_ui('{"mode": "admins"}', BookingUi.WIDGETS, Audience.ADMINS)
+        self.assert_ui('{"mode": "all", "digest": true}', BookingUi.WIDGETS, Audience.ALL)
+        self.assert_ui("all", BookingUi.WIDGETS, Audience.ALL)                    # записали руками
+        self.assert_ui(" ADMINS ", BookingUi.WIDGETS, Audience.ADMINS)
+        self.assert_ui('{"digest": true}', BookingUi.BASIC, Audience.ADMINS)      # поля нет: как «выключено»
+        self.assert_ui(None, BookingUi.BASIC, Audience.ADMINS)
+
+    def test_new_values(self):
+        self.assert_ui('{"ui": "rich", "audience": "all", "mode": "off"}', BookingUi.RICH, Audience.ALL)
+        self.assert_ui('{"ui": "widgets", "audience": "admins", "mode": "admins"}', BookingUi.WIDGETS, Audience.ADMINS)
+        self.assert_ui('{"ui": "basic"}', BookingUi.BASIC, Audience.ADMINS)
+        self.assert_ui('{"ui": "RICH"}', BookingUi.RICH, Audience.ADMINS)        # аудитории нет: только админам
+
+    def test_unreadable_values_mean_basic_with_error(self):
+        for raw in ('{"mode": "nope"}', "rich", '{"ui": "fancy", "audience": "all"}'):
+            with self.assertLogs(module.logger, "ERROR"):
+                self.assert_ui(raw, BookingUi.BASIC, Audience.ADMINS)
+        with self.assertLogs(module.logger, "ERROR"):
+            self.assert_ui('{"ui": "rich", "audience": "everyone"}', BookingUi.RICH, Audience.ADMINS)
         broken = WidgetsSetting.loads('{"mode": "all", "digest": "yes", "history_months": "x", "future_months": 99}')
-        self.assertEqual((broken.mode, broken.digest, broken.history_months, broken.future_months),
-                         (WidgetsMode.ALL, False, 0, 12))
+        self.assertEqual((broken.ui, broken.digest, broken.history_months, broken.future_months),
+                         (BookingUi.WIDGETS, False, 0, 12))
+
+    def test_dumps_roundtrip(self):
+        for ui in BookingUi:
+            for audience in Audience:
+                w = WidgetsSetting.loads(WidgetsSetting(ui, audience, True, 3, 1).dumps())
+                self.assertEqual((w.ui, w.audience, w.digest, w.history_months, w.future_months),
+                                 (ui, audience, True, 3, 1))
+
+    def test_changes_from(self):
+        old = WidgetsSetting()
+        self.assertEqual(WidgetsSetting(BookingUi.RICH).changes_from(old),
+                         ["Способ бронирования в личке: базовый → Rich"])
+        self.assertEqual(WidgetsSetting(audience=Audience.ALL).changes_from(old),
+                         ["Кому способ бронирования: только админам → всем"])
+        self.assertEqual(WidgetsSetting(BookingUi.BASIC, Audience.ADMINS).changes_from(
+            WidgetsSetting(BookingUi.WIDGETS, Audience.ALL)),
+            ["Способ бронирования в личке: виджеты → базовый", "Кому способ бронирования: всем → только админам"])
+        self.assertEqual(WidgetsSetting().changes_from(WidgetsSetting()), [])
 
     def test_button_values(self):
-        self.assertEqual(parse_widgets_change("mode=admins")[0], {"mode": WidgetsMode.ADMINS})
+        self.assertEqual(parse_widgets_change("ui=rich")[0], {"ui": BookingUi.RICH})
+        self.assertEqual(parse_widgets_change("ui=basic")[0], {"ui": BookingUi.BASIC})
+        self.assertEqual(parse_widgets_change("aud=all")[0], {"audience": Audience.ALL})
+        self.assertEqual(parse_widgets_change("aud=admins")[1], "Кому: только админам")
+        # кнопка с экрана, открытого до обновления
+        self.assertEqual(parse_widgets_change("mode=admins")[0], {"ui": BookingUi.WIDGETS, "audience": Audience.ADMINS})
         self.assertEqual(parse_widgets_change("digest=on")[0], {"digest": True})
         self.assertEqual(parse_widgets_change("history=6")[0], {"history_months": 6})
         self.assertEqual(parse_widgets_change("future=0")[0], {"future_months": 0})
-        for bad in ("mode=x", "digest=1", "history=5", "future=-1", "x=1", "", None):
+        for bad in ("ui=x", "ui=off", "aud=nobody", "mode=x", "digest=1", "history=5", "future=-1", "x=1", "", None):
             self.assertIsNone(parse_widgets_change(bad), bad)
 
 
 class KeyboardsTest(unittest.TestCase):
-    def test_menu_hides_my_bookings_only_with_widgets(self):
+    def test_menu_hides_my_bookings_with_widgets_and_rich(self):
         self.assertIn("Мои брони", button_texts(get_menu_kb()))
-        self.assertIn("Мои брони", button_texts(get_menu_kb(False)))
-        self.assertNotIn("Мои брони", button_texts(get_menu_kb(True)))
+        self.assertIn("Мои брони", button_texts(get_menu_kb(BookingUi.BASIC)))
+        self.assertNotIn("Мои брони", button_texts(get_menu_kb(BookingUi.WIDGETS)))
+        self.assertNotIn("Мои брони", button_texts(get_menu_kb(BookingUi.RICH)))
 
     def test_widgets_button_only_in_admin_menu(self):
         self.assertIn("🧩 Виджеты", button_texts(render_lead_admin_menu_kb(None, is_admin=True)))
         self.assertNotIn("🧩 Виджеты", button_texts(render_lead_admin_menu_kb(5)))
 
-    def test_widgets_screen_marks_current_mode(self):
-        texts = button_texts(render_widgets_settings_kb(WidgetsSetting(WidgetsMode.ADMINS, True, 3, 0)))
-        self.assertEqual(texts[:6], ["⚪️ Выключены", "🔘 Только админам", "⚪️ Всем", "📰 Дайджест в группе: виджетом",
-                                     "⬅️ Прошлые месяцы: 3 мес.", "➡️ Месяцы вперёд: нет"])
+    def test_widgets_screen_marks_current_ui_and_audience(self):
+        texts = button_texts(render_widgets_settings_kb(WidgetsSetting(BookingUi.RICH, Audience.ADMINS, True, 3, 0)))
+        self.assertEqual(texts[:8], ["⚪️ Базовый", "⚪️ Виджеты", "🔘 Rich", "⚪️ Всем", "🔘 Только админам",
+                                     "📰 Дайджест в группе: виджетом", "⬅️ Прошлые месяцы: 3 мес.",
+                                     "➡️ Месяцы вперёд: нет"])
+        texts = button_texts(render_widgets_settings_kb(WidgetsSetting(BookingUi.WIDGETS, Audience.ALL)))
+        self.assertEqual(texts[:5], ["⚪️ Базовый", "🔘 Виджеты", "⚪️ Rich", "🔘 Всем", "⚪️ Только админам"])
+
+    def test_widgets_screen_text(self):
+        text = render_widgets_settings_mess(WidgetsSetting(BookingUi.RICH, Audience.ALL), True, False)
+        self.assertIn("Бронирование в личке: <b>Rich</b>, <b>всем</b>", text)
+        self.assertIn("не знает Rich Messages", text)
+        self.assertIn("• Rich:", text)
+        self.assertNotIn("·", text)
+        basic = render_widgets_settings_mess(WidgetsSetting(), True, True)
+        self.assertIn("Бронирование в личке: <b>базовый</b>\n", basic)      # аудитория у базового не важна
+        self.assertIn("✅ Bot API поддерживает виджеты и Rich Messages", basic)
 
     def test_widgets_screen_shows_boss(self):
         self.assertIn("👤 Руководитель на схеме: не выбран", button_texts(render_widgets_settings_kb(WidgetsSetting())))

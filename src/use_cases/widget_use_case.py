@@ -1,25 +1,33 @@
-"""Виджеты бронирования: отправка, сборка состояния, обновление chat_data."""
+"""Окно бронирования в личке (виджет или Rich-календарь) и дайджест-виджет: отправка, сборка состояния,
+обновление при изменении брони вне окна."""
 import asyncio
 import calendar
+import json
 import logging
 import time
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, Optional, Tuple
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramRetryAfter
-from aiogram.types import Message
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramNotFound, TelegramRetryAfter
+from aiogram.methods import EditMessageText, SendRichMessage
+from aiogram.types import InputRichMessage, Message
 
 from config import Config
+from src.dto.user_dto import BookingWidgetPointerDTO, UserDTO
+from src.infrastructure.telegram.rich import emoji_ids, missing_emoji
 from src.infrastructure.telegram.widgets import EditMessageWidgetData, SendWidget
-from src.services.feature_flags import FeatureFlags, WidgetsMode
+from src.services.feature_flags import BookingUi, FeatureFlags
 from src.services.tech_service import TechService
-from src.dto.user_dto import UserDTO
+from src.ui.keyboard.menu_inline_kb import get_menu_kb
+from src.ui.messages.start_mess import bot_menu_mess
+from src.ui.rich.booking import render_calendar, render_day, settings_kb
 from src.ui.widgets.layout import BOSS_SEAT, SEATS
 from src.ui.widgets.render import render_booking_widget, render_digest_widget
 from src.ui.widgets.state import (build_calendar_data, build_day_state, build_digest_data,
-                                  build_expired_data, calendar_last_month, shift_month, short_name)
+                                  build_expired_data, calendar_last_month, day_code, shift_month, short_name)
 from src.use_cases.booking_use_case import BookingUseCase
+from src.utils.db_exc_wrapper import DBError
 from src.utils.get_week_range import week_range
 from src.utils.today import confirm_deadline, effective_today, widget_data_expiry
 from src.utils.tz_day import d_tz
@@ -35,6 +43,25 @@ _last_edit: Dict[Tuple[int, int], float] = {}
 
 def _is_not_modified(e: TelegramBadRequest) -> bool:
     return "not modified" in (e.message or "").lower()
+
+
+def _is_gone(e: TelegramBadRequest) -> bool:
+    """Сообщение удалили или его больше нельзя править (старше 48 часов)"""
+    text = (e.message or "").lower()
+    return "message to edit not found" in text or "can't be edited" in text
+
+
+class RichFailed(Exception):
+    """Rich-окно не показалось. Причина уже в логе: logger.error (алерт) у отказа Telegram и пропавших эмодзи,
+    warning у удалённого сообщения и просьбы подождать.
+    message_id: отправленное сообщение с заглушками вместо эмодзи (его нужно убрать или заменить);
+    gone: сообщение удалено или устарело; retry: Telegram просит подождать (правок слишком много)"""
+
+    def __init__(self, reason: str, message_id: Optional[int] = None, gone: bool = False, retry: bool = False):
+        super().__init__(reason)
+        self.message_id = message_id
+        self.gone = gone
+        self.retry = retry
 
 
 async def edit_widget_data(bot: Bot, chat_id: int, message_id: int, chat_data: str) -> None:
@@ -182,7 +209,7 @@ class WidgetUseCase:
         ))
         await self.tech.set_booking_widget(chat_id, message.message_id, target_id)
         if old and old.message_id != message.message_id:
-            await self.remove_message(chat_id, old.message_id)
+            await self.remove_message(chat_id, old.message_id, widget=not old.rich)
         return message
 
     async def reopen_booking_widget(
@@ -196,13 +223,15 @@ class WidgetUseCase:
         if tapped_id not in (message.message_id, old.message_id if old else None):
             await self.remove_message(chat_id, tapped_id)
 
-    async def remove_message(self, chat_id: int, message_id: int) -> None:
-        """Удалить сообщение; если Telegram не дал (например, старше 48 часов) — пометить виджет устаревшим"""
+    async def remove_message(self, chat_id: int, message_id: int, widget: bool = True) -> None:
+        """Удалить сообщение; если Telegram не дал (например, старше 48 часов), виджет пометить устаревшим.
+        Rich-окно так не пометить: его кнопки и так пересчитывают всё на сервере при нажатии"""
         try:
             await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
         except TelegramAPIError as e:
             logger.info("remove_message %s/%s | %s", chat_id, message_id, e)
-            schedule_widget_edit(self.bot, chat_id, message_id, build_expired_data())
+            if widget:
+                schedule_widget_edit(self.bot, chat_id, message_id, build_expired_data())
 
     async def close_booking_widget(self, chat_id: int, message_id: int) -> None:
         """Кнопка «Выйти»: виджет удаляется, бот его больше не обновляет"""
@@ -215,12 +244,176 @@ class WidgetUseCase:
         schedule_widget_edit(self.bot, chat_id, message_id, await self.calendar_data(subject_id))
 
     async def refresh_user_widget(self, user_id: int) -> None:
-        """Обновить открытый виджет пользователя в его личном чате (бронь изменилась вне виджета)"""
-        if self.flags.widgets_mode == WidgetsMode.OFF:
+        """Обновить открытое окно бронирования пользователя в его личном чате (бронь изменилась вне окна):
+        виджет, если у него сейчас виджеты, Rich-календарь, если Rich. Окно другого способа (способ сменили
+        в админке) не трогаем: нажатие в нём само заменит его новым экраном"""
+        if not self.flags.any_widgets:
             return
         pointer = await self.tech.get_booking_widget(user_id)
-        if pointer and (pointer.target_id or user_id) == user_id:
+        if not pointer or (pointer.target_id or user_id) != user_id:
+            return
+        ui = await self.flags.booking_ui_for(user_id)
+        if pointer.rich and ui == BookingUi.RICH:
+            await self.refresh_rich_window(user_id, pointer)
+        elif not pointer.rich and ui == BookingUi.WIDGETS:
             await self.refresh_booking_message(user_id, pointer.message_id, user_id)
+
+    # ---------------------------------------------------------------------------#
+    #  Rich-календарь: Rich Message в личке вместо главного меню (src/ui/rich/booking.py)
+    # ---------------------------------------------------------------------------#
+    def rich_month_range(self) -> Tuple[date, date]:
+        """Первые числа первого и последнего месяца, которые можно листать: как у виджета, от history_months назад
+        до calendar_last_month (месяц горизонта бронирования или future_months вперёд, что дальше)"""
+        today = d_tz()
+        w = self.flags.widgets
+        return shift_month(today, -w.history_months), calendar_last_month(today, self.horizon(), w.future_months)
+
+    async def rich_codes(self, subject_id: int, start: date, end: date) -> Dict[date, str]:
+        """Код каждого дня (day_code) по данным календаря; дня нет в БД → x, как у виджета"""
+        first_bookable, horizon = self.first_bookable(), self.horizon()
+        days = await self.uc.widget_calendar(subject_id, start, end)
+        codes = {d.cal_date: day_code(d, first_bookable, horizon) for d in days}
+        return {start + timedelta(days=i): codes.get(start + timedelta(days=i), "x")
+                for i in range((end - start).days + 1)}
+
+    async def rich_day_code(self, subject_id: int, cal_date: date) -> str:
+        """Код дня на момент нажатия: старая кнопка в уже закрытом дне не должна давать бронировать"""
+        return (await self.rich_codes(subject_id, cal_date, cal_date))[cal_date]
+
+    async def rich_calendar(
+            self, subject_id: int, month: Optional[date] = None,
+            target_id: Optional[int] = None, target_name: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """(HTML, view) календаря месяца month (по умолчанию текущего), месяц за пределами диапазона прижимается
+        к его краю. target_*: бронь админом за сотрудника"""
+        start, last = self.rich_month_range()
+        month = min(max((month or d_tz()).replace(day=1), start), last)
+        end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
+        codes = await self.rich_codes(subject_id, month, end)
+        prev_m, next_m = shift_month(month, -1), shift_month(month, 1)
+        html = render_calendar(month, "".join(codes.values()), d_tz(), prev_m if prev_m >= start else None,
+                               next_m if next_m <= last else None, target_id, target_name)
+        return html, f"m{month.isoformat()}"
+
+    async def rich_day(
+            self, cal_date: date, subject_id: int, subject_name: str, self_view: bool,
+            target_id: Optional[int] = None, target_name: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """(HTML, view) экрана дня. Статус и места из build_day_state, как у виджета"""
+        state = json.loads(await self.day_state(cal_date, subject_id, subject_name, self_view))
+        boss = await self.boss_label()
+        return render_day(cal_date, state, boss or None, target_id, target_name), f"d{cal_date.isoformat()}"
+
+    async def show_rich(
+            self, chat_id: int, html: str, view: str, target_id: Optional[int] = None,
+            message_id: Optional[int] = None,
+    ) -> Optional[Message]:
+        """Отправить Rich-окно (message_id None) или поправить сообщение message_id на месте. Под окном всегда
+        клавиатура «Сегодня» и «Настройки»: правка без reply_markup её снимает. «message is not modified» не ошибка.
+        После отправки и правки сверяет кастомные эмодзи в ответе Telegram с отправленными (missing_emoji).
+        Запоминает окно в указателе, прежнее Rich-окно в этом чате удаляет. RichFailed: окно не показалось"""
+        rich = InputRichMessage(html=html)
+        where = f"chat={chat_id} message={message_id} view={view}"
+        result = None
+        try:
+            if message_id is None:
+                result = await self.bot(SendRichMessage(chat_id=chat_id, rich_message=rich, reply_markup=settings_kb(target_id, d_tz())))
+            else:
+                result = await self.bot(EditMessageText(chat_id=chat_id, message_id=message_id, rich_message=rich,
+                                                        reply_markup=settings_kb(target_id, d_tz())))
+        except TelegramRetryAfter as e:
+            logger.warning("rich | %s | Telegram просит подождать %s с", where, e.retry_after)
+            raise RichFailed(str(e), retry=True) from e
+        except TelegramBadRequest as e:
+            if message_id is not None and _is_not_modified(e):
+                result = None
+            elif message_id is not None and _is_gone(e):
+                logger.warning("rich | %s | %s", where, e.message)
+                raise RichFailed(e.message, gone=True) from e
+            else:
+                logger.error("rich | %s | Telegram отказал: %s. Пользователь уходит в базовый сценарий", where, e)
+                raise RichFailed(str(e)) from e
+        except TelegramNotFound as e:
+            logger.error("rich | Bot API %s не знает Rich Messages, нужен TG_API_BASE беты | %s",
+                         self.cfg.TG_API_BASE, e)
+            raise RichFailed(str(e)) from e
+        except TelegramAPIError as e:
+            logger.error("rich | %s | %s. Пользователь уходит в базовый сценарий", where, e)
+            raise RichFailed(str(e)) from e
+        finally:
+            if message_id is not None:
+                _last_edit[(chat_id, message_id)] = time.monotonic()
+
+        new_id = result.message_id if isinstance(result, Message) else message_id
+        missing = missing_emoji(result, html)
+        if missing:
+            logger.error("rich | %s | Telegram заменил кастомные эмодзи заглушками (%s из %s, например %s): "
+                         "удалён набор или у владельца бота нет Telegram Premium. Пользователь уходит "
+                         "в базовый сценарий", where, len(missing), len(emoji_ids(html)), sorted(missing)[0])
+            raise RichFailed("custom emoji replaced", message_id=new_id)
+
+        old = await self.tech.get_booking_widget(chat_id)
+        await self.tech.set_booking_widget(chat_id, new_id, target_id, rich_view=view)
+        if old and old.rich and old.message_id != new_id:
+            await self.remove_message(chat_id, old.message_id, widget=False)
+        return result if isinstance(result, Message) else None
+
+    async def open_rich_calendar(
+            self, chat_id: int, owner_id: int, message_id: Optional[int] = None,
+            target_id: Optional[int] = None, target_name: Optional[str] = None,
+    ) -> bool:
+        """Календарь текущего месяца новым сообщением (message_id None) или вместо сообщения message_id.
+        False: не вышло, причина в логе, вызывающий показывает базовый экран. Отправленное с заглушками
+        сообщение удаляется; поправленное заменит базовым экраном вызывающий"""
+        try:
+            html, view = await self.rich_calendar(target_id or owner_id, None, target_id, target_name)
+            await self.show_rich(chat_id, html, view, target_id, message_id)
+        except DBError as e:
+            logger.error("rich | календарь не собран | user=%s target=%s | %s", owner_id, target_id, e)
+            return False
+        except RichFailed as e:
+            if message_id is None and e.message_id:
+                await self.remove_message(chat_id, e.message_id, widget=False)
+            return False
+        return True
+
+    async def forget_rich_window(self, chat_id: int, message_id: int) -> None:
+        """Сообщение ушло из Rich-окна (настройки, базовый экран): больше его не обновлять"""
+        pointer = await self.tech.get_booking_widget(chat_id)
+        if pointer and pointer.rich and pointer.message_id == message_id:
+            await self.tech.clear_booking_widget(chat_id)
+
+    async def refresh_rich_window(self, user_id: int, pointer: BookingWidgetPointerDTO) -> None:
+        """Перерисовать открытое Rich-окно пользователя тем же экраном (месяц или день) по свежим данным.
+        Не чаще правки в EDIT_INTERVAL_SEC на сообщение. Если окно не показалось, бот перестаёт его обновлять;
+        окно с заглушками вместо эмодзи заменяется меню базового сценария"""
+        view = pointer.view or ""
+        try:
+            if view.startswith("d"):
+                user = await self.uc.user_or_none(user_id)
+                html, view = await self.rich_day(date.fromisoformat(view[1:]), user_id,
+                                                 user.full_name if user else "", True)
+            else:
+                html, view = await self.rich_calendar(user_id, date.fromisoformat(view[1:]) if view else None)
+        except (DBError, ValueError) as e:
+            logger.warning("rich refresh | user=%s view=%s | %s", user_id, pointer.view, e)
+            return
+        key = (user_id, pointer.message_id)
+        wait = _last_edit.get(key, 0) + EDIT_INTERVAL_SEC - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        try:
+            await self.show_rich(user_id, html, view, None, pointer.message_id)
+        except RichFailed as e:
+            if e.retry:
+                return
+            await self.tech.clear_booking_widget(user_id)
+            if e.message_id:
+                try:
+                    await self.bot.edit_message_text(chat_id=user_id, message_id=pointer.message_id,
+                                                     text=bot_menu_mess(), reply_markup=get_menu_kb(BookingUi.BASIC))
+                except TelegramAPIError as err:
+                    logger.warning("rich refresh | меню вместо окна не встало | user=%s | %s", user_id, err)
 
     # ---------------------------------------------------------------------------#
     #  Дайджест

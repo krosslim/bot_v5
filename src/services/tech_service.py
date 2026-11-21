@@ -89,10 +89,15 @@ class TechService:
         return [date.fromisoformat(ds) for ds in dates_str]
 
 
-    # Последний личный виджет в чате: чтобы погасить его при открытии нового и обновить,
-    # когда бронь меняется вне виджета. Без срока жизни: ключ один на чат и перезаписывается при каждом открытии
-    async def set_booking_widget(self, chat_id: int, message_id: int, target_id: Optional[int]) -> None:
-        await self.store.set_value(f"widget:booking:{chat_id}", f"{message_id}:{target_id or ''}")
+    # Последнее окно бронирования в чате (виджет или Rich-календарь): чтобы погасить его при открытии нового
+    # и обновить, когда бронь меняется вне окна. Без срока жизни: ключ один на чат и перезаписывается при каждом
+    # открытии. Значение «message_id:target» у виджета, «message_id:target:r:view» у Rich-окна
+    async def set_booking_widget(self, chat_id: int, message_id: int, target_id: Optional[int],
+                                 rich_view: Optional[str] = None) -> None:
+        value = f"{message_id}:{target_id or ''}"
+        if rich_view:
+            value += f":r:{rich_view}"
+        await self.store.set_value(f"widget:booking:{chat_id}", value)
 
     async def clear_booking_widget(self, chat_id: int) -> None:
         await self.store.delete(f"widget:booking:{chat_id}")
@@ -102,8 +107,10 @@ class TechService:
         if not raw:
             return None
         try:
-            message_id, target = raw.split(":", 1)
-            return BookingWidgetPointerDTO(message_id=int(message_id), target_id=int(target) if target else None)
+            message_id, target, *rest = raw.split(":", 3)
+            rich = len(rest) == 2 and rest[0] == "r"
+            return BookingWidgetPointerDTO(message_id=int(message_id), target_id=int(target) if target else None,
+                                           rich=rich, view=rest[1] if rich else None)
         except ValueError:
             logger.warning("get_booking_widget | bad value %s for chat %s", raw, chat_id)
             return None

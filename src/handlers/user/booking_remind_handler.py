@@ -8,12 +8,13 @@ from dishka import FromDishka
 
 from config import settings as s
 from src.handlers.user.booking_handler import promote_user_after_cancel
+from src.handlers.user.home_screen import send_home
 from src.services.exceptions import BookingError
 from src.services.feature_flags import FeatureFlags
 from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
-from src.ui.keyboard.menu_inline_kb import own_booking_kb, get_menu_kb
-from src.ui.messages.start_mess import bot_menu_mess
+from src.ui.keyboard.menu_inline_kb import own_booking_kb
 from src.use_cases.booking_use_case import BookingUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.tz_day import d_tz
 from src.utils.db_exc_wrapper import DBError
 from src.utils.tommorow import fmt_date_ru
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
     {ChatBookingStep.CONFIRM_BOOKING_IN_REMINDER, ChatBookingStep.CANCEL_BOOKING_IN_REMINDER}
 )))
 async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingCB, uc: FromDishka[BookingUseCase],
-                                flags: FromDishka[FeatureFlags]):
+                                flags: FromDishka[FeatureFlags], widgets: FromDishka[WidgetUseCase]):
 
     step = callback_data.step
 
@@ -78,8 +79,8 @@ async def handle_booking_action(call: CallbackQuery, callback_data: ChatBookingC
             await call.message.edit_reply_markup(reply_markup=None)
             await call.answer(text="✅ Бронь на завтра отменена", show_alert=True)
             await call.bot.send_message(chat_id=call.from_user.id, text=f"<b>{str_tomorrow} → Отменено</b>")
-            await call.bot.send_message(chat_id=call.from_user.id, text=bot_menu_mess(),
-                                        reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
+            # Главный экран под сообщением об отмене: в Rich календарь (бронь в нём уже снята)
+            await send_home(call.bot, call.from_user.id, flags, widgets)
 
     except BookingError as e:
         await call.answer(text=str(e), show_alert=True)

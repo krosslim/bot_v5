@@ -18,7 +18,7 @@ from src.dto.booking_dto import BookingStatus
 from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.services.booking_service import BookingService
 from src.services.calendar_dates_service import CalendarDatesService
-from src.services.feature_flags import FeatureFlags
+from src.services.feature_flags import BookingUi, FeatureFlags
 from src.services.office_capacity_service import OfficeCapacityService
 from src.services.tech_service import TechService
 from src.ui.keyboard.booking_remind_kb import confirm_kb
@@ -60,11 +60,19 @@ async def cleanup_booking_session_job(container: AsyncContainer) -> None:
 
         for session in users:
             try:
+                ui = await flags.booking_ui_for(session.user_id)
+                # В Rich вместо меню календарь; не открылся (причина в логе) — меню базового сценария
+                if ui == BookingUi.RICH:
+                    widgets: WidgetUseCase = await req.get(WidgetUseCase)
+                    if await widgets.open_rich_calendar(session.user_id, session.user_id, session.message_id):
+                        await svc.finish_booking_session(f"{session.user_id}:{session.message_id}")
+                        continue
+                    ui = BookingUi.BASIC
                 await bot.edit_message_text(
                     text=bot_menu_mess(),
                     chat_id=session.user_id,
                     message_id=session.message_id,
-                    reply_markup=get_menu_kb(await flags.widgets_for(session.user_id))
+                    reply_markup=get_menu_kb(ui)
                 )
                 await svc.finish_booking_session(f"{session.user_id}:{session.message_id}")
             except TelegramBadRequest as e:

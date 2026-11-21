@@ -4,8 +4,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.dto.user_dto import UserDTO, DictDTO
-from src.services.feature_flags import (MODE_TITLES, MONTHS_CHOICES, WidgetsMode, WidgetsSetting,
-                                        boss_title, digest_title, months_title)
+from src.services.feature_flags import (AUDIENCE_TITLES, MONTHS_CHOICES, UI_TITLES, Audience, BookingUi,
+                                        WidgetsSetting, boss_title, digest_title, months_title)
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.utils.idk import gen_idk
 
@@ -215,11 +215,13 @@ def _widgets_cb(extra: str, step: SettingsStep = SettingsStep.WIDGETS_SET) -> st
 
 
 def render_widgets_settings_kb(setting: WidgetsSetting) -> InlineKeyboardMarkup:
-    """Режим виджетов (текущий отмечен 🔘), дайджест, месяцы календаря"""
+    """Способ бронирования в личке и кому он (текущие отмечены 🔘), дайджест, месяцы календаря, руководитель"""
     kb = InlineKeyboardBuilder()
-    for mode in WidgetsMode:
-        mark = "🔘" if mode == setting.mode else "⚪️"
-        kb.row(InlineKeyboardButton(text=f"{mark} {MODE_TITLES[mode].capitalize()}", callback_data=_widgets_cb(f"mode={mode.value}")))
+    for ui in BookingUi:
+        mark = "🔘" if ui == setting.ui else "⚪️"
+        kb.row(InlineKeyboardButton(text=f"{mark} {UI_TITLES[ui].capitalize()}", callback_data=_widgets_cb(f"ui={ui.value}")))
+    kb.row(*(InlineKeyboardButton(text=f"{'🔘' if a == setting.audience else '⚪️'} {AUDIENCE_TITLES[a].capitalize()}",
+                                  callback_data=_widgets_cb(f"aud={a.value}")) for a in Audience))
     kb.row(InlineKeyboardButton(
         text=f"📰 Дайджест в группе: {digest_title(setting.digest)}",
         callback_data=_widgets_cb(f"digest={'off' if setting.digest else 'on'}"),

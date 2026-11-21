@@ -12,6 +12,7 @@ from src.ui.keyboard.actions import ChatBookingCB, ChatBookingStep
 from src.ui.keyboard.booking_remind_kb import confirm_kb
 from src.ui.messages.booking_remind_mess import build_digest_message_v2
 from src.use_cases.booking_use_case import BookingUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.today import effective_today
 
@@ -28,7 +29,8 @@ _pending_updates: dict[tuple[int, int], asyncio.Task] = {}
     )
 )
 async def handle_chat_booking(
-    call: CallbackQuery, callback_data: ChatBookingCB, uc: FromDishka[BookingUseCase]
+    call: CallbackQuery, callback_data: ChatBookingCB, uc: FromDishka[BookingUseCase],
+    widgets: FromDishka[WidgetUseCase],
 ):
     # step = callback_data.step
     cal_date = date.fromisoformat(callback_data.extra)
@@ -55,6 +57,9 @@ async def handle_chat_booking(
                 await uc.book_place(
                     user_id=call.from_user.id, cal_date=cal_date, auto_confirm=True
                 )
+                # Бронь из группы: открытый у человека календарь (виджет или Rich) показывает её сразу.
+                # До ответа на нажатие: если ответ опоздает и упадёт, окно всё равно обновится
+                await widgets.refresh_user_widget(call.from_user.id)
                 await call.answer(
                     text="✅ Место успешно забронировано", show_alert=True
                 )
@@ -122,6 +127,7 @@ async def handle_chat_inline_booking(
     call: CallbackQuery,
     callback_data: ChatBookingCB,
     uc: FromDishka[BookingUseCase],
+    widgets: FromDishka[WidgetUseCase],
 ):
     cal_date = date.fromisoformat(callback_data.extra)
     today = effective_today()
@@ -142,6 +148,7 @@ async def handle_chat_inline_booking(
         await call.bot.edit_message_reply_markup(
             inline_message_id=call.inline_message_id, reply_markup=None
         )
+        await widgets.refresh_user_widget(call.from_user.id)
         await call.answer(text="✅ Место успешно забронировано", show_alert=True)
 
     except BookingError as e:

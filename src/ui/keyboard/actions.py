@@ -109,3 +109,17 @@ class ChatBookingCB(CallbackData, prefix="chat"):
     step: ChatBookingStep
     extra: Union[str, int] | None = None
     idk: str | None = None
+
+
+class RichCB(CallbackData, prefix="r"):
+    """Кнопки Rich-календаря (src/ui/rich/booking.py). Лимит Telegram 64 байта: самая длинная кнопка
+    «r:seat:2026-11-23:10:<user_id 20 цифр>:<idk>» занимает 46.
+    cmd: month (day — первое число месяца), today (кнопка «Сегодня»: текущий месяц на момент нажатия, day
+    не используется), day, name (seat — номер места или b), seat, cancel, queue, leave.
+    target: user_id сотрудника, за которого бронирует админ или лид; права проверяются на каждое нажатие.
+    idk: своя у каждой кнопки, чтобы ThrottlingMiddleware гасил только повторное нажатие той же кнопки"""
+    cmd: str
+    day: str
+    seat: str | None = None
+    target: int | None = None
+    idk: str

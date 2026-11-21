@@ -26,7 +26,7 @@ from config import settings
 from src.dto.booking_dto import BookingStatus
 from src.handlers.user.booking_handler import promote_user_after_cancel
 from src.infrastructure.telegram.widgets import AnswerWidgetQuery, WidgetQuery
-from src.services.feature_flags import FeatureFlags
+from src.services.feature_flags import BookingUi, FeatureFlags
 from src.services.exceptions import (BookingError, BookingIsAlreadyExist, CancelIsAlreadyExist,
                                      FreePlaceIsAvailable, FreePlaceIsNotFound, NoCapacityInfo,
                                      SeatIsTaken, SeatNotFound, UserIsAlreadyInWaitingList, UserIsAlreadyLeaveQueue)
@@ -35,8 +35,7 @@ from src.ui.widgets.render import WidgetTooLarge
 from src.ui.widgets.state import MAX_DATA_BYTES, DaySeats, data_size, dumps, short_name
 from src.use_cases.booking_use_case import BookingUseCase
 from src.use_cases.widget_use_case import WidgetUseCase
-from src.ui.keyboard.menu_inline_kb import get_menu_kb
-from src.ui.messages.start_mess import bot_menu_mess
+from src.handlers.user.home_screen import send_home
 from src.utils.db_exc_wrapper import DBError
 from src.utils.today import confirm_deadline
 
@@ -171,11 +170,11 @@ async def process_widget_query(query: WidgetQuery, bot: Bot, container: AsyncCon
 async def _handle_private(query: WidgetQuery, bot: Bot, container: AsyncContainer) -> Optional[str]:
     cmd, _, raw_target = (query.data or "").partition("@")
     flags: FeatureFlags = await container.get(FeatureFlags)
-    enabled = await flags.widgets_for(query.from_user.id)
+    enabled = await flags.booking_ui_for(query.from_user.id) == BookingUi.WIDGETS
     if cmd == EXIT_CMD or not enabled:
         # «Выйти» или виджеты этому пользователю выключили из админки, пока окно висело в чате:
-        # любое нажатие заменяет окно меню
-        await _exit_to_menu(query, bot, container, widgets=enabled)
+        # любое нажатие заменяет окно главным экраном (меню, в Rich календарь)
+        await _exit_to_menu(query, bot, container)
         return None
     if cmd == REOPEN_CMD:
         return await _reopen(query, bot, container, int(raw_target) if raw_target.isdigit() else None)
@@ -214,7 +213,7 @@ async def _handle_private(query: WidgetQuery, bot: Bot, container: AsyncContaine
             er = DAY_CLOSED_TEXT
         else:
             try:
-                ok, promoted = await _private_action(req, subject, self_view, name, uc, bot)
+                ok, promoted = await private_action(req, subject, self_view, name, uc, bot)
                 changed = True
             except BookingError as e:
                 er = widget_error_text(e)
@@ -233,10 +232,12 @@ async def _handle_private(query: WidgetQuery, bot: Bot, container: AsyncContaine
     return state
 
 
-async def _exit_to_menu(query: WidgetQuery, bot: Bot, container: AsyncContainer, widgets: bool) -> None:
-    """Виджет заменяется меню (сначала меню, потом удаление — чтобы чат не остался пустым)"""
+async def _exit_to_menu(query: WidgetQuery, bot: Bot, container: AsyncContainer) -> None:
+    """Виджет заменяется главным экраном: меню, в Rich календарь (сначала новый экран, потом удаление виджета,
+    чтобы чат не остался пустым)"""
     uc: WidgetUseCase = await container.get(WidgetUseCase)
-    await bot.send_message(chat_id=query.chat.id, text=bot_menu_mess(), reply_markup=get_menu_kb(widgets))
+    flags: FeatureFlags = await container.get(FeatureFlags)
+    await send_home(bot, query.from_user.id, flags, uc)
     await uc.close_booking_widget(query.chat.id, query.message_id)
 
 
@@ -263,9 +264,11 @@ async def _reopen(query: WidgetQuery, bot: Bot, container: AsyncContainer, targe
     return None
 
 
-async def _private_action(
+async def private_action(
         req: PrivateRequest, subject: int, self_view: bool, name: str, uc: BookingUseCase, bot: Bot,
 ) -> Tuple[str, Optional[int]]:
+    """Действие личного окна (виджет и Rich-календарь): b занять или пересесть, c отменить бронь, q встать
+    в очередь, lq выйти из очереди. (текст успеха, user_id того, кому ушло место из очереди)"""
     who = short_name(name)
     d = req.cal_date
 

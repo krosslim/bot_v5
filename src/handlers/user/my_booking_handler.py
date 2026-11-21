@@ -8,14 +8,14 @@ from aiogram.types import CallbackQuery
 from dishka import FromDishka
 
 from src.handlers.user.booking_handler import promote_user_after_cancel
+from src.handlers.user.home_screen import show_home
 from src.services.exceptions import BookingError
 from src.services.feature_flags import FeatureFlags
 from src.ui.keyboard.actions import MyBookingCB, MyBookingStep
-from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.keyboard.my_booking_inline_kb import render_my_booking_kb, render_book_day_kb
 from src.ui.messages.my_booking_mess import render_my_booking_mess, render_book_day_mess
-from src.ui.messages.start_mess import bot_menu_mess
 from src.use_cases.booking_use_case import BookingUseCase
+from src.use_cases.widget_use_case import WidgetUseCase
 from src.utils.db_exc_wrapper import DBError
 from src.utils.today import effective_today
 
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
     MyBookingStep.CONFIRM_BOOKING
 })))
 async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB, uc: FromDishka[BookingUseCase],
-                                 flags: FromDishka[FeatureFlags]):
+                                 flags: FromDishka[FeatureFlags], widgets: FromDishka[WidgetUseCase]):
     step = callback_data.step
     user_id = call.from_user.id
 
@@ -85,8 +85,7 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
         await call.answer("⚠️ Ошибка: некорректный формат даты.", show_alert=True)
     except BookingError as e:
         try:
-            await call.message.edit_text(text=bot_menu_mess(),
-                                         reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
+            await show_home(call, flags, widgets)
             await call.answer(text=str(e), show_alert=True)
         except TelegramBadRequest:
             await call.answer(text=str(e), show_alert=True)
@@ -97,10 +96,11 @@ async def handle_my_booking_page(call: CallbackQuery, callback_data: MyBookingCB
         )
 
 @router.callback_query(MyBookingCB.filter(F.step.in_({MyBookingStep.GET_BACK_MENU})))
-async def handle_get_back_menu(call: CallbackQuery, flags: FromDishka[FeatureFlags], state: FSMContext):
+async def handle_get_back_menu(call: CallbackQuery, flags: FromDishka[FeatureFlags],
+                               widgets: FromDishka[WidgetUseCase], state: FSMContext):
     if await state.get_data():
         await state.clear()
-    await call.message.edit_text(text=bot_menu_mess(), reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
+    await show_home(call, flags, widgets)
 
 
 @router.callback_query(MyBookingCB.filter(F.step.in_(

@@ -11,8 +11,9 @@ from dishka import FromDishka
 from config import settings
 from src.dto.booking_dto import BookingStatus
 from src.services.exceptions import BookingError
-from src.services.feature_flags import FeatureFlags
+from src.services.feature_flags import BookingUi, FeatureFlags
 from src.services.tech_service import TechService
+from src.handlers.user.home_screen import show_home
 from src.ui.keyboard.actions import BookingCB, BookingStep
 from src.ui.keyboard.bookings_inline_kb import render_booking_week_kb
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
@@ -43,9 +44,16 @@ async def handle_booking_page(call: CallbackQuery,
                               flags: FromDishka[FeatureFlags],
                               state: FSMContext):
 
-    # Виджет не отправился (например, Bot API без методов 10.4) — показываем недельный экран как раньше
-    if callback_data.step == BookingStep.INIT_BOOKING and await flags.widgets_for(call.from_user.id):
-        if await open_booking_widget(call, widgets, tech_svc):
+    # Виджет или Rich-календарь не открылся (например, Bot API без нужных методов) — недельный экран как раньше
+    if callback_data.step == BookingStep.INIT_BOOKING:
+        ui = await flags.booking_ui_for(call.from_user.id)
+        if ui == BookingUi.WIDGETS and await open_booking_widget(call, widgets, tech_svc):
+            return
+        # Rich-календарь встаёт на место этого сообщения. Сессия недельного экрана (её открыл
+        # BookingSessionMiddleware) не нужна: иначе по её истечении cleanup_booking_session_job заменит календарь
+        if ui == BookingUi.RICH and await widgets.open_rich_calendar(call.from_user.id, call.from_user.id,
+                                                                     call.message.message_id):
+            await tech_svc.finish_booking_session(user_data=f"{call.from_user.id}:{call.message.message_id}")
             return
 
     _, _, week_offset = week_range(int(callback_data.extra) if callback_data.extra else None)
@@ -191,10 +199,11 @@ async def handle_booking_help(call: CallbackQuery, uc: FromDishka[BookingUseCase
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.GET_BACK_MENU})))
-async def handle_back_menu_button(call: CallbackQuery, flags: FromDishka[FeatureFlags], state: FSMContext):
+async def handle_back_menu_button(call: CallbackQuery, flags: FromDishka[FeatureFlags],
+                                  widgets: FromDishka[WidgetUseCase], state: FSMContext):
     if await state.get_data():
         await state.clear()
-    await call.message.edit_text(text=bot_menu_mess(), reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)))
+    await show_home(call, flags, widgets)
 
 
 @router.callback_query(BookingCB.filter(F.step.in_({BookingStep.INFO})))
@@ -253,6 +262,7 @@ async def handle_missed_booking_confirmation(
         uc: FromDishka[BookingUseCase],
         tech_svc: FromDishka[TechService],
         flags: FromDishka[FeatureFlags],
+        widgets: FromDishka[WidgetUseCase],
         state: FSMContext
 ):
     state_data = await state.get_data()
@@ -260,10 +270,7 @@ async def handle_missed_booking_confirmation(
 
     # На случай если юзер создал несколько сообщений
     if not choosen_dates_str:
-        await call.message.edit_text(
-            text=bot_menu_mess(),
-            reply_markup=get_menu_kb(await flags.widgets_for(call.from_user.id)),
-        )
+        await show_home(call, flags, widgets)
         await call.answer("⚠️ Не удалось добавить записи.\nПопробуйте еще раз", show_alert=True)
         return
 
@@ -351,6 +358,7 @@ async def render_booking_page(
             await state.clear()
         try:
             # Запасной путь после ошибки БД, контейнера здесь нет: меню с «Мои брони» работает в любом режиме
+            # (в Rich тоже: календарь без БД не собрать)
             await call.message.edit_text(
                 text=bot_menu_mess(),
                 reply_markup=get_menu_kb(),

@@ -37,6 +37,8 @@ class BookingWidgetPointerDTO(BaseModel):
 
     message_id: int
     target_id: int | None = None   # бронь админом за сотрудника
+    rich: bool = False             # окно Rich-календаря (иначе виджет)
+    view: str | None = None        # что сейчас в Rich-окне: m2026-11-01 календарь месяца, d2026-11-23 экран дня
 
 
 class DictDTO(BaseModel):

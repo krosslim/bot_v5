@@ -3,7 +3,8 @@ from datetime import date
 from typing import List
 
 from src.dto.user_dto import UserDTO, UserStatisticsDTO
-from src.services.feature_flags import MODE_TITLES, WidgetsSetting, boss_title, digest_title, months_title
+from src.services.feature_flags import (AUDIENCE_TITLES, UI_TITLES, BookingUi, WidgetsSetting, boss_title,
+                                        digest_title, months_title)
 
 
 def render_auto_confirm_mess() -> str:
@@ -132,32 +133,49 @@ def visit_plan_report_mess(
     return message.strip()
 
 
-def render_widgets_settings_mess(setting: WidgetsSetting, api_supported: bool) -> str:
+def _api_line(widgets_ok: bool, rich_ok: bool) -> str:
+    hint = "Нужен TG_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота"
+    if widgets_ok and rich_ok:
+        return "✅ Bot API поддерживает виджеты и Rich Messages"
+    if widgets_ok:
+        return f"⚠️ Bot API по этому адресу не знает Rich Messages: Rich включить не получится. {hint}"
+    if rich_ok:
+        return f"⚠️ Bot API по этому адресу не знает виджеты: виджеты включить не получится. {hint}"
+    return f"⚠️ Bot API по этому адресу не знает виджеты и Rich Messages: включить их не получится. {hint}"
+
+
+def render_widgets_settings_mess(setting: WidgetsSetting, widgets_supported: bool, rich_supported: bool = False) -> str:
     changed = ""
     if setting.changed_at:
         who = f", {html.escape(setting.changed_by)}" if setting.changed_by else ""
         changed = f"\nИзменено: {setting.changed_at:%d.%m.%Y %H:%M}{who}"
-    api = ("✅ Bot API поддерживает виджеты" if api_supported else
-           "⚠️ Bot API по этому адресу не знает виджеты — включить не получится. "
-           "Нужен TG_API_BASE=https://api.telegram.org/beta в .env и перезапуск бота")
+    whom = "" if setting.ui == BookingUi.BASIC else f", <b>{AUDIENCE_TITLES[setting.audience]}</b>"
     return (f"<b>🧩 Виджеты</b>\n\n"
-            f"Бронирование в личке: <b>{MODE_TITLES[setting.mode]}</b>\n"
+            f"Бронирование в личке: <b>{UI_TITLES[setting.ui]}</b>{whom}\n"
             f"Дайджест в группе: <b>{digest_title(setting.digest)}</b>\n"
             f"Календарь: назад <b>{months_title(setting.history_months)}</b>, "
             f"вперёд <b>{months_title(setting.future_months)}</b>\n"
-            f"Руководитель на схеме: <b>{html.escape(boss_title(setting.boss_name))}</b>{changed}\n{api}\n\n"
-            "<blockquote expandable><b>Бронирование в личке</b>\n"
-            "• Выключены — у всех прежние экраны: недельное расписание и «Мои брони»\n"
-            "• Только админам — виджет у админов, у остальных прежние экраны. Удобно проверить на проде\n"
-            "• Всем — «Забронировать место» открывает календарь со схемой зала, «Мои брони» скрыта\n"
-            "Окна, уже открытые в чатах, при выключении не пропадают: любое нажатие в них заменит окно меню.\n\n"
-            "<b>Дайджест в группе</b> — виджетом со схемой зала или текстом, как раньше. Telegram пока не пускает "
+            f"Руководитель на схеме: <b>{html.escape(boss_title(setting.boss_name))}</b>{changed}\n"
+            f"{_api_line(widgets_supported, rich_supported)}\n\n"
+            "<blockquote expandable><b>Способ бронирования в личке</b>\n"
+            "• Базовый: недельное расписание и «Мои брони»\n"
+            "• Виджеты: «Забронировать место» открывает окно виджета с календарём и схемой зала, «Мои брони» скрыта\n"
+            "• Rich: календарь и схема зала прямо в сообщении. Календарь открывается вместо меню по /start, /menu "
+            "и «Забронировать место», под ним кнопки «Сегодня» (вернуться к текущему месяцу) и «Настройки». «Таблица» и «Мои брони» не показываются. "
+            "Если Telegram не покажет календарь (например, у владельца бота закончился Telegram Premium и числа "
+            "из эмодзи пропали), откроется базовый экран, а в чат алертов придёт ошибка\n\n"
+            "<b>Кому</b>: всем или только админам, у остальных базовый. «Только админам» удобно, чтобы проверить "
+            "на проде.\n"
+            "Окна виджетов и календари, уже открытые в чатах, при смене способа не пропадают: любое нажатие в них "
+            "заменит окно новым главным экраном.\n\n"
+            "<b>Дайджест в группе</b>: виджетом со схемой зала или текстом, как раньше. Telegram пока не пускает "
             "виджеты ботов в группы: если не пустит, дайджест уйдёт текстом, а в чат алертов придёт ошибка.\n\n"
-            "<b>Календарь</b> — сколько прошлых месяцев можно посмотреть и на сколько месяцев вперёд листать. "
-            "Бронь всё равно только в пределах горизонта бронирования. Если месяцев слишком много для лимита "
-            "Telegram, самые дальние отбрасываются.\n\n"
-            "<b>Руководитель на схеме</b> — чьё имя стоит на месте руководителя. По нажатию на место виджет "
-            "показывает полное имя. Не выбран — место закрашено штриховкой.</blockquote>")
+            "<b>Календарь</b>: сколько прошлых месяцев можно посмотреть и на сколько месяцев вперёд листать, "
+            "в виджетах и в Rich. Бронь всё равно только в пределах горизонта бронирования. Если месяцев слишком "
+            "много для лимита виджета, самые дальние отбрасываются.\n\n"
+            "<b>Руководитель на схеме</b>: чьё имя стоит на месте руководителя. По нажатию на место календарь "
+            "показывает полное имя. Не выбран: в виджете место закрашено штриховкой, в Rich кнопка неактивна."
+            "</blockquote>")
 
 
 def render_widgets_months_mess(field: str, current: int) -> str:

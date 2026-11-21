@@ -2,13 +2,16 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import settings
+from src.services.feature_flags import BookingUi
 from src.ui.keyboard.actions import MyBookingCB, MyBookingStep, BookingCB, BookingStep, SettingsStep, SettingsCB
 from src.utils.idk import gen_idk
 
 
-def get_menu_kb(widgets: bool = False) -> InlineKeyboardMarkup:
-    """widgets — пользователю включены виджеты (FeatureFlags.widgets_for): тогда «Мои брони» не нужна.
-    По умолчанию кнопка есть: лишняя кнопка ничего не ломает, пропавшая — оставит без экрана броней"""
+def get_menu_kb(ui: BookingUi = BookingUi.BASIC) -> InlineKeyboardMarkup:
+    """ui: способ бронирования пользователя (FeatureFlags.booking_ui_for). С виджетами и Rich «Мои брони» не нужна:
+    брони видны и отменяются в календаре. В Rich меню показывается, только если календарь не открылся: тогда
+    вызывающий передаёт BASIC. По умолчанию кнопка есть: лишняя кнопка ничего не ломает, пропавшая оставит
+    без экрана броней"""
     kb = InlineKeyboardBuilder()
     kb.row(
         InlineKeyboardButton(
@@ -19,8 +22,7 @@ def get_menu_kb(widgets: bool = False) -> InlineKeyboardMarkup:
         ),
         width=1
     )
-    # С виджетами брони видны и отменяются в календаре, отдельный экран не нужен
-    if not widgets:
+    if ui == BookingUi.BASIC:
         kb.row(
             InlineKeyboardButton(
                 text="Мои брони",
