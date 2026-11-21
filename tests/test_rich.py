@@ -112,7 +112,8 @@ class CalendarTest(unittest.TestCase):
 
         both, page = nav(date(2026, 10, 1), date(2026, 12, 1))
         self.assertEqual(both, [("2026-10-01", "← Октябрь"), ("2026-12-01", "Декабрь →")])
-        self.assertIn('<tg-button-row align="right">', page)
+        self.assertIn("<tg-button-row><tg-button", page)                # во всю ширину: align не задан
+        self.assertNotIn('<tg-button-row align=', page)
         self.assertEqual(nav(None, date(2026, 12, 1))[0], [("2026-12-01", "Декабрь →")])
         self.assertEqual(nav(date(2026, 10, 1), None)[0], [("2026-10-01", "← Октябрь")])
         none, page = nav(None, None)
