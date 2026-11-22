@@ -1,7 +1,12 @@
 """Нажатия в Rich-календаре (RichCB, src/ui/rich/booking.py). Только личные сообщения с ботом.
 
-Каждое нажатие правит то же сообщение (editMessageText с rich_message, без reply_markup: все кнопки в самом
-сообщении). «Настройки» в нижнем ряду календаря обрабатывает экран настроек (SettingsCB).
+Нажатие правит то же сообщение (editMessageText с rich_message, без reply_markup: все кнопки в самом
+сообщении). Исключение: дата в календаре открывает экран дня новым сообщением без звука, прежнее окно
+удаляется. Клиент Telegram запоминает, какие блоки <details> человек раскрыл, для сообщения по порядку блоков,
+и правка это не сбрасывает (даже через календарь без блоков): в другом дне остался бы раскрытым не тот стол.
+В новом сообщении раскрыт стол, который выбрал бот (src/ui/rich/booking.py, desks). Действия внутри дня
+(занять, отменить, очередь) правят сообщение: раскрытое человеком остаётся.
+«Настройки» в нижнем ряду календаря обрабатывает экран настроек (SettingsCB).
 Результат действия («Место забронировано», «Бронь отменена», ошибка) приходит только тостом answerCallbackQuery,
 в сообщении текущее состояние. Действия идут через те же методы, что у виджета (private_action), тексты те же.
 
@@ -85,6 +90,7 @@ async def handle_rich(
 
     changed, promoted = False, None
     view: Optional[Tuple[str, str]] = None
+    fresh = False   # экран дня из календаря: новым сообщением, см. описание модуля
     try:
         user = await uc.user_or_none(subject)
         name = user.full_name if user else ""
@@ -105,6 +111,7 @@ async def handle_rich(
             code = await widgets.rich_day_code(subject, cal_date)
             if code in OPEN_CODES or code in READONLY_CODES:
                 view = await day_view()
+                fresh = True
             elif code == "x":
                 toast = toast or NOT_OPEN_TEXT
             else:
@@ -145,8 +152,13 @@ async def handle_rich(
     if view:
         html, view_key = view
         try:
-            await widgets.show_rich(actor, html, view_key, target, message_id)
+            if fresh:
+                await widgets.show_rich(actor, html, view_key, target, None, silent=True, tapped=message_id)
+            else:
+                await widgets.show_rich(actor, html, view_key, target, message_id)
         except RichFailed as e:
+            if fresh and e.message_id:
+                await widgets.remove_message(actor, e.message_id, widget=False)   # ушло с заглушками эмодзи
             if toast == TODAY_TEXT:
                 toast = None                          # календарь не обновился: не обещаем обратного
             if e.retry:

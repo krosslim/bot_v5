@@ -6,25 +6,36 @@
 компактной таблицей с сеткой, каждая дата кнопкой link с одним кастомным эмодзи (цвет числа передаёт состояние),
 легенда в <footer>, внизу один ряд кнопок во всю ширину: «Сегодня» и «Настройки» иконками, «←» и «→» листают
 месяцы. Inline-клавиатуры под сообщением нет: календарь отправляется и правится без reply_markup.
-Экран дня: дата <h2>, состояние <h5> (тексты build_day_state), схема мест рядами кнопок, <hr/>, «Назад» и действие.
 
-Ограничения Rich Messages: цвета текста нет (цвет только у стилей кнопок), <b> внутри кнопки в ряду Telegram
-выбрасывает, <p> внутри <footer> нельзя (сервер выбросит footer). Лимит 32768 символов и 500 блоков.
+Экран дня (вариант «С3» из scripts/rich_seat_list_probe.py): дата <h2>, состояние <h6> (тексты build_day_state,
+место руководителя считается занятым местом: «Свободно 3 из 11»), каждый стол раскрывающимся блоком <details>:
+в заголовке пиктограмма стола и «свободно N из Y», внутри таблица имён без рамки (окно слева, коридор справа),
+ряд верхних мест, строка стола «← ОКНО  СТОЛ N  КОРИДОР →», ряд нижних мест. Внизу «Назад» и действие.
+Номер места на схеме (SEAT_NUMBERS) только для вида, в callback_data уходит seat_no из БД.
+
+Ограничения Rich Messages: цвета текста нет (цвет только у стилей кнопок), <b> и <sub> внутри кнопки в ряду
+Telegram выбрасывает, <p> внутри <footer> нельзя (сервер выбросит footer), голый «\\n» в ячейке схлопывается
+в пробел, несколько пробелов подряд в один, ширину колонки задать нельзя. Лимит 32768 символов и 500 блоков.
+Кастомных эмодзи в сообщении держать меньше MAX_RICH_EMOJI: на пробе первые 92 вхождения показались, а каждый
+новый id после них сервер молча заменил подписью (повторы уже встреченных показывались). Экран дня сейчас 50,
+календарь около 40.
 """
 import html
 from datetime import date, timedelta
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from src.ui.keyboard.actions import RichCB, SettingsCB, SettingsStep
-from src.ui.rich.emoji import (CHAIR, DAY_EMOJI, DESK_EMOJI, LEGEND, LEGEND_EMOJI, LOOK, SETTINGS_ICON, SIDE_CORRIDOR,
-                               SIDE_WINDOW, TODAY_ICON, emoji, emoji_strip)
-from src.ui.widgets.layout import BOSS_SEAT, LAYOUT_TOP_ROWS, OFFICE_LAYOUT, LayoutCell
-from src.ui.widgets.state import MONTHS_NOM, UNAVAILABLE_SEAT, day_title, short_name
+from src.ui.rich.emoji import (CHAIR, DAY_EMOJI, DESK_ICON, DESK_ROW, LEGEND, LEGEND_EMOJI, LOOK, ROW_CORRIDOR,
+                               ROW_WINDOW, SEAT_BADGE, SETTINGS_ICON, TODAY_ICON, emoji, emoji_strip)
+from src.ui.rich.fit import fit_name, text_width
+from src.ui.widgets.layout import BOSS_SEAT, OFFICE_LAYOUT, SEAT_NUMBERS, SEATS, LayoutCell
+from src.ui.widgets.state import MONTHS_NOM, DaySeats, day_title, short_name
 from src.utils.idk import gen_idk
 
 MAX_RICH_CHARS = 32768
+MAX_RICH_EMOJI = 90   # с запасом под границу ~92 (см. описание модуля)
 WEEK_TITLE = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-UNAVAILABLE = "—"   # подпись неактивной кнопки недоступного места (в виджете штриховка)
+UNAVAILABLE = "—"   # чужое или закрытое место: подпись неактивной кнопки, строка в таблице имён
 # Листание месяцев в нижнем ряду: только стрелки, без названий месяцев. Недоступный месяц: стрелка остаётся
 # на месте неактивной кнопкой, чтобы ряд не прыгал
 NAV_BACK, NAV_FORWARD = "←", "→"
@@ -142,55 +153,174 @@ def render_calendar(
 # ---------------------------------------------------------------------------#
 #  Экран дня
 # ---------------------------------------------------------------------------#
-def table_label(name: str) -> str:
-    """Подпись стола по центру строки (центр даёт ячейка компактной таблицы: заголовки, <p> и <footer> align
-    не принимают). Картинка из эмодзи DESK_EMOJI; для стола без картинки текст в рамке"""
-    if name in DESK_EMOJI:
-        return f'<table compact><tr><td align="center">{emoji_strip(DESK_EMOJI[name])}</td></tr></table>'
-    return f'<table compact bordered><tr><td align="center">{esc(name)}</td></tr></table>'
+class Person(NamedTuple):
+    """Человек на месте: для ссылки на профиль (tg://user?id=) и имени «Имя Ф.»"""
+    user_id: int
+    full_name: str
 
 
-# Стороны зала: «◀ОКНО» прижато влево, «КОРИДОР▶» вправо
-SIDES = (f'<table compact><tr><td align="left">{emoji_strip(SIDE_WINDOW)}</td>'
-         f'<td align="right">{emoji_strip(SIDE_CORRIDOR)}</td></tr></table>')
+# Что на месте (seat_view)
+FREE = "free"         # можно занять или пересесть
+MINE = "mine"         # своё (при брони за сотрудника его место)
+TAKEN = "taken"       # занято другим
+BOSS = "boss"         # руководитель (выбран в админке)
+CLOSED = "closed"     # место команды, но занять нельзя: сверх лимита дня, закрытый день, руководитель не выбран
+FOREIGN = "foreign"   # место другой команды
+
+FREE_TEXT = "Свободно"
+SUB_DIGITS = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
+# Таблица имён. Telegram растягивает таблицу на всю ширину сообщения (~320 pt на iPhone 390 pt) и делит её между
+# колонками по ширине содержимого: на скриншоте колонка с короткими именами ~155 pt. Длинное имя укорачивается
+# до NAME_ROOM_PT (оценка fit.text_width, на iPhone совпала с замером в пределах 5 %), чтобы два длинных имени
+# в одной строке помещались без переноса: «Максимилиан К.» и «Александра А.» целиком.
+# Невидимым заполнением колонки не выравниваются: «⠀» на iPhone оказался шире расчёта, колонка с прочерком
+# раздувалась, соседняя переносила строку (строки стола «скакали»)
+BADGE_LEAD_PT = 23.0   # номер в рамке с пробелом
+NAME_ROOM_PT = 112.0   # под «Имя Ф.» после номера
 
 
-def seat_label(cell: LayoutCell, state: Dict, cal_date: date, boss: Optional[str],
-               target: Optional[int] = None) -> Tuple[str, Optional[str], Optional[str]]:
-    """(подпись, callback_data, стиль) места, как cell() в booking.html; callback_data None у неактивной.
-    state: состояние дня из build_day_state (s: по элементу на место, 0 свободно, "u" сверх лимита дня,
-    иначе короткое имя; m: моё место; ro: только просмотр).
-    Свободное: стул CHAIR (занять или пересесть), success. Занятое и руководитель: короткое имя стилем link,
-    нажатие отвечает полным именем. Своё место: своё имя, primary. Недоступное (другая команда, сверх лимита,
-    свободное место закрытого дня, руководитель не выбран): неактивная кнопка «—»"""
+class Seat(NamedTuple):
+    cell: LayoutCell
+    kind: str
+    number: int = 0                   # номер на схеме (SEAT_NUMBERS), 0 у чужого места
+    person: Optional[Person] = None   # кто сидит: MINE, TAKEN, BOSS
+
+
+def seat_view(cell: LayoutCell, day: DaySeats, state: Dict, boss: Optional[Person]) -> Seat:
+    """Что на месте. Занятые берутся из DaySeats (полные имена и user_id из БД), своё место и закрытый день из
+    состояния build_day_state (m, ro). Свободное: как у виджета, DaySeats.free_seats (лимит дня выбран:
+    свободных нет)"""
+    number = SEAT_NUMBERS.get(cell, 0)
     if cell == BOSS_SEAT:
-        return (boss, callback("name", cal_date, target, BOSS_SEAT), "link") if boss else (UNAVAILABLE, None, None)
+        return Seat(cell, BOSS, number, boss) if boss else Seat(cell, CLOSED, number)
     if not isinstance(cell, int) or isinstance(cell, bool):
-        return UNAVAILABLE, None, None
-    seats = state.get("s") or []
-    value = seats[cell - 1] if 0 < cell <= len(seats) else UNAVAILABLE_SEAT
-    if value == 0:
-        if state.get("ro"):
-            return UNAVAILABLE, None, None
-        return CHAIR, callback("seat", cal_date, target, cell), "success"
-    if not isinstance(value, str) or value == UNAVAILABLE_SEAT:
-        return UNAVAILABLE, None, None
-    return value, callback("name", cal_date, target, cell), "primary" if cell == state.get("m") else "link"
+        return Seat(cell, FOREIGN)
+    holder = day.by_seat().get(cell)
+    if holder:
+        return Seat(cell, MINE if cell == state.get("m") else TAKEN, number, Person(holder.user_id, holder.full_name))
+    if not state.get("ro") and cell in day.free_seats(SEATS):
+        return Seat(cell, FREE, number)
+    return Seat(cell, CLOSED, number)
 
 
-def seats_rows(state: Dict, cal_date: date, boss: Optional[str], target: Optional[int] = None) -> List[str]:
-    """Столы рядами кнопок, подпись стола между рядами, стороны зала после первого стола. Помещения (кабинет)
-    не показываются. Под нижним рядом последнего стола разделитель"""
-    out = []
-    for i, item in enumerate(OFFICE_LAYOUT):
-        if isinstance(item, str):
+def counted(seat: Seat) -> bool:
+    """Входит ли место в «из Y»: места команды и руководитель, если он выбран"""
+    return seat.kind != FOREIGN and not (seat.cell == BOSS_SEAT and seat.kind == CLOSED)
+
+
+def seat_badge(number: int) -> Tuple[str, float]:
+    """(HTML номера в рамке с пробелом после, оценка ширины в pt). Номера без картинки пишутся цифрами"""
+    if number in SEAT_BADGE:
+        return emoji(SEAT_BADGE[number]) + " ", BADGE_LEAD_PT
+    return f"{number} ", text_width(f"{number} ")
+
+
+def desk_picture(name: str) -> str:
+    """Крупный «СТОЛ N» для строки стола (DESK_ROW); стол без картинки текстом"""
+    return emoji_strip(DESK_ROW[name]) if name in DESK_ROW else esc(name.upper())
+
+
+def name_line(seat: Seat) -> str:
+    """Строка места в таблице имён. Занятое: номер и «Имя Ф.» ссылкой на профиль (сервер превращает её
+    в text_mention; не даст ссылку, останется текст), своё полужирным. Свободное: номер и «Свободно» курсивом.
+    Закрытое: номер и «—». Чужое: «—»"""
+    if seat.kind == FOREIGN:
+        return UNAVAILABLE
+    badge, _ = seat_badge(seat.number)
+    if seat.kind == FREE:
+        return f"{badge}<i>{FREE_TEXT}</i>"
+    if seat.kind == CLOSED:
+        return badge + UNAVAILABLE
+    bold = seat.kind == MINE
+    name = esc(fit_name(short_name(seat.person.full_name, 64), NAME_ROOM_PT, bold))
+    return f'<a href="tg://user?id={seat.person.user_id}">{badge}{f"<b>{name}</b>" if bold else name}</a>'
+
+
+def sides(row: Sequence[Seat]) -> List[Tuple[Optional[Seat], Optional[Seat]]]:
+    """Ряд стола → пары (место у окна, место у коридора): левая половина ряда у окна, правая у коридора"""
+    half = (len(row) + 1) // 2
+    left, right = list(row[:half]), list(row[half:])
+    right += [None] * (len(left) - len(right))
+    return list(zip(left, right))
+
+
+def names_table(top: Sequence[Seat], bottom: Sequence[Seat]) -> str:
+    """Таблица имён без рамки: слева места у окна, справа у коридора, сначала верхние места стола, потом нижние.
+    Строки, где оба места чужие, не показываются. Обе колонки по левому краю: начала строк в колонке на одной
+    вертикали. По верху: если имя всё же перенесётся, соседнее не съедет вниз"""
+    rows = []
+    for a, b in sides(top) + sides(bottom):
+        if all(s is None or s.kind == FOREIGN for s in (a, b)):
             continue
-        top, name, bottom = item
-        out += [button_row([button(*seat_label(c, state, cal_date, boss, target)) for c in top]), table_label(name),
-                button_row([button(*seat_label(c, state, cal_date, boss, target)) for c in bottom])]
-        if i == LAYOUT_TOP_ROWS:
-            out.append(SIDES)
-    return out + ["<hr/>"]
+        cells = [name_line(s) if s else "" for s in (a, b)]
+        rows.append("<tr>" + "".join(f'<td align="left" valign="top">{c}</td>' for c in cells) + "</tr>")
+    return f"<table compact>{''.join(rows)}</table>" if rows else ""
+
+
+def seat_button(seat: Seat, cal_date: date, readonly: bool, target: Optional[int] = None) -> str:
+    """Кнопка места: стул и номер нижним индексом (<sub> в кнопке сервер выбрасывает, поэтому юникодные ₀-₉).
+    Свободное: success, занять или пересесть. Своё: primary, нажатие отвечает полным именем (в закрытом дне
+    неактивная primary). Занятое, руководитель, закрытое: неактивные без цвета. Чужое: неактивный «—»"""
+    if seat.kind == FOREIGN:
+        return button(UNAVAILABLE)
+    label = CHAIR + str(seat.number).translate(SUB_DIGITS)
+    if seat.kind == FREE:
+        return button(label, callback("seat", cal_date, target, seat.cell), "success")
+    if seat.kind == MINE:
+        return button(label, None if readonly else callback("name", cal_date, target, seat.cell), "primary")
+    return button(label)
+
+
+def desk_row(name: str) -> str:
+    """Строка стола без рамки: «← ОКНО» у левого края, «СТОЛ N» крупно ровно по центру, «КОРИДОР →» у правого"""
+    return (f'<table compact><tr><td align="left" valign="middle">{emoji_strip(ROW_WINDOW)}</td>'
+            f'<td align="center" valign="middle">{desk_picture(name)}</td>'
+            f'<td align="right" valign="middle">{emoji_strip(ROW_CORRIDOR)}</td></tr></table>')
+
+
+def desk_summary(name: str, seats: Sequence[Seat], readonly: bool) -> str:
+    """Заголовок блока стола: пиктограмма стола (DESK_ICON, цветом текста; без картинки имя стола текстом) и
+    «свободно N из Y» или «нет мест»; в закрытом дне «занято N из Y».
+    Руководитель входит в Y занятым, если выбран"""
+    own = [s for s in seats if counted(s)]
+    if readonly:
+        state = f"занято {sum(1 for s in own if s.kind in (MINE, TAKEN, BOSS))} из {len(own)}"
+    else:
+        free = sum(1 for s in own if s.kind == FREE)
+        state = f"свободно {free} из {len(own)}" if free else "нет мест"
+    if name in DESK_ICON:
+        return f"{emoji_strip(DESK_ICON[name])} {state}"
+    return f"{esc(name)}: {state}"
+
+
+def desk_block(name: str, top: Sequence[Seat], bottom: Sequence[Seat], readonly: bool, is_open: bool, last: bool,
+               cal_date: date, target: Optional[int] = None) -> str:
+    """Стол раскрывающимся блоком: таблица имён, ряд верхних мест, строка стола, ряд нижних мест, у последнего
+    стола разделитель. Какой стол раскрыт, решает desks"""
+    body = [names_table(top, bottom),
+            button_row([seat_button(s, cal_date, readonly, target) for s in top]),
+            desk_row(name),
+            button_row([seat_button(s, cal_date, readonly, target) for s in bottom])]
+    if last:
+        body.append("<hr/>")
+    return (f"<details{' open' if is_open else ''}><summary>{desk_summary(name, [*top, *bottom], readonly)}</summary>"
+            f"{''.join(body)}</details>")
+
+
+def desks(day: DaySeats, state: Dict, boss: Optional[Person], cal_date: date,
+          target: Optional[int] = None) -> List[str]:
+    """Столы схемы сверху вниз. Помещения (кабинет) не показываются.
+    Раскрыт: стол со своим местом (в закрытом дне со своим бывшим), и тогда только он, даже если на других есть
+    свободные; своего места нет: столы со свободными местами; нет и их: всё свёрнуто"""
+    readonly = bool(state.get("ro"))
+    tables = [(name, [seat_view(c, day, state, boss) for c in top], [seat_view(c, day, state, boss) for c in bottom])
+              for top, name, bottom in (item for item in OFFICE_LAYOUT if not isinstance(item, str))]
+    has_mine = any(s.kind == MINE for _, top, bottom in tables for s in (*top, *bottom))
+    want = MINE if has_mine else FREE
+    return [desk_block(name, top, bottom, readonly, any(s.kind == want for s in (*top, *bottom)),
+                       i == len(tables) - 1, cal_date, target)
+            for i, (name, top, bottom) in enumerate(tables)]
 
 
 def day_action(state: Dict, cal_date: date, target: Optional[int] = None) -> Optional[str]:
@@ -207,13 +337,14 @@ def day_action(state: Dict, cal_date: date, target: Optional[int] = None) -> Opt
     return None
 
 
-def render_day(cal_date: date, state: Dict, boss: Optional[str], target: Optional[int] = None,
+def render_day(cal_date: date, state: Dict, day: DaySeats, boss: Optional[Person], target: Optional[int] = None,
                target_name: Optional[str] = None) -> str:
-    """Экран дня. state: build_day_state, разобранный из JSON (тексты t и h берутся оттуда).
-    boss: короткое имя руководителя на схеме или None. «Назад» возвращает календарь месяца этого дня"""
+    """Экран дня. state: build_day_state по тому же day, разобранный из JSON (тексты t и h, своё место m, статус
+    st, закрытый день ro). day: брони дня с полными именами и user_id. boss: руководитель на схеме или None.
+    «Назад» возвращает календарь месяца этого дня"""
     back = button("Назад", callback("month", cal_date.replace(day=1), target))
     action = day_action(state, cal_date, target)
     out = target_line(target_name if target else None)
-    out += [f"<h2>{esc(state.get('t') or day_title(cal_date))}</h2>", f"<h5>{esc(state.get('h') or '')}</h5>",
-            *seats_rows(state, cal_date, boss, target), button_row([back, action] if action else [back])]
+    out += [f"<h2>{esc(state.get('t') or day_title(cal_date))}</h2>", f"<h6>{esc(state.get('h') or '')}</h6>",
+            *desks(day, state, boss, cal_date, target), button_row([back, action] if action else [back])]
     return "".join(out)

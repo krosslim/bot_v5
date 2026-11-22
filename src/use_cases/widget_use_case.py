@@ -21,7 +21,7 @@ from src.services.feature_flags import BookingUi, FeatureFlags
 from src.services.tech_service import TechService
 from src.ui.keyboard.menu_inline_kb import get_menu_kb
 from src.ui.messages.start_mess import bot_menu_mess
-from src.ui.rich.booking import render_calendar, render_day
+from src.ui.rich.booking import Person, render_calendar, render_day
 from src.ui.widgets.layout import BOSS_SEAT, SEATS
 from src.ui.widgets.render import render_booking_widget, render_digest_widget
 from src.ui.widgets.state import (build_calendar_data, build_day_state, build_digest_data,
@@ -299,26 +299,35 @@ class WidgetUseCase:
             self, cal_date: date, subject_id: int, subject_name: str, self_view: bool,
             target_id: Optional[int] = None, target_name: Optional[str] = None,
     ) -> Tuple[str, str]:
-        """(HTML, view) экрана дня. Статус и места из build_day_state, как у виджета"""
-        state = json.loads(await self.day_state(cal_date, subject_id, subject_name, self_view))
-        boss = await self.boss_label()
-        return render_day(cal_date, state, boss or None, target_id, target_name), f"d{cal_date.isoformat()}"
+        """(HTML, view) экрана дня. Тексты состояния из build_day_state, как у виджета, но место руководителя
+        (если выбран) считается занятым: «Свободно 3 из 11». Имена и user_id занявших берутся полными из тех же
+        данных дня (DaySeats), а не из урезанного под лимит виджета состояния"""
+        day, is_workday = await self.uc.widget_day(cal_date)
+        readonly = not (is_workday and self.in_window(cal_date))
+        boss = await self.boss()
+        state = json.loads(build_day_state(day, SEATS, subject_id, subject_name, self_view, readonly, today=d_tz(),
+                                           extra_taken=1 if boss else 0))
+        person = Person(boss.user_id, boss.full_name) if boss else None
+        return render_day(cal_date, state, day, person, target_id, target_name), f"d{cal_date.isoformat()}"
 
     async def show_rich(
             self, chat_id: int, html: str, view: str, target_id: Optional[int] = None,
-            message_id: Optional[int] = None,
+            message_id: Optional[int] = None, silent: bool = False, tapped: Optional[int] = None,
     ) -> Optional[Message]:
         """Отправить Rich-окно (message_id None) или поправить сообщение message_id на месте. Без reply_markup:
         «Сегодня», «Настройки» и листание в самом календаре, а inline-клавиатура старого окна при правке снимается.
         «message is not modified» не ошибка.
         После отправки и правки сверяет кастомные эмодзи в ответе Telegram с отправленными (missing_emoji).
-        Запоминает окно в указателе, прежнее Rich-окно в этом чате удаляет. RichFailed: окно не показалось"""
+        Запоминает окно в указателе, прежнее Rich-окно в этом чате удаляет. RichFailed: окно не показалось.
+        silent: новое сообщение без звука уведомления (окно в ответ на нажатие); tapped: окно, в котором нажали,
+        удаляется вместе с прежним, если новое отправлено вместо него, а в указателе было другое окно"""
         rich = InputRichMessage(html=html)
         where = f"chat={chat_id} message={message_id} view={view}"
         result = None
         try:
             if message_id is None:
-                result = await self.bot(SendRichMessage(chat_id=chat_id, rich_message=rich))
+                result = await self.bot(SendRichMessage(chat_id=chat_id, rich_message=rich,
+                                                        disable_notification=silent or None))
             else:
                 result = await self.bot(EditMessageText(chat_id=chat_id, message_id=message_id, rich_message=rich))
         except TelegramRetryAfter as e:
@@ -356,6 +365,8 @@ class WidgetUseCase:
         await self.tech.set_booking_widget(chat_id, new_id, target_id, rich_view=view)
         if old and old.rich and old.message_id != new_id:
             await self.remove_message(chat_id, old.message_id, widget=False)
+        if tapped and tapped != new_id and not (old and old.message_id == tapped):
+            await self.remove_message(chat_id, tapped, widget=False)
         return result if isinstance(result, Message) else None
 
     async def open_rich_calendar(

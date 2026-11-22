@@ -1,5 +1,5 @@
 """Схема зала. Меняется вместе с кодом, в БД хранится только номер места (bookings.seat_no)."""
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 CABINET_LABEL = "Кабинет Анны А."
 
@@ -45,3 +45,24 @@ def _team_seats() -> Tuple[int, ...]:
 # Для текстового режима это незаметно. В виджетах держите capacity <= len(SEATS): виджет рассчитан на схему,
 # человек без места видит «Бронь есть, но место не выбрано», а в дайджесте-виджете его нет вовсе.
 SEATS: Tuple[int, ...] = _team_seats()
+
+
+def _seat_numbers() -> Dict[LayoutCell, int]:
+    """Номер места на схеме: места команды и руководителя подряд, столы сверху вниз, в столе верхний ряд, затем
+    нижний, в ряду от окна к коридору. Чужие места ("x") номера не получают"""
+    out: Dict[LayoutCell, int] = {}
+    for item in OFFICE_LAYOUT:
+        if isinstance(item, str):
+            continue
+        top, _, bottom = item
+        for c in (*top, *bottom):
+            if c == BOSS_SEAT or (isinstance(c, int) and not isinstance(c, bool)):
+                out[c] = len(out) + 1
+    return out
+
+
+# Номер на схеме, только для вида (Rich-экран дня): ячейка схемы (seat_no или BOSS_SEAT) → номер.
+# Сейчас Стол 1: 1, 2, 3 у руководителя; Стол 2: 4-11. В БД остаётся seat_no (у руководителя номера нет),
+# миграции не нужно: номера мест пользователю больше нигде не показываются.
+# Номер больше 12 требует новой картинки (SEAT_BADGE в src/ui/rich/emoji.py), до тех пор он пишется цифрами
+SEAT_NUMBERS: Dict[LayoutCell, int] = _seat_numbers()

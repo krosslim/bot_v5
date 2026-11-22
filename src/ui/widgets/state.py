@@ -217,9 +217,13 @@ def build_day_state(
         ok: Optional[str] = None,
         er: Optional[str] = None,
         today: Optional[date] = None,
+        extra_taken: int = 0,
 ) -> str:
     """Подзаголовок h — короткая фраза без разделителей «·». today нужен для текстов закрытых дней.
-    Отмена брони и выход из очереди — кнопками под схемой, поэтому подсказок «нажмите, чтобы отменить» нет"""
+    Отмена брони и выход из очереди — кнопками под схемой, поэтому подсказок «нажмите, чтобы отменить» нет.
+    extra_taken: сколько мест вне лимита дня считать занятыми: в «Свободно N из L» добавляется к L, в закрытом
+    дне к «Было N человек». Rich считает так место руководителя («Свободно 3 из 11», «Было 10 человек»),
+    виджеты нет (0)"""
     me = day.holder(subject_id)
     queue = day.queue_ids()
     qp = queue.index(subject_id) + 1 if subject_id in queue else 0
@@ -230,7 +234,7 @@ def build_day_state(
     who = short_name(subject_name)
 
     if readonly and today and day.cal_date <= today:
-        h = was_people(booked)          # прошлые дни и сегодня после WORK_END_HOUR:WORK_END_MINUTES
+        h = was_people(booked + extra_taken)   # прошлые дни и сегодня после WORK_END_HOUR:WORK_END_MINUTES
     elif readonly:
         h = "Бронирование закрыто"
     elif me and not me.seat_no:
@@ -238,7 +242,7 @@ def build_day_state(
     elif qp:
         h = "Мест нет, " + ("вы" if self_view else who) + f" №{qp} в очереди"
     elif free:
-        h = f"Свободно {free} из {limit}"
+        h = f"Свободно {free} из {limit + extra_taken}"
     else:
         h = f"Мест нет, в очереди {people(ql)}" if ql else "Мест нет"
 
