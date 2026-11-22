@@ -9,7 +9,7 @@
 
 Экран дня (вариант «С3» из scripts/rich_seat_list_probe.py): дата <h2>, состояние <h6> (тексты build_day_state,
 место руководителя считается занятым местом: «Свободно 3 из 11»), каждый стол раскрывающимся блоком <details>:
-в заголовке пиктограмма стола и «свободно N из Y», внутри таблица имён без рамки (окно слева, коридор справа),
+в заголовке пиктограмма стола и «места есть», внутри таблица имён без рамки (окно слева, коридор справа),
 ряд верхних мест, строка стола «← ОКНО  СТОЛ N  КОРИДОР →», ряд нижних мест. Внизу «Назад» и действие.
 Номер места на схеме (SEAT_NUMBERS) только для вида, в callback_data уходит seat_no из БД.
 
@@ -281,14 +281,14 @@ def desk_row(name: str) -> str:
 
 def desk_summary(name: str, seats: Sequence[Seat], readonly: bool) -> str:
     """Заголовок блока стола: пиктограмма стола (DESK_ICON, цветом текста; без картинки имя стола текстом) и
-    «свободно N из Y» или «нет мест»; в закрытом дне «занято N из Y».
-    Руководитель входит в Y занятым, если выбран"""
+    «места есть» («место есть», если свободно одно) или «нет мест»; в закрытом дне «занято N из Y»,
+    руководитель входит в Y занятым, если выбран"""
     own = [s for s in seats if counted(s)]
     if readonly:
         state = f"занято {sum(1 for s in own if s.kind in (MINE, TAKEN, BOSS))} из {len(own)}"
     else:
         free = sum(1 for s in own if s.kind == FREE)
-        state = f"свободно {free} из {len(own)}" if free else "нет мест"
+        state = "место есть" if free == 1 else "места есть" if free else "нет мест"
     if name in DESK_ICON:
         return f"{emoji_strip(DESK_ICON[name])} {state}"
     return f"{esc(name)}: {state}"

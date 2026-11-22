@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import date
 from typing import List, Optional
 
@@ -10,6 +11,8 @@ from src.storage.redis.store import RedisStore
 from src.utils.idk import gen_idk
 
 logger = logging.getLogger(__name__)
+
+RICH_WINDOWS_KEY = "widget:rich:open"
 
 class TechService:
     def __init__(self, store: RedisStore, repo: Repository):
@@ -92,15 +95,31 @@ class TechService:
     # Последнее окно бронирования в чате (виджет или Rich-календарь): чтобы погасить его при открытии нового
     # и обновить, когда бронь меняется вне окна. Без срока жизни: ключ один на чат и перезаписывается при каждом
     # открытии. Значение «message_id:target» у виджета, «message_id:target:r:view» у Rich-окна
+    # Чаты с открытым Rich-окном: их бот обновляет сам (WidgetUseCase.watch_rich_windows и обновление в 00:00 и
+    # WORK_END). Упорядоченное множество chat_id, вес: время последнего показа окна. Окна, открытые до выкладки
+    # этого списка, попадут в него при следующем нажатии
     async def set_booking_widget(self, chat_id: int, message_id: int, target_id: Optional[int],
                                  rich_view: Optional[str] = None) -> None:
         value = f"{message_id}:{target_id or ''}"
         if rich_view:
             value += f":r:{rich_view}"
         await self.store.set_value(f"widget:booking:{chat_id}", value)
+        if rich_view:
+            await self.store.z_add(RICH_WINDOWS_KEY, str(chat_id), int(time.time()))
+        else:
+            await self.store.z_rem(RICH_WINDOWS_KEY, str(chat_id))
 
     async def clear_booking_widget(self, chat_id: int) -> None:
         await self.store.delete(f"widget:booking:{chat_id}")
+        await self.store.z_rem(RICH_WINDOWS_KEY, str(chat_id))
+
+    async def rich_window_chats(self) -> List[int]:
+        """Чаты, где бот помнит открытое Rich-окно"""
+        return [int(c) for c in await self.store.z_range_by_score(RICH_WINDOWS_KEY, "-inf", "+inf", withscores=False)]
+
+    async def forget_rich_chat(self, chat_id: int) -> None:
+        """Убрать чат из списка обновляемых, указатель на окно не трогать"""
+        await self.store.z_rem(RICH_WINDOWS_KEY, str(chat_id))
 
     async def get_booking_widget(self, chat_id: int) -> Optional[BookingWidgetPointerDTO]:
         raw = await self.store.get_value(f"widget:booking:{chat_id}")

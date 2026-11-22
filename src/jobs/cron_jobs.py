@@ -628,6 +628,32 @@ async def sheet_template_job(container: AsyncContainer) -> None:
 
 
 # -------------------------------- helpers --------------------------------
+async def rich_windows_refresh_job(container: AsyncContainer) -> None:
+    """00:00 и WORK_END: перерисовать все открытые Rich-окна. В полночь переезжает подсветка «сегодня» (1-го
+    числа календарь прошлого месяца становится текущим), в WORK_END бронь на сегодня закрывается, а в воскресенье
+    открывается новая неделя. Без этого окно, в котором никто не нажимал, показывало бы вчерашний день"""
+    async with container() as req:
+        try:
+            widgets: WidgetUseCase = await req.get(WidgetUseCase)
+            done = await widgets.refresh_all_rich_windows(roll_month=d_tz().day == 1)
+            logger.info("rich_windows_refresh_job | перерисовано окон: %s", done)
+        except DBError as e:
+            logger.exception(f"ERROR: rich_windows_refresh_job | {str(e)}")
+
+
+async def rich_windows_watch_job(container: AsyncContainer) -> None:
+    """Раз в RICH_WATCH_SECONDS: перерисовать Rich-окна, в которых изменилось видимое (день стал полным или
+    освободился, на открытом экране дня кто-то сел или ушёл), откуда бы ни пришло изменение"""
+    async with container() as req:
+        try:
+            widgets: WidgetUseCase = await req.get(WidgetUseCase)
+            done = await widgets.watch_rich_windows()
+            if done:
+                logger.info("rich_windows_watch_job | перерисовано окон: %s", done)
+        except DBError as e:
+            logger.warning("rich_windows_watch_job | %s", e)
+
+
 async def _refresh_digest_widget(req: AsyncContainer, sc_svc: TechService, target_date: date) -> bool:
     """Дайджест-виджет: правим chat_data, а если сообщение удалили — отправляем заново.
 

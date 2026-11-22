@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from datetime import date, timedelta
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramNotFound, TelegramRetryAfter
@@ -39,6 +39,23 @@ EDIT_INTERVAL_SEC = 1.05   # Telegram: не чаще одной правки cha
 _pending: Dict[Tuple[int, int], str] = {}
 _tasks: Dict[Tuple[int, int], asyncio.Task] = {}
 _last_edit: Dict[Tuple[int, int], float] = {}
+
+# Rich-окна, которые бот обновляет сам: в 00:00 и WORK_END (refresh_all_rich_windows) и когда меняется то, что
+# в окне видно (watch_rich_windows, раз в RICH_WATCH_SECONDS)
+RICH_PACE_SEC = 0.1    # пауза между правками разных окон: 120 окон за ~12 с при лимите Telegram ~30 сообщений в с
+RICH_QUIET_SEC = 5.0   # в окне нажимали недавно: фоновая правка подождёт, иначе могла бы вернуть прошлый экран
+_rich_touched: Dict[int, float] = {}   # чат → когда в его Rich-окне нажимали или бот его показывал
+_rich_marks: Dict[str, object] = {}    # вид окна ("m2026-11-01", "d2026-11-26") → отпечаток при прошлом обходе
+_rich_stale: Set[int] = set()          # чаты, чьё окно надо обновить, но в нём как раз нажимали
+
+
+def touch_rich(chat_id: int) -> None:
+    """В Rich-окне нажали или бот его показал: фоновое обновление этого окна подождёт RICH_QUIET_SEC"""
+    _rich_touched[chat_id] = time.monotonic()
+
+
+def rich_busy(chat_id: int) -> bool:
+    return time.monotonic() - _rich_touched.get(chat_id, float("-inf")) < RICH_QUIET_SEC
 
 
 def _is_not_modified(e: TelegramBadRequest) -> bool:
@@ -361,6 +378,7 @@ class WidgetUseCase:
                          "в базовый сценарий", where, len(missing), len(emoji_ids(html)), sorted(missing)[0])
             raise RichFailed("custom emoji replaced", message_id=new_id)
 
+        touch_rich(chat_id)
         old = await self.tech.get_booking_widget(chat_id)
         await self.tech.set_booking_widget(chat_id, new_id, target_id, rich_view=view)
         if old and old.rich and old.message_id != new_id:
@@ -394,30 +412,44 @@ class WidgetUseCase:
         if pointer and pointer.rich and pointer.message_id == message_id:
             await self.tech.clear_booking_widget(chat_id)
 
-    async def refresh_rich_window(self, user_id: int, pointer: BookingWidgetPointerDTO) -> None:
+    async def refresh_rich_window(self, user_id: int, pointer: BookingWidgetPointerDTO, roll_month: bool = False,
+                                  background: bool = False) -> bool:
         """Перерисовать открытое Rich-окно пользователя тем же экраном (месяц или день) по свежим данным.
+        Окно брони за сотрудника (pointer.target_id) рисуется от его имени, кнопки несут target, как при нажатии.
+        roll_month: 1-го числа календарь прошлого месяца становится текущим (вместе с подсветкой «сегодня»).
+        background: правка по расписанию или по изменению у других. Перед правкой указатель перечитывается: если
+        человек за это время ушёл на другой экран или нажимает прямо сейчас, окно не трогаем (False).
         Не чаще правки в EDIT_INTERVAL_SEC на сообщение. Если окно не показалось, бот перестаёт его обновлять;
         окно с заглушками вместо эмодзи заменяется меню базового сценария"""
         view = pointer.view or ""
+        target = pointer.target_id
+        subject = target or user_id
         try:
+            target_user = await self.uc.user_or_none(target) if target else None
+            target_name = (target_user.full_name if target_user else "") if target else None
             if view.startswith("d"):
-                user = await self.uc.user_or_none(user_id)
-                html, view = await self.rich_day(date.fromisoformat(view[1:]), user_id,
-                                                 user.full_name if user else "", True)
+                user = target_user if target else await self.uc.user_or_none(user_id)
+                html, view = await self.rich_day(date.fromisoformat(view[1:]), subject, user.full_name if user else "",
+                                                 subject == user_id, target, target_name)
             else:
-                html, view = await self.rich_calendar(user_id, date.fromisoformat(view[1:]) if view else None)
+                month = date.fromisoformat(view[1:]) if view else None
+                if roll_month and month == shift_month(d_tz(), -1):
+                    month = None
+                html, view = await self.rich_calendar(subject, month, target, target_name)
         except (DBError, ValueError) as e:
             logger.warning("rich refresh | user=%s view=%s | %s", user_id, pointer.view, e)
-            return
+            return True
         key = (user_id, pointer.message_id)
         wait = _last_edit.get(key, 0) + EDIT_INTERVAL_SEC - time.monotonic()
         if wait > 0:
             await asyncio.sleep(wait)
+        if background and (rich_busy(user_id) or await self.tech.get_booking_widget(user_id) != pointer):
+            return False
         try:
-            await self.show_rich(user_id, html, view, None, pointer.message_id)
+            await self.show_rich(user_id, html, view, target, pointer.message_id)
         except RichFailed as e:
             if e.retry:
-                return
+                return False                 # Telegram просит подождать: обход повторит на следующем круге
             await self.tech.clear_booking_widget(user_id)
             if e.message_id:
                 try:
@@ -425,6 +457,74 @@ class WidgetUseCase:
                                                      text=bot_menu_mess(), reply_markup=get_menu_kb(BookingUi.BASIC))
                 except TelegramAPIError as err:
                     logger.warning("rich refresh | меню вместо окна не встало | user=%s | %s", user_id, err)
+        return True
+
+    async def rich_windows(self) -> List[Tuple[int, BookingWidgetPointerDTO]]:
+        """Открытые Rich-окна, которые бот обновляет сам. Чат без окна или со способом бронирования не Rich
+        выпадает из списка: нажатие в таком окне само заменит его нужным экраном"""
+        out = []
+        for chat_id in await self.tech.rich_window_chats():
+            pointer = await self.tech.get_booking_widget(chat_id)
+            if not pointer or not pointer.rich or await self.flags.booking_ui_for(chat_id) != BookingUi.RICH:
+                await self.tech.forget_rich_chat(chat_id)
+                continue
+            out.append((chat_id, pointer))
+        return out
+
+    async def refresh_all_rich_windows(self, roll_month: bool = False) -> int:
+        """Перерисовать все открытые Rich-окна: по расписанию в 00:00 (подсветка «сегодня», 1-го числа новый месяц)
+        и в WORK_END (бронь на сегодня закрывается, в воскресенье открывается новая неделя). Окна, в которых сейчас
+        нажимают, пропускаются: человек и так видит свежий экран. Возвращает число перерисованных"""
+        done = 0
+        for chat_id, pointer in await self.rich_windows():
+            if rich_busy(chat_id):
+                continue
+            if await self.refresh_rich_window(chat_id, pointer, roll_month=roll_month, background=True):
+                done += 1
+            await asyncio.sleep(RICH_PACE_SEC)
+        return done
+
+    async def _month_mark(self, month: date) -> str:
+        """Отпечаток календаря месяца: коды дней для того, у кого в нём нет броней. Меняется, когда день другого
+        человека переходит между «есть места» и «мест нет», закрывается или открывается для брони. Своя бронь
+        отпечаток не меняет: её окно перерисовывает тот, кто бронировал (refresh_user_widget)"""
+        end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
+        first_bookable, horizon = self.first_bookable(), self.horizon()
+        return "".join(day_code(d, first_bookable, horizon) for d in await self.uc.widget_calendar(0, month, end))
+
+    async def _day_mark(self, cal_date: date) -> tuple:
+        """Отпечаток экрана дня: кто на каком месте, очередь, лимит, руководитель на схеме, закрыт ли день"""
+        day, is_workday = await self.uc.widget_day(cal_date)
+        return (tuple(sorted((h.seat_no or 0, h.user_id, h.full_name) for h in day.holders)), tuple(day.queue_ids()),
+                day.capacity, self.flags.widgets.boss_id, is_workday and self.in_window(cal_date))
+
+    async def watch_rich_windows(self) -> int:
+        """Обход раз в RICH_WATCH_SECONDS: перерисовать окна, в которых изменилось видимое, откуда бы ни пришло
+        изменение (Rich, виджет, текстовый сценарий, чат, задачи по расписанию). Для каждого открытого вида
+        (месяц или день) снимается отпечаток и сравнивается с прошлым обходом; вид, увиденный впервые, только
+        запоминается. Окно, в котором как раз нажимают, обновится на следующем обходе. Возвращает число
+        перерисованных"""
+        windows = await self.rich_windows()
+        marks: Dict[str, object] = {}
+        for view in {p.view for _, p in windows if p.view}:
+            if view.startswith("m"):
+                marks[view] = await self._month_mark(date.fromisoformat(view[1:]))
+            elif view.startswith("d"):
+                marks[view] = await self._day_mark(date.fromisoformat(view[1:]))
+        changed = {v for v, mark in marks.items() if v in _rich_marks and _rich_marks[v] != mark}
+        _rich_marks.clear()
+        _rich_marks.update(marks)
+        done = 0
+        for chat_id, pointer in windows:
+            if pointer.view not in changed and chat_id not in _rich_stale:
+                continue
+            if rich_busy(chat_id) or not await self.refresh_rich_window(chat_id, pointer, background=True):
+                _rich_stale.add(chat_id)
+                continue
+            _rich_stale.discard(chat_id)
+            done += 1
+            await asyncio.sleep(RICH_PACE_SEC)
+        return done
 
     # ---------------------------------------------------------------------------#
     #  Дайджест

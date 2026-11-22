@@ -21,6 +21,8 @@ from src.jobs.cron_jobs import (
     birthday_job,
     calendar_sync_job,
     sheet_template_job,
+    rich_windows_refresh_job,
+    rich_windows_watch_job,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,6 +209,34 @@ def register_jobs(sched: AsyncIOScheduler, container: AsyncContainer) -> None:
                 s.SHEET_TEMPLATE_JOB_HOUR, s.SHEET_TEMPLATE_JOB_MINUTES)
 
 
+
+    # Rich-окна: перерисовать все в 00:00 и в WORK_END (секунда 30: effective_today уже переключился)
+    sched.add_job(
+        partial(rich_windows_refresh_job, container),
+        trigger=OrTrigger([
+            CronTrigger(hour=0, minute=0, second=30, timezone=sched.timezone),
+            CronTrigger(hour=s.WORK_END_HOUR, minute=s.WORK_END_MINUTES, second=30, timezone=sched.timezone),
+        ]),
+        id="rich_windows_refresh_job",
+        max_instances=1,
+        misfire_grace_time=600,
+        coalesce=True,
+        replace_existing=True
+    )
+    logger.info("register job: rich_windows_refresh_job | every day at 00:00:30 and %s:%s:30",
+                s.WORK_END_HOUR, s.WORK_END_MINUTES)
+
+    # Rich-окна: перерисовать те, где изменилось видимое
+    sched.add_job(
+        partial(rich_windows_watch_job, container),
+        trigger=IntervalTrigger(seconds=s.RICH_WATCH_SECONDS),
+        id="rich_windows_watch_job",
+        max_instances=1,
+        misfire_grace_time=s.RICH_WATCH_SECONDS,
+        coalesce=True,
+        replace_existing=True
+    )
+    logger.info("register job: rich_windows_watch_job | Interval %s seconds", s.RICH_WATCH_SECONDS)
 
     # --- Для тестов ---
     # sched.add_job(

@@ -35,7 +35,7 @@ from src.ui.keyboard.actions import RichCB
 from src.ui.rich.booking import DAY_OFF_TEXT, NOT_OPEN_TEXT, OPEN_CODES, READONLY_CODES, TODAY_TEXT
 from src.ui.widgets.layout import BOSS_SEAT
 from src.use_cases.booking_use_case import BookingUseCase
-from src.use_cases.widget_use_case import RichFailed, WidgetUseCase
+from src.use_cases.widget_use_case import RichFailed, WidgetUseCase, touch_rich
 from src.utils.db_exc_wrapper import DBError
 
 router = Router()
@@ -64,6 +64,7 @@ async def handle_rich(
 ):
     callback_answer.disabled = True   # отвечаем сами: тост без «Ок», и до обновления чужих окон
     actor = call.from_user.id
+    touch_rich(actor)                 # фоновое обновление окна подождёт, пока человек нажимает
     message_id = call.message.message_id
 
     if await flags.booking_ui_for(actor) != BookingUi.RICH:

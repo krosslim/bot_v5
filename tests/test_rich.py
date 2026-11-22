@@ -7,6 +7,8 @@ import html
 import json
 import re
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from datetime import date
 
 from aiogram.exceptions import TelegramBadRequest, TelegramNotFound, TelegramServerError
@@ -15,7 +17,10 @@ from aiogram.types import Message
 
 from src.infrastructure.telegram.rich import emoji_ids, missing_emoji, rich_supported
 from src.services.tech_service import TechService
-from src.use_cases.widget_use_case import WidgetUseCase
+from src.dto.user_dto import BookingWidgetPointerDTO
+from src.services.feature_flags import BookingUi
+from src.use_cases import widget_use_case
+from src.use_cases.widget_use_case import WidgetUseCase, touch_rich
 from src.ui.keyboard.actions import RichCB
 from src.ui.rich.booking import (CHAIR, MAX_RICH_CHARS, MAX_RICH_EMOJI, NAME_ROOM_PT, Person, day_emoji_id,
                                  desk_picture, desk_summary, month_legend, render_calendar, render_day, seat_badge)
@@ -23,7 +28,7 @@ from src.ui.rich.emoji import (DAY_EMOJI, DESK_ICON, DESK_ROW, LEGEND_EMOJI, LOO
                                SETTINGS_ICON, TODAY_ICON, WH_TODAY_IDS, emoji_strip)
 from src.ui.rich.fit import fit_name, text_width
 from src.ui.widgets.layout import BOSS_SEAT, OFFICE_LAYOUT, SEAT_NUMBERS, SEATS
-from src.ui.widgets.state import DaySeats, QueueEntry, SeatHolder, build_day_state
+from src.ui.widgets.state import CalendarDay, DaySeats, QueueEntry, SeatHolder, build_day_state
 
 NOV = date(2026, 11, 1)          # 30 дней, 1-е воскресенье: шесть пустых ячеек перед ним
 TODAY = date(2026, 11, 22)       # воскресенье
@@ -217,7 +222,7 @@ class DayTest(unittest.TestCase):
         self.assertEqual(len(got), 2)
         desk1, desk2 = got
         self.assertEqual(desk1[1], emoji_strip(DESK_ICON["Стол 1"]) + " нет мест")       # 1, 2 и руководитель
-        self.assertEqual(desk2[1], emoji_strip(DESK_ICON["Стол 2"]) + " свободно 3 из 8")
+        self.assertEqual(desk2[1], emoji_strip(DESK_ICON["Стол 2"]) + " места есть")
         self.assertEqual((desk1[0], desk2[0]), (False, True))   # своё место и свободные только на Столе 2
         for n, (_, _, body) in zip(("Стол 1", "Стол 2"), got):   # имена без рамки, ряд мест, строка стола, ряд мест
             parts = re.findall(r"<table compact>|<tg-button-row>", body)
@@ -325,7 +330,7 @@ class DayTest(unittest.TestCase):
         """Руководитель не выбран: место без имени, неактивное, в «из Y» не входит"""
         page, _ = day_page({1: "Волков Сергей"}, boss=None)
         desk1 = blocks(page)[0]
-        self.assertEqual(desk1[1], emoji_strip(DESK_ICON["Стол 1"]) + " свободно 1 из 2")
+        self.assertEqual(desk1[1], emoji_strip(DESK_ICON["Стол 1"]) + " место есть")   # одно
         self.assertEqual(name_cells(desk1[2])[1], badge(3) + "—")
         self.assertIn((chair(3), 'type="disabled"'), seat_buttons(page))
         self.assertNotIn("tg://user?id=777", page)
@@ -506,6 +511,15 @@ class FakeStore:
     async def delete(self, key):
         self.data.pop(key, None)
 
+    async def z_add(self, key, value, score):
+        self.data.setdefault(key, {})[value] = score
+
+    async def z_rem(self, key, value):
+        return 1 if self.data.get(key, {}).pop(value, None) is not None else 0
+
+    async def z_range_by_score(self, key, min_score, max_score, withscores=True):
+        return sorted(self.data.get(key, {}), key=self.data.get(key, {}).get)
+
 
 class PointerTest(unittest.IsolatedAsyncioTestCase):
     async def test_widget_and_rich_pointers(self):
@@ -516,6 +530,12 @@ class PointerTest(unittest.IsolatedAsyncioTestCase):
         await tech.set_booking_widget(5, 101, 42, rich_view="d2026-11-23")
         p = await tech.get_booking_widget(5)
         self.assertEqual((p.message_id, p.target_id, p.rich, p.view), (101, 42, True, "d2026-11-23"))
+        self.assertEqual(await tech.rich_window_chats(), [5])             # Rich-окно в списке обновляемых
+        await tech.set_booking_widget(5, 103, None)                        # вместо Rich-окна виджет
+        self.assertEqual(await tech.rich_window_chats(), [])
+        await tech.set_booking_widget(5, 104, None, rich_view="m2026-11-01")
+        await tech.clear_booking_widget(5)
+        self.assertEqual(await tech.rich_window_chats(), [])
         tech.store.data["widget:booking:5"] = "102:"                     # значение старой версии
         p = await tech.get_booking_widget(5)
         self.assertEqual((p.message_id, p.rich), (102, False))
@@ -567,6 +587,146 @@ class FreshDayWindowTest(unittest.IsolatedAsyncioTestCase):
         await self.widgets.show_rich(5, self.page, "d2026-11-26")
         self.assertIsNone(self.bot.calls[0].disable_notification)
         self.assertEqual(self.bot.deleted, [])
+
+
+
+def pointer(message_id, view, target=None):
+    return BookingWidgetPointerDTO(message_id=message_id, target_id=target, rich=True, view=view)
+
+
+class RichFlags:
+    def __init__(self, ui=BookingUi.RICH):
+        self.ui = ui
+        self.widgets = SimpleNamespace(boss_id=None)
+
+    async def booking_ui_for(self, user_id):
+        return self.ui
+
+
+class RichUsers:
+    async def user_or_none(self, user_id):
+        return SimpleNamespace(user_id=user_id, full_name=f"Фамилия{user_id} Имя", is_active=True)
+
+
+class OpenWindowsTest(unittest.IsolatedAsyncioTestCase):
+    """Rich-окна, которые бот обновляет сам: по расписанию и когда меняется видимое"""
+    async def asyncSetUp(self):
+        widget_use_case._rich_touched.clear()
+        widget_use_case._rich_marks.clear()
+        widget_use_case._rich_stale.clear()
+        widget_use_case._last_edit.clear()
+        self.bot = RichBot()
+        self.flags = RichFlags()
+        self.widgets = WidgetUseCase(self.bot, RichUsers(), TechService(FakeStore(), None), None, self.flags)
+        self.rendered = []
+
+        async def rich_calendar(subject, month=None, target=None, target_name=None):
+            self.rendered.append(("m", subject, month, target, target_name))
+            return f"<p>{subject} {month}</p>", f"m{(month or date(2026, 11, 1)).isoformat()}"
+
+        async def rich_day(cal_date, subject, name, self_view, target=None, target_name=None):
+            self.rendered.append(("d", subject, cal_date, target, self_view))
+            return f"<p>{subject} {cal_date}</p>", f"d{cal_date.isoformat()}"
+
+        self.widgets.rich_calendar, self.widgets.rich_day = rich_calendar, rich_day
+
+    async def open(self, chat_id, message_id, view, target=None):
+        await self.widgets.tech.set_booking_widget(chat_id, message_id, target, rich_view=view)
+
+    def edited(self):
+        return [m.message_id for m in self.bot.calls]
+
+    async def test_background_refresh_skips_window_that_moved_on(self):
+        await self.open(5, 100, "m2026-11-01")
+        old = await self.widgets.tech.get_booking_widget(5)
+        await self.open(5, 100, "d2026-11-26")                      # человек уже открыл день
+        self.assertFalse(await self.widgets.refresh_rich_window(5, old, background=True))
+        self.assertEqual(self.bot.calls, [])
+        touch_rich(5)                                               # и нажимает прямо сейчас
+        self.assertFalse(await self.widgets.refresh_rich_window(5, await self.widgets.tech.get_booking_widget(5),
+                                                                background=True))
+
+    async def test_refresh_all_rolls_month_and_draws_target_window(self):
+        await self.open(5, 100, "m2026-10-01")
+        await self.open(6, 200, "d2026-11-26", target=42)           # админ бронирует за сотрудника 42
+        with patch.object(widget_use_case, "d_tz", return_value=date(2026, 11, 1)):
+            done = await self.widgets.refresh_all_rich_windows(roll_month=True)
+        self.assertEqual(done, 2)
+        self.assertIn(("m", 5, None, None, None), self.rendered)   # прошлый месяц стал текущим
+        self.assertIn(("d", 42, date(2026, 11, 26), 42, False), self.rendered)
+        self.assertEqual(sorted(self.edited()), [100, 200])
+        self.assertEqual((await self.widgets.tech.get_booking_widget(6)).target_id, 42)
+
+    async def test_refresh_all_skips_other_ui_and_busy(self):
+        await self.open(5, 100, "m2026-11-01")
+        await self.open(6, 200, "m2026-11-01")
+        touch_rich(6)
+        self.assertEqual(await self.widgets.refresh_all_rich_windows(), 1)
+        self.assertEqual(self.edited(), [100])
+        self.flags.ui = BookingUi.WIDGETS                            # Rich выключили в админке
+        self.assertEqual(await self.widgets.refresh_all_rich_windows(), 0)
+        self.assertEqual(await self.widgets.tech.rich_window_chats(), [])
+
+    async def test_watch_refreshes_only_changed_views(self):
+        await self.open(5, 100, "m2026-11-01")
+        await self.open(6, 200, "d2026-11-26")
+        await self.open(7, 300, "m2026-12-01")
+        marks = {"m2026-11-01": "ff", "d2026-11-26": (1,), "m2026-12-01": "ff"}
+
+        async def month_mark(month):
+            return marks[f"m{month.isoformat()}"]
+
+        async def day_mark(cal_date):
+            return marks[f"d{cal_date.isoformat()}"]
+
+        self.widgets._month_mark, self.widgets._day_mark = month_mark, day_mark
+        self.assertEqual(await self.widgets.watch_rich_windows(), 0)          # первый обход только запоминает
+        self.assertEqual(await self.widgets.watch_rich_windows(), 0)          # ничего не изменилось
+        marks.update({"m2026-11-01": "fn", "d2026-11-26": (2,)})              # день стал полным, на дне сел человек
+        self.assertEqual(await self.widgets.watch_rich_windows(), 2)
+        self.assertEqual(sorted(self.edited()), [100, 200])                  # декабрь не трогали
+
+    async def test_watch_retries_busy_window(self):
+        await self.open(5, 100, "m2026-11-01")
+        marks = {"m": "ff"}
+
+        async def month_mark(month):
+            return marks["m"]
+
+        self.widgets._month_mark = month_mark
+        await self.widgets.watch_rich_windows()
+        marks["m"] = "fn"
+        touch_rich(5)
+        self.assertEqual(await self.widgets.watch_rich_windows(), 0)          # нажимает: подождём
+        widget_use_case._rich_touched.clear()
+        self.assertEqual(await self.widgets.watch_rich_windows(), 1)          # отпечаток тот же, но окно в долгу
+        self.assertEqual(await self.widgets.watch_rich_windows(), 0)
+
+
+class MarksTest(unittest.IsolatedAsyncioTestCase):
+    """Отпечатки видимого: месяц меняется, когда день стал полным; экран дня, когда кто-то сел"""
+    async def test_month_and_day_marks(self):
+        visits = {"n": 3}
+
+        class Uc(RichUsers):
+            async def widget_calendar(self, user_id, start, end):
+                assert user_id == 0                                   # календарь «для никого»: без своих броней
+                return [CalendarDay(cal_date=date(2026, 11, 26), is_weekend=False, is_holiday=False, is_workday=True,
+                                    visit_count=visits["n"], capacity=4)]
+
+            async def widget_day(self, cal_date):
+                hs = [SeatHolder(user_id=100 + n, full_name="Фамилия Имя", seat_no=n, confirmed=True)
+                      for n in range(1, visits["n"] + 1)]
+                return DaySeats(cal_date=cal_date, capacity=4, holders=hs), True
+
+        widgets = WidgetUseCase(None, Uc(), None, SimpleNamespace(PAGINATION_LIMIT_WEEKS=4), RichFlags())
+        with patch.object(widget_use_case, "effective_today", return_value=date(2026, 11, 23)), \
+                patch("src.utils.get_week_range.effective_today", return_value=date(2026, 11, 23)):
+            month, day = await widgets._month_mark(date(2026, 11, 1)), await widgets._day_mark(date(2026, 11, 26))
+            self.assertEqual(month, "f")
+            visits["n"] = 4                                            # последний свободный занят
+            self.assertEqual(await widgets._month_mark(date(2026, 11, 1)), "n")
+            self.assertNotEqual(await widgets._day_mark(date(2026, 11, 26)), day)
 
 
 if __name__ == "__main__":
