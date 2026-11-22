@@ -203,9 +203,18 @@ def badge(n: int) -> str:
     return f'<tg-emoji emoji-id="{SEAT_BADGE[n]}">📅</tg-emoji> '
 
 
+NAME_BUTTON = re.compile(r'<tg-button type="callback_data" data="([^"]*)" style="link">(.*?)</tg-button>')
+
+
 def name_cells(body: str):
-    """Ячейки таблицы имён (первая таблица блока) по порядку"""
-    return re.findall(r'<td align="left" valign="top">(.*?)</td>', body.split("</table>")[0])
+    """Ячейки таблицы имён (первая таблица блока) по порядку. Кнопка имени записывается как «[команда место]подпись»:
+    в callback_data случайный idk"""
+    def short(m):
+        cb = unpack(html.unescape(m.group(1)))
+        return f"[{cb.cmd} {cb.seat}]{m.group(2)}"
+
+    return [NAME_BUTTON.sub(short, c) for c in
+            re.findall(r'<td align="left" valign="top">(.*?)</td>', body.split("</table>")[0])]
 
 
 class DayTest(unittest.TestCase):
@@ -239,15 +248,15 @@ class DayTest(unittest.TestCase):
         page, _ = day_page(DEMO, me=104)
         desk1, desk2 = blocks(page)
         # Стол 1: верхний ряд целиком чужой и в таблицу не попадает; окно слева, коридор справа
+        # имя кнопкой-ссылкой: нажатие отвечает полным именем (команда name с номером места из БД)
         self.assertEqual(name_cells(desk1[2]), [
-            f'<a href="tg://user?id=101">{badge(1)}Сергей В.</a>', f'<a href="tg://user?id=777">{badge(3)}Анна А.</a>',
-            f'<a href="tg://user?id=102">{badge(2)}Дмитрий П.</a>', "—"])
+            f"[name 1]{badge(1)}Сергей В.", f"[name b]{badge(3)}Анна А.", f"[name 2]{badge(2)}Дмитрий П.", "—"])
         cells = name_cells(desk2[2])
-        self.assertEqual(cells[:4], [
-            f"{badge(4)}<i>Свободно</i>", f'<a href="tg://user?id=105">{badge(6)}Анна Б.</a>',
-            f'<a href="tg://user?id=104">{badge(5)}<b>Максим К.</b></a>', f"{badge(7)}<i>Свободно</i>"])
-        self.assertEqual(cells[7], f'<a href="tg://user?id=110">{badge(11)}Александр С.</a>')
-        self.assertEqual(desk2[2].count("<b>"), 1)                                        # своё имя полужирным
+        self.assertEqual(cells[:4], [f"{badge(4)}<i>Свободно</i>", f"[name 5]{badge(6)}Анна Б.",
+                                     f"[name 4]{badge(5)}Максим К.", f"{badge(7)}<i>Свободно</i>"])
+        self.assertEqual(cells[7], f"[name 10]{badge(11)}Александр С.")
+        self.assertNotIn("<b>", desk2[2])            # полужирный в кнопке сервер выбрасывает: своё видно по стулу
+        self.assertNotIn("tg://user", page)          # профиль может быть закрыт настройками приватности
 
     def test_names_table_without_filler(self):
         """Без невидимого заполнения (на iPhone «⠀» шире расчёта, строки скакали); ячейки по левому краю и по верху"""
@@ -270,8 +279,11 @@ class DayTest(unittest.TestCase):
         self.assertIn('style="success"', got[8][1])
         self.assertIn('style="primary"', got[9][1])                                        # своё место
         self.assertEqual(got[10], (chair(6), 'type="disabled"'))                           # занято
-        cbs = {unpack(d).seat: unpack(d).cmd for d, _ in buttons(page) if unpack(d).cmd in ("seat", "name")}
-        self.assertEqual(cbs, {"3": "seat", "6": "seat", "9": "seat", "4": "name"})       # seat_no из БД
+        cbs = [unpack(d) for d, _ in buttons(page)]
+        self.assertEqual({cb.seat for cb in cbs if cb.cmd == "seat"}, {"3", "6", "9"})   # seat_no из БД
+        names = [cb.seat for cb in cbs if cb.cmd == "name"]
+        self.assertEqual(sorted(names), ["1", "10", "2", "4", "5", "7", "8", "b"])      # имена в таблице
+        self.assertEqual(got[9], (chair(5), 'type="disabled" style="primary"'))           # свой стул не нажимается
         self.assertEqual(page.count('style="success"'), 3)
 
     def test_desk_without_free_seats_and_full_day(self):
@@ -306,7 +318,7 @@ class DayTest(unittest.TestCase):
         self.assertEqual([o for o, _, _ in blocks(page)], [False, True])
         page, _ = day_page({1: "Я Я"}, me=101)                       # свободные есть на обоих столах
         self.assertEqual([o for o, _, _ in blocks(page)], [True, False])
-        self.assertIn('<a href="tg://user?id=101">' + badge(1) + "<b>Я.</b>", page.replace("Я Я.", "Я."))
+        self.assertIn(f"[name 1]{badge(1)}Я Я.", name_cells(blocks(page)[0][2]))
 
     def test_header_counts_boss(self):
         _, with_boss = day_page({1: "Волков Сергей"})
@@ -333,23 +345,22 @@ class DayTest(unittest.TestCase):
         self.assertEqual(desk1[1], emoji_strip(DESK_ICON["Стол 1"]) + " место есть")   # одно
         self.assertEqual(name_cells(desk1[2])[1], badge(3) + "—")
         self.assertIn((chair(3), 'type="disabled"'), seat_buttons(page))
-        self.assertNotIn("tg://user?id=777", page)
+        self.assertFalse(any(c.startswith("[name b]") for c in name_cells(desk1[2])))
 
     def test_long_names_are_cut_to_column(self):
         """Имя укорачивается до NAME_ROOM_PT; так в одной строке помещаются два длинных имени"""
         page, _ = day_page({8: "Константинопольский Максимилиан", 9: "Ли Ян", 3: "Александрова Александра",
                             7: "Мононим", 10: "Х Константинопольская", 4: "Абдурахмангаджиев Христофорович"}, me=104)
         cells = " ".join(name_cells(blocks(page)[1][2]))
-        self.assertIn(">" + badge(9) + "Максимилиан К.</a>", cells)       # помещаются целиком
-        self.assertIn(">" + badge(4) + "Александра А.</a>", cells)
-        self.assertIn(">" + badge(10) + "Ян Л.</a>", cells)
-        self.assertIn(">" + badge(8) + "Мононим</a>", cells)
-        self.assertIn(">" + badge(11) + "Константин… Х.</a>", cells)
-        self.assertIn("<b>Христофо… А.</b>", cells)                         # полужирное шире
-        for name, longer, bold in (("Константин… Х.", "Константино… Х.", False),
-                                   ("Христофо… А.", "Христофор… А.", True)):
-            self.assertLessEqual(text_width(name, bold), NAME_ROOM_PT)
-            self.assertGreater(text_width(longer, bold), NAME_ROOM_PT)    # укорочено ровно до места
+        self.assertIn("]" + badge(9) + "Максимилиан К.", cells)           # помещаются целиком
+        self.assertIn("]" + badge(4) + "Александра А.", cells)
+        self.assertIn("]" + badge(10) + "Ян Л.", cells)
+        self.assertIn("]" + badge(8) + "Мононим", cells)
+        self.assertIn("]" + badge(11) + "Константин… Х.", cells)
+        self.assertIn("]" + badge(5) + "Христофор… А.", cells)             # своё тоже обычным начертанием
+        for name, longer in (("Константин… Х.", "Константино… Х."), ("Христофор… А.", "Христофоро… А.")):
+            self.assertLessEqual(text_width(name), NAME_ROOM_PT)
+            self.assertGreater(text_width(longer), NAME_ROOM_PT)          # укорочено ровно до места
         self.assertEqual(fit_name("Максимилиан К.", 1), "Ма… К.")           # короче 2 букв не режет
 
     def test_names_are_escaped(self):
@@ -369,7 +380,10 @@ class DayTest(unittest.TestCase):
         self.assertEqual((desk1[0], desk2[0]), (False, True))
         self.assertEqual(desk1[1], emoji_strip(DESK_ICON["Стол 1"]) + " занято 2 из 3")    # с руководителем
         self.assertEqual(desk2[1], emoji_strip(DESK_ICON["Стол 2"]) + " занято 1 из 8")
-        self.assertEqual([unpack(d).cmd for d, _ in buttons(page)], ["month"])            # только «Назад»
+        cmds = [unpack(d).cmd for d, _ in buttons(page)]
+        self.assertEqual(set(cmds), {"month", "name"})                # «Назад» и полные имена, брони нет
+        self.assertEqual(cmds.count("month"), 1)
+        self.assertEqual(name_cells(desk1[2])[0], f"[name 1]{badge(1)}Сергей В.")
         nobody, state = day_page({}, readonly=True)
         self.assertEqual(state["h"], "Бронирование закрыто")   # будущий закрытый день
         self.assertEqual([o for o, _, _ in blocks(nobody)], [False, False])
@@ -392,7 +406,7 @@ class DayTest(unittest.TestCase):
         """Бронь за сотрудника: его место своё, target во всех кнопках"""
         page, _ = day_page({4: "Кузнецов Максим"}, me=104, target=BIG_ID, target_name="Кузнецов Максим")
         self.assertTrue(page.startswith("<h5>Бронь за сотрудника: Максим К.</h5><h2>"))
-        self.assertIn("<b>Максим К.</b>", page)
+        self.assertIn("Максим К.</tg-button>", page)
         self.assertTrue(all(unpack(d).target == BIG_ID for d, _ in buttons(page)))
 
     def test_back_returns_month_of_day(self):

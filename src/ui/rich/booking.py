@@ -154,7 +154,7 @@ def render_calendar(
 #  Экран дня
 # ---------------------------------------------------------------------------#
 class Person(NamedTuple):
-    """Человек на месте: для ссылки на профиль (tg://user?id=) и имени «Имя Ф.»"""
+    """Человек на месте: имя «Имя Ф.» в таблице имён (полное по нажатию отдаёт обработчик, команда name)"""
     user_id: int
     full_name: str
 
@@ -221,10 +221,12 @@ def desk_picture(name: str) -> str:
     return emoji_strip(DESK_ROW[name]) if name in DESK_ROW else esc(name.upper())
 
 
-def name_line(seat: Seat) -> str:
-    """Строка места в таблице имён. Занятое: номер и «Имя Ф.» ссылкой на профиль (сервер превращает её
-    в text_mention; не даст ссылку, останется текст), своё полужирным. Свободное: номер и «Свободно» курсивом.
-    Закрытое: номер и «—». Чужое: «—»"""
+def name_line(seat: Seat, cal_date: date, target: Optional[int] = None) -> str:
+    """Строка места в таблице имён. Занятое: номер и «Имя Ф.» одной кнопкой стилем link, нажатие отвечает полным
+    именем (команда name, как у кнопки своего места). Ссылкой на профиль не делаем: у части сотрудников профиль
+    закрыт настройками приватности, а по «Имя Ф.» не всегда понятно, кто это. Полужирный внутри кнопки сервер
+    выбрасывает, поэтому своё имя не выделено: своё место видно по кнопке primary в ряду мест.
+    Свободное: номер и «Свободно» курсивом. Закрытое: номер и «—». Чужое: «—»"""
     if seat.kind == FOREIGN:
         return UNAVAILABLE
     badge, _ = seat_badge(seat.number)
@@ -232,9 +234,9 @@ def name_line(seat: Seat) -> str:
         return f"{badge}<i>{FREE_TEXT}</i>"
     if seat.kind == CLOSED:
         return badge + UNAVAILABLE
-    bold = seat.kind == MINE
-    name = esc(fit_name(short_name(seat.person.full_name, 64), NAME_ROOM_PT, bold))
-    return f'<a href="tg://user?id={seat.person.user_id}">{badge}{f"<b>{name}</b>" if bold else name}</a>'
+    name = esc(fit_name(short_name(seat.person.full_name, 64), NAME_ROOM_PT))
+    data = esc(callback("name", cal_date, target, seat.cell))
+    return f'<tg-button type="callback_data" data="{data}" style="link">{badge}{name}</tg-button>'
 
 
 def sides(row: Sequence[Seat]) -> List[Tuple[Optional[Seat], Optional[Seat]]]:
@@ -245,7 +247,7 @@ def sides(row: Sequence[Seat]) -> List[Tuple[Optional[Seat], Optional[Seat]]]:
     return list(zip(left, right))
 
 
-def names_table(top: Sequence[Seat], bottom: Sequence[Seat]) -> str:
+def names_table(top: Sequence[Seat], bottom: Sequence[Seat], cal_date: date, target: Optional[int] = None) -> str:
     """Таблица имён без рамки: слева места у окна, справа у коридора, сначала верхние места стола, потом нижние.
     Строки, где оба места чужие, не показываются. Обе колонки по левому краю: начала строк в колонке на одной
     вертикали. По верху: если имя всё же перенесётся, соседнее не съедет вниз"""
@@ -253,22 +255,23 @@ def names_table(top: Sequence[Seat], bottom: Sequence[Seat]) -> str:
     for a, b in sides(top) + sides(bottom):
         if all(s is None or s.kind == FOREIGN for s in (a, b)):
             continue
-        cells = [name_line(s) if s else "" for s in (a, b)]
+        cells = [name_line(s, cal_date, target) if s else "" for s in (a, b)]
         rows.append("<tr>" + "".join(f'<td align="left" valign="top">{c}</td>' for c in cells) + "</tr>")
     return f"<table compact>{''.join(rows)}</table>" if rows else ""
 
 
 def seat_button(seat: Seat, cal_date: date, readonly: bool, target: Optional[int] = None) -> str:
     """Кнопка места: стул и номер нижним индексом (<sub> в кнопке сервер выбрасывает, поэтому юникодные ₀-₉).
-    Свободное: success, занять или пересесть. Своё: primary, нажатие отвечает полным именем (в закрытом дне
-    неактивная primary). Занятое, руководитель, закрытое: неактивные без цвета. Чужое: неактивный «—»"""
+    Свободное: success, занять или пересесть. Своё: неактивная primary (активная казалась кнопкой отмены
+    брони; отмена отдельной кнопкой внизу, полное имя по имени в таблице). Занятое, руководитель, закрытое:
+    неактивные без цвета. Чужое: неактивный «—»"""
     if seat.kind == FOREIGN:
         return button(UNAVAILABLE)
     label = CHAIR + str(seat.number).translate(SUB_DIGITS)
     if seat.kind == FREE:
         return button(label, callback("seat", cal_date, target, seat.cell), "success")
     if seat.kind == MINE:
-        return button(label, None if readonly else callback("name", cal_date, target, seat.cell), "primary")
+        return button(label, None, "primary")
     return button(label)
 
 
@@ -298,7 +301,7 @@ def desk_block(name: str, top: Sequence[Seat], bottom: Sequence[Seat], readonly:
                cal_date: date, target: Optional[int] = None) -> str:
     """Стол раскрывающимся блоком: таблица имён, ряд верхних мест, строка стола, ряд нижних мест, у последнего
     стола разделитель. Какой стол раскрыт, решает desks"""
-    body = [names_table(top, bottom),
+    body = [names_table(top, bottom, cal_date, target),
             button_row([seat_button(s, cal_date, readonly, target) for s in top]),
             desk_row(name),
             button_row([seat_button(s, cal_date, readonly, target) for s in bottom])]
