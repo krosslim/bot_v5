@@ -22,8 +22,10 @@ from src.services.feature_flags import BookingUi
 from src.use_cases import widget_use_case
 from src.use_cases.widget_use_case import WidgetUseCase, touch_rich
 from src.ui.keyboard.actions import RichCB
-from src.ui.rich.booking import (CHAIR, MAX_RICH_CHARS, MAX_RICH_EMOJI, NAME_ROOM_PT, Person, day_emoji_id,
-                                 desk_picture, desk_summary, month_legend, render_calendar, render_day, seat_badge)
+from src.ui.rich import booking
+from src.ui.rich.booking import (CHAIR, MAX_RICH_CHARS, MAX_RICH_EMOJI, NAME_HINT, NAME_ROOM_PT, Person,
+                                 day_emoji_id, desk_picture, desk_summary, month_legend, render_calendar, render_day,
+                                 seat_badge)
 from src.ui.rich.emoji import (DAY_EMOJI, DESK_ICON, DESK_ROW, LEGEND_EMOJI, LOOK, ROW_CORRIDOR, ROW_WINDOW, SEAT_BADGE,
                                SETTINGS_ICON, TODAY_ICON, WH_TODAY_IDS, emoji_strip)
 from src.ui.rich.fit import fit_name, text_width
@@ -240,8 +242,9 @@ class DayTest(unittest.TestCase):
             self.assertIn(f'<td align="left" valign="middle">{emoji_strip(ROW_WINDOW)}</td>'
                           f'<td align="center" valign="middle">{emoji_strip(DESK_ROW[n])}</td>', body)
             self.assertIn(f'<td align="right" valign="middle">{emoji_strip(ROW_CORRIDOR)}</td>', body)
-        self.assertFalse(desk1[2].endswith("<hr/>"))
-        self.assertTrue(desk2[2].endswith("<hr/>"))              # разделитель внутри блока последнего стола
+        for _, _, body in got:                                    # у каждого стола разделитель и подсказка
+            self.assertTrue(body.endswith(f"</tg-button-row><hr/><footer>{NAME_HINT}</footer>"))
+            self.assertEqual(body.count("<hr/>"), 1)
         self.assertTrue(page.endswith("</details><tg-button-row>" + bar(page)[len("<tg-button-row>"):]))
 
     def test_names_table(self):
@@ -300,14 +303,33 @@ class DayTest(unittest.TestCase):
         self.assertEqual([o for o, _, _ in blocks(queued)], [False, False])
 
     def test_open_desks_without_own_seat(self):
-        """Без своего места раскрыты столы со свободными местами"""
+        """Без своего места раскрыт один стол со свободными местами; если их несколько, случайный"""
         only_desk1_free = {n: f"Фамилия{n} Имя" for n in range(3, 11)}
         page, _ = day_page(only_desk1_free)
         self.assertEqual([o for o, _, _ in blocks(page)], [True, False])
         page, _ = day_page({1: "Волков Сергей", 2: "Петров Дмитрий"})
         self.assertEqual([o for o, _, _ in blocks(page)], [False, True])
-        page, _ = day_page({})
-        self.assertEqual([o for o, _, _ in blocks(page)], [True, True])
+        offered = []
+
+        def pick(names):
+            offered.append(list(names))
+            return names[-1]
+
+        with patch.object(booking, "pick_open", pick):
+            page, _ = day_page({})
+        self.assertEqual(offered, [["Стол 1", "Стол 2"]])            # выбор из столов со свободными
+        self.assertEqual([o for o, _, _ in blocks(page)], [False, True])
+        seen = {tuple(o for o, _, _ in blocks(day_page({})[0])) for _ in range(40)}
+        self.assertEqual(seen, {(True, False), (False, True)})       # раскрыт ровно один, то один, то другой
+
+    def test_footer_hint_only_with_names(self):
+        page, _ = day_page({4: "Кузнецов Максим"}, me=104)
+        desk1, desk2 = blocks(page)
+        self.assertIn(f"<footer>{NAME_HINT}</footer>", desk1[2])   # руководитель: имя есть
+        self.assertIn(f"<footer>{NAME_HINT}</footer>", desk2[2])
+        empty, _ = day_page({}, boss=None)
+        self.assertFalse(any("<footer>" in body for _, _, body in blocks(empty)))   # нажимать не на что
+        self.assertTrue(all(body.endswith("<hr/>") for _, _, body in blocks(empty)))
 
     def test_own_seat_opens_only_its_desk(self):
         """Стол со своим местом раскрыт и тогда, когда на нём нет свободных мест, а на другом есть; другой свёрнут"""

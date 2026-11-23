@@ -21,6 +21,7 @@ Telegram выбрасывает, <p> внутри <footer> нельзя (сер�
 календарь около 40.
 """
 import html
+import random
 from datetime import date, timedelta
 from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
@@ -168,6 +169,8 @@ CLOSED = "closed"     # место команды, но занять нельз�
 FOREIGN = "foreign"   # место другой команды
 
 FREE_TEXT = "Свободно"
+NAME_HINT = "Клик на имя, чтобы увидеть фамилию"   # подвал блока стола: имена в таблице это кнопки
+pick_open = random.choice   # какой из столов со свободными местами раскрыть (в тестах подменяется)
 SUB_DIGITS = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
 
 # Таблица имён. Telegram растягивает таблицу на всю ширину сообщения (~320 pt на iPhone 390 pt) и делит её между
@@ -297,16 +300,18 @@ def desk_summary(name: str, seats: Sequence[Seat], readonly: bool) -> str:
     return f"{esc(name)}: {state}"
 
 
-def desk_block(name: str, top: Sequence[Seat], bottom: Sequence[Seat], readonly: bool, is_open: bool, last: bool,
+def desk_block(name: str, top: Sequence[Seat], bottom: Sequence[Seat], readonly: bool, is_open: bool,
                cal_date: date, target: Optional[int] = None) -> str:
-    """Стол раскрывающимся блоком: таблица имён, ряд верхних мест, строка стола, ряд нижних мест, у последнего
-    стола разделитель. Какой стол раскрыт, решает desks"""
+    """Стол раскрывающимся блоком, у каждого стола одинаково: таблица имён, ряд верхних мест, строка стола, ряд
+    нижних мест, разделитель и подсказка в подвале (если в таблице есть имена). Какой стол раскрыт, решает desks.
+    В <footer> нельзя <p> (сервер выбросит footer), поэтому текст подсказки без обёртки"""
     body = [names_table(top, bottom, cal_date, target),
             button_row([seat_button(s, cal_date, readonly, target) for s in top]),
             desk_row(name),
-            button_row([seat_button(s, cal_date, readonly, target) for s in bottom])]
-    if last:
-        body.append("<hr/>")
+            button_row([seat_button(s, cal_date, readonly, target) for s in bottom]),
+            "<hr/>"]
+    if any(s.kind in (MINE, TAKEN, BOSS) for s in (*top, *bottom)):
+        body.append(f"<footer>{NAME_HINT}</footer>")
     return (f"<details{' open' if is_open else ''}><summary>{desk_summary(name, [*top, *bottom], readonly)}</summary>"
             f"{''.join(body)}</details>")
 
@@ -314,16 +319,16 @@ def desk_block(name: str, top: Sequence[Seat], bottom: Sequence[Seat], readonly:
 def desks(day: DaySeats, state: Dict, boss: Optional[Person], cal_date: date,
           target: Optional[int] = None) -> List[str]:
     """Столы схемы сверху вниз. Помещения (кабинет) не показываются.
-    Раскрыт: стол со своим местом (в закрытом дне со своим бывшим), и тогда только он, даже если на других есть
-    свободные; своего места нет: столы со свободными местами; нет и их: всё свёрнуто"""
+    Раскрыт всегда не больше одного стола: со своим местом (в закрытом дне со своим бывшим), даже если на других
+    есть свободные; своего места нет: один из столов со свободными местами, случайный (pick_open), чтобы люди
+    не садились всегда за первый; свободных нет нигде: всё свёрнуто"""
     readonly = bool(state.get("ro"))
     tables = [(name, [seat_view(c, day, state, boss) for c in top], [seat_view(c, day, state, boss) for c in bottom])
               for top, name, bottom in (item for item in OFFICE_LAYOUT if not isinstance(item, str))]
-    has_mine = any(s.kind == MINE for _, top, bottom in tables for s in (*top, *bottom))
-    want = MINE if has_mine else FREE
-    return [desk_block(name, top, bottom, readonly, any(s.kind == want for s in (*top, *bottom)),
-                       i == len(tables) - 1, cal_date, target)
-            for i, (name, top, bottom) in enumerate(tables)]
+    mine = [name for name, top, bottom in tables if any(s.kind == MINE for s in (*top, *bottom))]
+    free = [name for name, top, bottom in tables if any(s.kind == FREE for s in (*top, *bottom))]
+    opened = mine[0] if mine else pick_open(free) if free else None
+    return [desk_block(name, top, bottom, readonly, name == opened, cal_date, target) for name, top, bottom in tables]
 
 
 def day_action(state: Dict, cal_date: date, target: Optional[int] = None) -> Optional[str]:
