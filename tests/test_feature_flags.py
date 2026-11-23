@@ -262,6 +262,18 @@ class SettingParseTest(unittest.TestCase):
         self.assertEqual((broken.ui, broken.digest, broken.history_months, broken.future_months),
                          (BookingUi.WIDGETS, False, 0, 12))
 
+    def test_rich_scheme(self):
+        """Вид экрана дня в Rich: сохраняется, в алерте, по умолчанию кнопки мест (и в старой строке без поля)"""
+        self.assertFalse(WidgetsSetting.loads('{"ui": "rich", "audience": "all"}').rich_scheme)
+        self.assertFalse(WidgetsSetting.loads('{"ui": "rich", "rich_scheme": "yes"}').rich_scheme)
+        on = WidgetsSetting(BookingUi.RICH, rich_scheme=True)
+        self.assertTrue(WidgetsSetting.loads(on.dumps()).rich_scheme)
+        self.assertEqual(on.changes_from(WidgetsSetting(BookingUi.RICH)),
+                         ["Экран дня в Rich: кнопки мест → стулья в заголовке"])
+        self.assertEqual(parse_widgets_change("scheme=on"), ({"rich_scheme": True}, "Экран дня в Rich: стулья в заголовке"))
+        self.assertEqual(parse_widgets_change("scheme=off")[0], {"rich_scheme": False})
+        self.assertIsNone(parse_widgets_change("scheme=1"))
+
     def test_dumps_roundtrip(self):
         for ui in BookingUi:
             for audience in Audience:
@@ -307,20 +319,27 @@ class KeyboardsTest(unittest.TestCase):
 
     def test_widgets_screen_marks_current_ui_and_audience(self):
         texts = button_texts(render_widgets_settings_kb(WidgetsSetting(BookingUi.RICH, Audience.ADMINS, True, 3, 0)))
-        self.assertEqual(texts[:8], ["⚪️ Базовый", "⚪️ Виджеты", "🔘 Rich", "⚪️ Всем", "🔘 Только админам",
-                                     "📰 Дайджест в группе: виджетом", "⬅️ Прошлые месяцы: 3 мес.",
-                                     "➡️ Месяцы вперёд: нет"])
+        self.assertEqual(texts[:9], ["⚪️ Базовый", "⚪️ Виджеты", "🔘 Rich", "⚪️ Всем", "🔘 Только админам",
+                                     "Экран дня: кнопки мест", "📰 Дайджест в группе: виджетом",
+                                     "⬅️ Прошлые месяцы: 3 мес.", "➡️ Месяцы вперёд: нет"])
         texts = button_texts(render_widgets_settings_kb(WidgetsSetting(BookingUi.WIDGETS, Audience.ALL)))
-        self.assertEqual(texts[:5], ["⚪️ Базовый", "🔘 Виджеты", "⚪️ Rich", "🔘 Всем", "⚪️ Только админам"])
+        self.assertEqual(texts[:6], ["⚪️ Базовый", "🔘 Виджеты", "⚪️ Rich", "🔘 Всем", "⚪️ Только админам",
+                                     "📰 Дайджест в группе: текстом"])     # вид экрана дня только при Rich
+        rich_kb = render_widgets_settings_kb(WidgetsSetting(BookingUi.RICH, rich_scheme=True))
+        scheme = [b for row in rich_kb.inline_keyboard for b in row if b.text.startswith("Экран дня")]
+        self.assertEqual(scheme[0].text, "Экран дня: стулья в заголовке")
+        self.assertIn("scheme=off", scheme[0].callback_data)
 
     def test_widgets_screen_text(self):
         text = render_widgets_settings_mess(WidgetsSetting(BookingUi.RICH, Audience.ALL), True, False)
         self.assertIn("Бронирование в личке: <b>Rich</b>, <b>всем</b>", text)
         self.assertIn("не знает Rich Messages", text)
         self.assertIn("• Rich:", text)
+        self.assertIn("Экран дня в Rich: <b>кнопки мест</b>\n", text)
         self.assertNotIn("·", text)
         basic = render_widgets_settings_mess(WidgetsSetting(), True, True)
         self.assertIn("Бронирование в личке: <b>базовый</b>\n", basic)      # аудитория у базового не важна
+        self.assertNotIn("Экран дня в Rich: <b>", basic)
         self.assertIn("✅ Bot API поддерживает виджеты и Rich Messages", basic)
 
     def test_widgets_screen_shows_boss(self):
@@ -343,7 +362,8 @@ class KeyboardsTest(unittest.TestCase):
 
     def test_callback_data_fits_telegram_limit(self):
         boss_kb = render_widgets_boss_kb([_user(10 ** 19 - 1, "Константинопольская Александра")] * 30, 1, 10 ** 19 - 1)
-        for markup in (render_widgets_settings_kb(WidgetsSetting()), render_widgets_months_kb("future", 12), boss_kb):
+        for markup in (render_widgets_settings_kb(WidgetsSetting()), render_widgets_months_kb("future", 12), boss_kb,
+                       render_widgets_settings_kb(WidgetsSetting(BookingUi.RICH, rich_scheme=True))):
             for row in markup.inline_keyboard:
                 for b in row:
                     self.assertLessEqual(len(b.callback_data.encode()), 64, b.callback_data)

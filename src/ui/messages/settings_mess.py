@@ -4,7 +4,7 @@ from typing import List
 
 from src.dto.user_dto import UserDTO, UserStatisticsDTO
 from src.services.feature_flags import (AUDIENCE_TITLES, UI_TITLES, BookingUi, WidgetsSetting, boss_title,
-                                        digest_title, months_title)
+                                        digest_title, months_title, scheme_title)
 
 
 def render_auto_confirm_mess() -> str:
@@ -150,8 +150,11 @@ def render_widgets_settings_mess(setting: WidgetsSetting, widgets_supported: boo
         who = f", {html.escape(setting.changed_by)}" if setting.changed_by else ""
         changed = f"\nИзменено: {setting.changed_at:%d.%m.%Y %H:%M}{who}"
     whom = "" if setting.ui == BookingUi.BASIC else f", <b>{AUDIENCE_TITLES[setting.audience]}</b>"
+    scheme = (f"Экран дня в Rich: <b>{scheme_title(setting.rich_scheme)}</b>\n" if setting.ui == BookingUi.RICH
+              else "")
     return (f"<b>🧩 Виджеты</b>\n\n"
             f"Бронирование в личке: <b>{UI_TITLES[setting.ui]}</b>{whom}\n"
+            f"{scheme}"
             f"Дайджест в группе: <b>{digest_title(setting.digest)}</b>\n"
             f"Календарь: назад <b>{months_title(setting.history_months)}</b>, "
             f"вперёд <b>{months_title(setting.future_months)}</b>\n"
@@ -164,6 +167,11 @@ def render_widgets_settings_mess(setting: WidgetsSetting, widgets_supported: boo
             "и «Забронировать место», внизу кнопки: вернуться к текущему месяцу, настройки и стрелки листания месяцев. «Таблица» и «Мои брони» не показываются. "
             "Если Telegram не покажет календарь (например, у владельца бота закончился Telegram Premium и числа "
             "из эмодзи пропали), откроется базовый экран, а в чат алертов придёт ошибка\n\n"
+            "<b>Экран дня в Rich</b> (кнопка видна, когда выбран Rich): кнопки мест или стулья в заголовке. "
+            "Кнопки мест: под таблицей имён ряды стульев-кнопок и строка «окно, стол, коридор». Стулья в заголовке: "
+            "заголовок стола это схема из стульев с номерами, по цвету видно, свободно место, занято, ваше или "
+            "недоступно; слева окно, справа дверь в коридор. Занять или пересесть можно кнопкой в таблице имён. "
+            "Уже открытые экраны дня сменят вид при следующем обновлении.\n\n"
             "<b>Кому</b>: всем или только админам, у остальных базовый. «Только админам» удобно, чтобы проверить "
             "на проде.\n"
             "Окна виджетов и календари, уже открытые в чатах, при смене способа не пропадают: любое нажатие в них "

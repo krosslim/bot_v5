@@ -14,7 +14,7 @@ from src.infrastructure.telegram.rich import rich_supported
 from src.infrastructure.telegram.widgets import widgets_supported
 from src.services.exceptions import UserWarn
 from src.services.feature_flags import (AUDIENCE_TITLES, LEGACY_MODES, MONTHS_CHOICES, UI_TITLES, Audience, BookingUi,
-                                        FeatureFlags, boss_title, digest_title, months_title)
+                                        FeatureFlags, boss_title, digest_title, months_title, scheme_title)
 from src.services.tech_service import TechService
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.ui.keyboard.settings_employee_kb import render_employees_keyboard, visit_plan_report_kb
@@ -559,6 +559,8 @@ def parse_widgets_change(extra: object) -> tuple[dict, str] | None:
                     f"Способ бронирования в личке: {UI_TITLES[ui]}, {AUDIENCE_TITLES[audience]}")
         if field == "digest" and value in ("on", "off"):
             return {"digest": value == "on"}, f"Дайджест в группе: {digest_title(value == 'on')}"
+        if field == "scheme" and value in ("on", "off"):
+            return {"rich_scheme": value == "on"}, f"Экран дня в Rich: {scheme_title(value == 'on')}"
         if field in ("history", "future") and int(value) in MONTHS_CHOICES:
             label = "Прошлые месяцы" if field == "history" else "Месяцы вперёд"
             return {f"{field}_months": int(value)}, f"{label}: {months_title(int(value))}"

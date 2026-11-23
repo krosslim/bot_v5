@@ -76,6 +76,11 @@ def digest_title(on: bool) -> str:
     return "виджетом" if on else "текстом"
 
 
+def scheme_title(on: bool) -> str:
+    """Вид экрана дня в Rich: схема стола из стульев в заголовке блока или кнопки мест под таблицей имён"""
+    return "стулья в заголовке" if on else "кнопки мест"
+
+
 def boss_title(name: Optional[str]) -> str:
     return short_name(name) if name else "не выбран"
 
@@ -126,13 +131,14 @@ class WidgetsSetting:
                                             # виджеты берут актуальное имя из users по boss_id
     changed_by: Optional[str] = None
     changed_at: Optional[datetime] = None
+    rich_scheme: bool = False               # экран дня в Rich: стулья в заголовке (иначе кнопки мест)
 
     def dumps(self) -> str:
         return json.dumps({
             "ui": self.ui.value, "audience": self.audience.value,
             "mode": legacy_mode(self.ui, self.audience), "digest": self.digest,
             "history_months": self.history_months, "future_months": self.future_months,
-            "boss_id": self.boss_id, "boss_name": self.boss_name,
+            "boss_id": self.boss_id, "boss_name": self.boss_name, "rich_scheme": self.rich_scheme,
             "by": self.changed_by, "at": self.changed_at.isoformat() if self.changed_at else None,
         }, ensure_ascii=False)
 
@@ -158,7 +164,7 @@ class WidgetsSetting:
         boss_id = _user_id(data.get("boss_id"))
         return cls(ui, audience, data.get("digest") is True, _months(data.get("history_months")),
                    _months(data.get("future_months")), boss_id, data.get("boss_name") if boss_id else None,
-                   data.get("by"), changed_at)
+                   data.get("by"), changed_at, rich_scheme=data.get("rich_scheme") is True)
 
     def changes_from(self, old: "WidgetsSetting") -> List[str]:
         """Что поменялось — строки для алерта и лога"""
@@ -176,6 +182,8 @@ class WidgetsSetting:
         if self.future_months != old.future_months:
             out.append(f"Месяцы вперёд в календаре: {months_title(old.future_months)} → "
                        f"{months_title(self.future_months)}")
+        if self.rich_scheme != old.rich_scheme:
+            out.append(f"Экран дня в Rich: {scheme_title(old.rich_scheme)} → {scheme_title(self.rich_scheme)}")
         if self.boss_id != old.boss_id:
             out.append(f"Руководитель на схеме: {boss_title(old.boss_name)} → {boss_title(self.boss_name)}")
         return out
@@ -247,7 +255,7 @@ class FeatureFlags:
 
     # ------------------------------------------------------------------ запись
     async def update_widgets(self, actor_name: str, **changes: Any) -> bool:
-        """Поменять настройки: ui, audience, digest, history_months, future_months, boss_id + boss_name.
+        """Поменять настройки: ui, audience, digest, history_months, future_months, rich_scheme, boss_id + boss_name.
         False: ничего не изменилось.
         DBError пробрасывается: настройки в памяти остаются прежними"""
         old = self._widgets

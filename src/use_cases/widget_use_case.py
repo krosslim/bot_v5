@@ -325,7 +325,8 @@ class WidgetUseCase:
         state = json.loads(build_day_state(day, SEATS, subject_id, subject_name, self_view, readonly, today=d_tz(),
                                            extra_taken=1 if boss else 0))
         person = Person(boss.user_id, boss.full_name) if boss else None
-        return render_day(cal_date, state, day, person, target_id, target_name), f"d{cal_date.isoformat()}"
+        return (render_day(cal_date, state, day, person, target_id, target_name, self.flags.widgets.rich_scheme),
+                f"d{cal_date.isoformat()}")
 
     async def show_rich(
             self, chat_id: int, html: str, view: str, target_id: Optional[int] = None,
@@ -493,10 +494,12 @@ class WidgetUseCase:
         return "".join(day_code(d, first_bookable, horizon) for d in await self.uc.widget_calendar(0, month, end))
 
     async def _day_mark(self, cal_date: date) -> tuple:
-        """Отпечаток экрана дня: кто на каком месте, очередь, лимит, руководитель на схеме, закрыт ли день"""
+        """Отпечаток экрана дня: кто на каком месте, очередь, лимит, руководитель на схеме, закрыт ли день и вид
+        экрана (флаг rich_scheme: после переключения в админке открытые экраны дня перерисуются на ближайшем обходе)"""
         day, is_workday = await self.uc.widget_day(cal_date)
         return (tuple(sorted((h.seat_no or 0, h.user_id, h.full_name) for h in day.holders)), tuple(day.queue_ids()),
-                day.capacity, self.flags.widgets.boss_id, is_workday and self.in_window(cal_date))
+                day.capacity, self.flags.widgets.boss_id, is_workday and self.in_window(cal_date),
+                self.flags.widgets.rich_scheme)
 
     async def watch_rich_windows(self) -> int:
         """Обход раз в RICH_WATCH_SECONDS: перерисовать окна, в которых изменилось видимое, откуда бы ни пришло

@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.dto.user_dto import UserDTO, DictDTO
 from src.services.feature_flags import (AUDIENCE_TITLES, MONTHS_CHOICES, UI_TITLES, Audience, BookingUi,
-                                        WidgetsSetting, boss_title, digest_title, months_title)
+                                        WidgetsSetting, boss_title, digest_title, months_title, scheme_title)
 from src.ui.keyboard.actions import SettingsCB, SettingsStep
 from src.utils.idk import gen_idk
 
@@ -215,13 +215,17 @@ def _widgets_cb(extra: str, step: SettingsStep = SettingsStep.WIDGETS_SET) -> st
 
 
 def render_widgets_settings_kb(setting: WidgetsSetting) -> InlineKeyboardMarkup:
-    """Способ бронирования в личке и кому он (текущие отмечены 🔘), дайджест, месяцы календаря, руководитель"""
+    """Способ бронирования в личке и кому он (текущие отмечены 🔘), вид экрана дня (только при Rich), дайджест,
+    месяцы календаря, руководитель"""
     kb = InlineKeyboardBuilder()
     for ui in BookingUi:
         mark = "🔘" if ui == setting.ui else "⚪️"
         kb.row(InlineKeyboardButton(text=f"{mark} {UI_TITLES[ui].capitalize()}", callback_data=_widgets_cb(f"ui={ui.value}")))
     kb.row(*(InlineKeyboardButton(text=f"{'🔘' if a == setting.audience else '⚪️'} {AUDIENCE_TITLES[a].capitalize()}",
                                   callback_data=_widgets_cb(f"aud={a.value}")) for a in Audience))
+    if setting.ui == BookingUi.RICH:
+        kb.row(InlineKeyboardButton(text=f"Экран дня: {scheme_title(setting.rich_scheme)}",
+                                    callback_data=_widgets_cb(f"scheme={'off' if setting.rich_scheme else 'on'}")))
     kb.row(InlineKeyboardButton(
         text=f"📰 Дайджест в группе: {digest_title(setting.digest)}",
         callback_data=_widgets_cb(f"digest={'off' if setting.digest else 'on'}"),

@@ -23,11 +23,12 @@ from src.use_cases import widget_use_case
 from src.use_cases.widget_use_case import WidgetUseCase, touch_rich
 from src.ui.keyboard.actions import RichCB
 from src.ui.rich import booking
-from src.ui.rich.booking import (CHAIR, MAX_RICH_CHARS, MAX_RICH_EMOJI, NAME_HINT, NAME_ROOM_PT, Person,
-                                 day_emoji_id, desk_picture, desk_summary, month_legend, render_calendar, render_day,
-                                 seat_badge)
-from src.ui.rich.emoji import (DAY_EMOJI, DESK_ICON, DESK_ROW, LEGEND_EMOJI, LOOK, ROW_CORRIDOR, ROW_WINDOW, SEAT_BADGE,
-                               SETTINGS_ICON, TODAY_ICON, WH_TODAY_IDS, emoji_strip)
+from src.ui.rich.booking import (CHAIR, MAX_RICH_CHARS, MAX_RICH_EMOJI, NAME_HINT, NAME_ROOM_PT, Person, Seat,
+                                 day_emoji_id, desk_block, desk_picture, desk_summary, month_legend, render_calendar,
+                                 render_day, seat_badge)
+from src.ui.rich.emoji import (DAY_EMOJI, DESK_HEAD, DESK_ICON, DESK_ROW, DESKHEAD_IDS, HEAD_BLANK, HEAD_CHAIR,
+                               HEAD_CORRIDOR, HEAD_WINDOW, LEGEND_EMOJI, LOOK, ROW_CORRIDOR, ROW_WINDOW, SEAT_BADGE,
+                               SEAT_CHAIR, SETTINGS_ICON, TODAY_ICON, WH_TODAY_IDS, emoji_strip)
 from src.ui.rich.fit import fit_name, text_width
 from src.ui.widgets.layout import BOSS_SEAT, OFFICE_LAYOUT, SEAT_NUMBERS, SEATS
 from src.ui.widgets.state import CalendarDay, DaySeats, QueueEntry, SeatHolder, build_day_state
@@ -170,7 +171,7 @@ DEMO = {1: "Волков Сергей", 2: "Петров Дмитрий", 4: "К
 
 
 def day_page(holders=None, me=0, boss=BOSS, capacity=None, readonly=False, queue=(), target=None, target_name=None,
-             cal_date=date(2026, 11, 26)):
+             cal_date=date(2026, 11, 26), scheme=False):
     """Экран дня через build_day_state, как в WidgetUseCase.rich_day. holders: {seat_no: «Фамилия Имя»},
     user_id занявшего 100 + seat_no; me: user_id того, чей это день"""
     holders = holders or {}
@@ -179,7 +180,7 @@ def day_page(holders=None, me=0, boss=BOSS, capacity=None, readonly=False, queue
                    queue=[QueueEntry(user_id=uid, full_name="Очередь Ольга") for uid in queue])
     state = json.loads(build_day_state(day, SEATS, me or 1, "Я Я", True, readonly, today=TODAY,
                                        extra_taken=1 if boss else 0))
-    return render_day(cal_date, state, day, boss, target, target_name), state
+    return render_day(cal_date, state, day, boss, target, target_name, scheme), state
 
 
 def blocks(page: str):
@@ -442,6 +443,18 @@ class DayTest(unittest.TestCase):
         self.assertTrue(tables <= set(DESK_ICON), "нет пиктограммы стола: DESK_ICON")
         self.assertTrue(tables <= set(DESK_ROW), "нет крупной картинки стола: DESK_ROW")
         self.assertTrue(set(SEAT_NUMBERS.values()) <= set(SEAT_BADGE), "нет номера в рамке: SEAT_BADGE")
+        # вид «стулья в заголовке»: столешница на всю длину ряда и стул с номером для ряда, где стоит место
+        for item in OFFICE_LAYOUT:
+            if isinstance(item, str):
+                continue
+            top, name, bottom = item
+            self.assertIn(name, DESK_HEAD, "нет столешницы: DESK_HEAD")
+            self.assertEqual(len(DESK_HEAD[name]), max(len(top), len(bottom)), f"{name}: длина столешницы")
+            for row, down in ((top, False), (bottom, True)):
+                for c in row:
+                    if c in SEAT_NUMBERS:
+                        self.assertIn((SEAT_NUMBERS[c], down, "free"), SEAT_CHAIR,
+                                      f"нет стула с номером {SEAT_NUMBERS[c]}: режим deskhead, SEAT_CHAIR")
 
     def test_fallbacks_without_pictures(self):
         self.assertEqual(desk_picture("Стол 3"), "СТОЛ 3")
@@ -450,8 +463,106 @@ class DayTest(unittest.TestCase):
         self.assertEqual(desk_summary("Стол 3", [], False), "Стол 3: нет мест")
 
 
+def numbered(n, down, look):
+    return SEAT_CHAIR[(n, down, look)]
+
+
+def head(top, desk, bottom):
+    """Ожидаемый заголовок-схема: стулья с распоркой по краям, окно, столешница, дверь"""
+    return (emoji_strip([HEAD_BLANK, *top, HEAD_BLANK]) + "<br/>" + emoji_strip([HEAD_WINDOW, *DESK_HEAD[desk],
+            HEAD_CORRIDOR]) + "<br/>" + emoji_strip([HEAD_BLANK, *bottom, HEAD_BLANK]))
+
+
+SUCCESS = re.compile(r'<tg-button type="callback_data" data="([^"]*)" style="success">(.*?)</tg-button>')
+
+
+class SchemeDayTest(unittest.TestCase):
+    """Вид «стулья в заголовке» (render_day(scheme=True), флаг rich_scheme): схема стола в заголовке блока, без рядов
+    кнопок мест и строки стола, свободное место кнопкой в таблице имён"""
+
+    def test_header_is_scheme_of_desk(self):
+        page, _ = day_page(DEMO, me=104, scheme=True)
+        desk1, desk2 = blocks(page)
+        # Стол 1: сверху чужие, снизу места 1, 2 заняты, руководитель (номер 3) как занятое, чужое
+        self.assertEqual(desk1[1], head([HEAD_CHAIR[(False, "foreign")]] * 4, "Стол 1",
+                                        [numbered(1, True, "taken"), numbered(2, True, "taken"),
+                                         numbered(3, True, "taken"), HEAD_CHAIR[(True, "foreign")]]))
+        # Стол 2: seat_no 3-6 сверху (номера 4-7), 7-10 снизу (8-11); своё место 4 (номер 5), свободны 3, 6, 9
+        self.assertEqual(desk2[1], head([numbered(4, False, "free"), numbered(5, False, "mine"),
+                                         numbered(6, False, "taken"), numbered(7, False, "free")], "Стол 2",
+                                        [numbered(8, True, "taken"), numbered(9, True, "taken"),
+                                         numbered(10, True, "free"), numbered(11, True, "taken")]))
+        self.assertEqual(desk1[1].count("<br/>"), 2)
+        self.assertNotRegex(desk1[1], r"[А-Яа-я]")                     # в заголовке нет текста
+        self.assertEqual((desk1[0], desk2[0]), (False, True))       # правило раскрытия то же
+
+    def test_body_without_seat_rows_and_desk_row(self):
+        page, _ = day_page(DEMO, me=104, scheme=True)
+        for _, _, body in blocks(page):
+            self.assertNotIn("<tg-button-row>", body)
+            self.assertEqual(body.count("<table compact>"), 1)              # только таблица имён
+            self.assertTrue(body.endswith(f"</table><hr/><footer>{NAME_HINT}</footer>"))
+        for eid in ROW_WINDOW + ROW_CORRIDOR + DESK_ROW["Стол 1"] + DESK_ROW["Стол 2"] + DESK_ICON["Стол 2"]:
+            self.assertNotIn(eid, page)
+        self.assertNotIn(CHAIR, page)
+        self.assertTrue(page.endswith(bar(page)))                         # «Назад» и «Отменить бронь» на месте
+        self.assertIn("Отменить бронь", bar(page))
+
+    def test_free_seat_is_take_button(self):
+        """Без брони «Занять», со своей бронью «Пересесть»: номер в рамке и подпись в кнопке success, команда seat"""
+        page, _ = day_page({1: "Волков Сергей"}, scheme=True)
+        found = [(unpack(html.unescape(d)), label) for d, label in SUCCESS.findall(page)]
+        self.assertEqual(len(found), 9)                                    # 2 и 3-10
+        self.assertEqual({cb.seat for cb, _ in found}, {str(n) for n in range(2, 11)})
+        self.assertTrue(all(cb.cmd == "seat" for cb, _ in found))
+        self.assertIn((badge(2) + "Занять"), [label for _, label in found])
+        self.assertNotIn("<i>Свободно</i>", page)
+        moved, _ = day_page(DEMO, me=104, scheme=True)
+        labels = [label for _, label in SUCCESS.findall(moved)]
+        self.assertEqual(labels, [badge(4) + "Пересесть", badge(7) + "Пересесть", badge(10) + "Пересесть"])
+        self.assertEqual(name_cells(blocks(moved)[1][2])[1], f"[name 5]{badge(6)}Анна Б.")   # имена ссылкой
+
+    def test_target_in_take_buttons(self):
+        page, _ = day_page({4: "Кузнецов Максим"}, me=104, target=BIG_ID, target_name="Кузнецов Максим", scheme=True)
+        self.assertTrue(SUCCESS.findall(page))
+        self.assertTrue(all(unpack(d).target == BIG_ID for d, _ in buttons(page)))
+
+    def test_readonly_and_no_boss(self):
+        """Закрытый день: свободные места недоступны (контур), кнопок нет; руководитель не выбран: контур с номером 3"""
+        page, _ = day_page({1: "Волков Сергей", 4: "Я Я"}, me=104, readonly=True, boss=None,
+                           cal_date=date(2026, 11, 19), scheme=True)
+        desk1, desk2 = blocks(page)
+        self.assertIn(numbered(3, True, "closed"), desk1[1])
+        self.assertIn(numbered(2, True, "closed"), desk1[1])
+        self.assertIn(numbered(5, False, "mine"), desk2[1])
+        self.assertNotIn('style="success"', page)
+        self.assertEqual(name_cells(desk2[2])[0], badge(4) + "—")
+        self.assertEqual({unpack(d).cmd for d, _ in buttons(page)}, {"month", "name"})
+
+    def test_full_day(self):
+        page, _ = day_page({n: f"Фамилия{n} Имя" for n in SEATS}, scheme=True)
+        self.assertEqual([o for o, _, _ in blocks(page)], [False, False])
+        self.assertNotIn('style="success"', page)
+        self.assertIn("В очередь", page)
+
+    def test_fallbacks(self):
+        """Стола нет в DESK_HEAD: обычный заголовок; номер без картинки: стул без номера"""
+        seats = [Seat(5, "free", 13), Seat("x", "foreign")]
+        block = desk_block("Стол 3", seats, seats, False, False, date(2026, 11, 26), scheme=True)
+        self.assertIn("<summary>Стол 3: места есть</summary>", block)   # свободное и сверху, и снизу
+        from src.ui.rich.booking import head_chair
+        self.assertEqual(head_chair(Seat(5, "free", 13), False), HEAD_CHAIR[(False, "free")])
+        self.assertEqual(head_chair(Seat(5, "free", 5), True), HEAD_CHAIR[(True, "free")])   # не тот ряд
+
+    def test_set_order(self):
+        """Порядок загрузки caldeskhead (src/ui/rich/emoji.py): ни один id не повторяется"""
+        self.assertEqual(len(DESKHEAD_IDS), 65)
+        self.assertEqual(len(set(DESKHEAD_IDS)), 65)
+        self.assertEqual(len(SEAT_CHAIR), 44)
+
+
 class LimitsTest(unittest.TestCase):
-    def heaviest(self):
+    def heaviest(self, scheme=False):
         cal = render_calendar(date(2026, 12, 1), "b" * 31, date(2026, 12, 31), date(2026, 11, 1), date(2027, 1, 1),
                               BIG_ID, LONG_NAME)
         cal = max(cal, render_calendar(date(2026, 12, 1), "bvqn" * 7 + "bvq", date(2026, 12, 31),
@@ -461,12 +572,12 @@ class LimitsTest(unittest.TestCase):
                        queue=[QueueEntry(user_id=2000 + i, full_name=LONG_NAME) for i in range(8)])
         state = json.loads(build_day_state(day, SEATS, BIG_ID - 4, LONG_NAME, False, False, today=TODAY,
                                            extra_taken=1))
-        page = render_day(date(2026, 12, 3), state, day, Person(BIG_ID, LONG_NAME), BIG_ID, LONG_NAME)
+        page = render_day(date(2026, 12, 3), state, day, Person(BIG_ID, LONG_NAME), BIG_ID, LONG_NAME, scheme)
         return cal, page
 
     def test_callback_data_fits_64_bytes(self):
         cal, day = self.heaviest()
-        found = all_buttons(cal) + all_buttons(day)
+        found = all_buttons(cal) + all_buttons(day) + all_buttons(self.heaviest(scheme=True)[1])
         self.assertTrue(found)
         for data, _ in found:
             self.assertLessEqual(len(data.encode()), 64, data)          # и «Настройки» (SettingsCB)
@@ -474,12 +585,12 @@ class LimitsTest(unittest.TestCase):
             self.assertEqual(unpack(data).target, BIG_ID)
 
     def test_size_within_rich_limit(self):
-        for page in self.heaviest():
+        for page in (*self.heaviest(), self.heaviest(scheme=True)[1]):
             self.assertLess(len(page), MAX_RICH_CHARS // 2, len(page))
 
     def test_custom_emoji_within_limit(self):
         """Сверх ~92 эмодзи сервер заменяет новые id подписью, missing_emoji увёл бы в базовый сценарий"""
-        for page in self.heaviest():
+        for page in (*self.heaviest(), self.heaviest(scheme=True)[1]):
             self.assertLess(page.count("<tg-emoji"), MAX_RICH_EMOJI)
 
     def test_unique_idk_per_button(self):
@@ -633,7 +744,7 @@ def pointer(message_id, view, target=None):
 class RichFlags:
     def __init__(self, ui=BookingUi.RICH):
         self.ui = ui
-        self.widgets = SimpleNamespace(boss_id=None)
+        self.widgets = SimpleNamespace(boss_id=None, rich_scheme=False)
 
     async def booking_ui_for(self, user_id):
         return self.ui
@@ -763,6 +874,10 @@ class MarksTest(unittest.IsolatedAsyncioTestCase):
             visits["n"] = 4                                            # последний свободный занят
             self.assertEqual(await widgets._month_mark(date(2026, 11, 1)), "n")
             self.assertNotEqual(await widgets._day_mark(date(2026, 11, 26)), day)
+            seated = await widgets._day_mark(date(2026, 11, 26))
+            widgets.flags.widgets.rich_scheme = True                   # переключили вид экрана дня в админке
+            self.assertNotEqual(await widgets._day_mark(date(2026, 11, 26)), seated)
+            self.assertEqual(await widgets._month_mark(date(2026, 11, 1)), "n")   # календарь вид не меняет
 
 
 if __name__ == "__main__":
